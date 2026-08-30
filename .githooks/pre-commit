@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+#
+# Version-controlled git hook (lives in git, reviewable, team-consistent).
+# Enabled automatically by the `prepare` npm script — `npm install` points
+# core.hooksPath here — or manually via `npm run init-hooks`.
+#
+# Runs lint-staged (eslint --fix + prettier --write on staged files, see
+# .lintstagedrc.json) so a commit is unlikely to fail CI's lint gate. Scoped to
+# staged files to stay fast. Bypass ad hoc with `git commit --no-verify`.
+exec npx lint-staged

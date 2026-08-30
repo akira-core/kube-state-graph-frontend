@@ -1,0 +1,329 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`getStylesheet > matches snapshot for default theme 1`] = `
+[
+  {
+    "selector": "node",
+    "style": {
+      "background-clip": "none",
+      "background-color": "#181b1f",
+      "background-fit": "contain",
+      "background-image": [Function],
+      "background-image-opacity": 1,
+      "border-color": "rgba(204, 204, 220, 0.2)",
+      "border-width": 1.5,
+      "color": "rgb(204, 204, 220)",
+      "font-size": 11,
+      "height": 40,
+      "label": "data(label)",
+      "shape": "round-rectangle",
+      "text-halign": "center",
+      "text-margin-y": 4,
+      "text-valign": "bottom",
+      "width": 40,
+    },
+  },
+  {
+    "selector": "node:parent",
+    "style": {
+      "background-color": [Function],
+      "background-image": "none",
+      "background-opacity": 0.1,
+      "border-color": "rgba(204, 204, 220, 0.2)",
+      "border-opacity": 0.6,
+      "border-width": 1,
+      "color": [Function],
+      "font-size": 13,
+      "label": "data(label)",
+      "padding": "14px",
+      "shape": "round-rectangle",
+      "text-halign": "center",
+      "text-margin-y": -3,
+      "text-valign": "top",
+    },
+  },
+  {
+    "selector": "node[?isCluster]",
+    "style": {
+      "background-color": "data(clusterColor)",
+      "background-image": "none",
+      "background-opacity": 0.07,
+      "border-color": "data(clusterColor)",
+      "border-opacity": 0.5,
+      "border-width": 1.5,
+      "color": "data(clusterColor)",
+      "font-size": 18,
+      "font-weight": 600,
+      "label": [Function],
+      "padding": "18px",
+      "shape": "round-rectangle",
+      "text-halign": "center",
+      "text-margin-y": -4,
+      "text-valign": "top",
+    },
+  },
+  {
+    "selector": "node[?isStorageCluster]",
+    "style": {
+      "background-color": "data(storageClusterColor)",
+      "background-image": "none",
+      "background-opacity": 0.07,
+      "border-color": "data(storageClusterColor)",
+      "border-opacity": 0.5,
+      "border-width": 1.5,
+      "color": "data(storageClusterColor)",
+      "font-size": 18,
+      "font-weight": 600,
+      "label": [Function],
+      "padding": "18px",
+      "shape": "round-rectangle",
+      "text-halign": "center",
+      "text-margin-y": -4,
+      "text-valign": "top",
+    },
+  },
+  {
+    "selector": "node[?isNamespace]",
+    "style": {
+      "background-color": "data(namespaceColor)",
+      "background-image": "none",
+      "background-opacity": 0.1,
+      "border-color": "data(namespaceColor)",
+      "border-opacity": 0.7,
+      "border-width": 1.5,
+      "color": "data(namespaceColor)",
+      "font-size": 17,
+      "font-weight": 600,
+      "label": [Function],
+      "padding": "12px",
+      "shape": "round-rectangle",
+      "text-halign": "center",
+      "text-margin-y": -3,
+      "text-valign": "top",
+    },
+  },
+  {
+    "selector": "node[?isApplication]",
+    "style": {
+      "background-color": "data(applicationColor)",
+      "background-image": "none",
+      "background-opacity": 0.1,
+      "border-color": "data(applicationColor)",
+      "border-opacity": 0.7,
+      "border-width": 1.5,
+      "color": "data(applicationColor)",
+      "font-size": 17,
+      "font-weight": 600,
+      "label": [Function],
+      "padding": "12px",
+      "shape": "round-rectangle",
+      "text-halign": "center",
+      "text-margin-y": -3,
+      "text-valign": "top",
+    },
+  },
+  {
+    "selector": "node[kind='network']",
+    "style": {
+      "font-size": 17,
+      "font-weight": 600,
+      "label": [Function],
+    },
+  },
+  {
+    "selector": "node[?isNodeGroup]",
+    "style": {
+      "font-size": 17,
+      "font-weight": 600,
+      "label": [Function],
+    },
+  },
+  {
+    "selector": "node[kind='node']:parent",
+    "style": {
+      "font-size": 18,
+      "font-weight": 600,
+      "label": [Function],
+    },
+  },
+  {
+    "selector": "node[kind='node'].cy-expand-collapse-collapsed-node",
+    "style": {
+      "font-size": 18,
+      "font-weight": 600,
+      "label": [Function],
+    },
+  },
+  {
+    "selector": "node.cy-expand-collapse-collapsed-node",
+    "style": {
+      "border-opacity": 0.9,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node[?isCluster].cy-expand-collapse-collapsed-node",
+    "style": {
+      "background-clip": "none",
+      "background-fit": "contain",
+      "background-image": [Function],
+      "background-image-opacity": 1,
+    },
+  },
+  {
+    "selector": "node[?isNamespace].cy-expand-collapse-collapsed-node",
+    "style": {
+      "background-clip": "none",
+      "background-fit": "contain",
+      "background-image": [Function],
+      "background-image-opacity": 1,
+    },
+  },
+  {
+    "selector": "node[?isApplication].cy-expand-collapse-collapsed-node",
+    "style": {
+      "background-clip": "none",
+      "background-fit": "contain",
+      "background-image": [Function],
+      "background-image-opacity": 1,
+    },
+  },
+  {
+    "selector": "node[?isStorageCluster].cy-expand-collapse-collapsed-node",
+    "style": {
+      "background-clip": "none",
+      "background-fit": "contain",
+      "background-image": [Function],
+      "background-image-opacity": 1,
+    },
+  },
+  {
+    "selector": "node[?isNodeGroup].cy-expand-collapse-collapsed-node",
+    "style": {
+      "background-clip": "none",
+      "background-fit": "contain",
+      "background-image": [Function],
+      "background-image-opacity": 1,
+    },
+  },
+  {
+    "selector": "node[status="normal"]",
+    "style": {
+      "border-color": "#73BF69",
+      "border-opacity": 1,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node[status="warning"]",
+    "style": {
+      "border-color": "#F2CC0C",
+      "border-opacity": 1,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node[status="critical"]",
+    "style": {
+      "border-color": "#E02F44",
+      "border-opacity": 1,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node[worstStatus="normal"].cy-expand-collapse-collapsed-node",
+    "style": {
+      "border-color": "#73BF69",
+      "border-opacity": 1,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node[worstStatus="warning"].cy-expand-collapse-collapsed-node",
+    "style": {
+      "border-color": "#F2CC0C",
+      "border-opacity": 1,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node[worstStatus="critical"].cy-expand-collapse-collapsed-node",
+    "style": {
+      "border-color": "#E02F44",
+      "border-opacity": 1,
+      "border-width": 3,
+    },
+  },
+  {
+    "selector": "node:selected",
+    "style": {
+      "outline-color": "#3871dc",
+      "outline-offset": 3,
+      "outline-width": 3,
+      "underlay-color": "#3871dc",
+      "underlay-opacity": 0.35,
+      "underlay-padding": 6,
+    },
+  },
+  {
+    "selector": "node.ksg-faded",
+    "style": {
+      "opacity": 0.2,
+    },
+  },
+  {
+    "selector": "edge",
+    "style": {
+      "arrow-scale": 1.4,
+      "curve-style": "bezier",
+      "line-color": [Function],
+      "line-style": [Function],
+      "target-arrow-color": [Function],
+      "target-arrow-shape": "triangle",
+      "width": 1.5,
+    },
+  },
+  {
+    "selector": "edge[edgeType='switch-to-switch'], edge[edgeType='node-to-switch']",
+    "style": {
+      "curve-style": "taxi",
+      "taxi-direction": "vertical",
+      "taxi-turn": "50%",
+      "taxi-turn-min-distance": 5,
+    },
+  },
+  {
+    "selector": "edge[?ingressPath]",
+    "style": {
+      "line-dash-pattern": [
+        8,
+        8,
+      ],
+      "line-style": "dashed",
+    },
+  },
+  {
+    "selector": "edge[relation = "transport"]",
+    "style": {
+      "line-dash-pattern": [
+        8,
+        8,
+      ],
+      "line-style": "dashed",
+    },
+  },
+  {
+    "selector": "edge.ksg-faded",
+    "style": {
+      "opacity": 0.12,
+    },
+  },
+  {
+    "selector": "edge.cy-expand-collapse-meta-edge",
+    "style": {
+      "curve-style": "straight",
+      "width": 2.5,
+    },
+  },
+]
+`;

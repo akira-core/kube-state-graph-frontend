@@ -1,0 +1,136 @@
+import { useEffect, useMemo, useState, type JSX } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+
+import { useGraphLoader } from '../graph-data';
+import { GraphView } from '../graph-view';
+import type { RuntimeConfig } from '../runtime-config';
+import { SankeyView } from '../storage-flow-sankey';
+
+import { NavBar } from './NavBar';
+import { useViewTimeRange } from './useViewTimeRange';
+
+export interface AppShellProps {
+  config: RuntimeConfig;
+}
+
+function pathKey(pathname: string): string {
+  return pathname.replace(/\/+$/, '') || '/';
+}
+
+function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const path = pathKey(location.pathname);
+  const isGraph = path === '/graph';
+  const isSankey = path === '/sankey';
+  const [graphMounted, setGraphMounted] = useState(isGraph);
+  const [sankeyMounted, setSankeyMounted] = useState(isSankey);
+  const time = useViewTimeRange();
+  const { state, reload } = useGraphLoader({
+    demoMode: config.demoMode,
+    graphUrl: config.demoMode ? undefined : config.endpoints.graph,
+    refreshIntervalSeconds: config.refreshIntervalSeconds,
+  });
+  const [locateId, setLocateId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isGraph) {
+      setGraphMounted(true);
+    }
+    if (isSankey) {
+      setSankeyMounted(true);
+    }
+  }, [isGraph, isSankey]);
+
+  useEffect(() => {
+    document.title = isSankey ? 'Kube State Graph — Sankey' : isGraph ? 'Kube State Graph — Graph' : 'Kube State Graph';
+  }, [isGraph, isSankey]);
+
+  const notFound = !isGraph && !isSankey && path !== '/';
+
+  const graphProps = useMemo(
+    () => ({
+      config,
+      elements: state.elements,
+      errors: state.errors,
+      error: state.error,
+      hasPayload: state.hasPayload,
+      status: state.status,
+      viewTimeRange: time.resolved,
+    }),
+    [config, state, time.resolved]
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <NavBar
+        demoMode={config.demoMode}
+        lastLoadedAt={state.lastLoadedAt}
+        refreshing={state.refreshing || (state.status === 'loading' && !state.hasPayload)}
+        error={state.error}
+        refreshIntervalSeconds={config.refreshIntervalSeconds}
+        onReload={reload}
+        viewRange={time.range}
+        onRelative={time.setRelative}
+        onAbsolute={time.setAbsolute}
+      />
+      <main className="relative min-h-0 flex-1">
+        {graphMounted && (
+          <div className="absolute inset-0" hidden={!isGraph}>
+            <GraphView
+              {...graphProps}
+              visible={isGraph}
+              onAlertTimeClick={time.setAround}
+              locateNodeId={locateId}
+              onLocateConsumed={() => setLocateId(null)}
+            />
+          </div>
+        )}
+        {sankeyMounted && (
+          <div className="absolute inset-0" hidden={!isSankey}>
+            <SankeyView
+              elements={state.elements}
+              status={state.status}
+              error={state.error}
+              hasPayload={state.hasPayload}
+              demoMode={config.demoMode}
+              visible={isSankey}
+              onLocateNode={(id) => {
+                setLocateId(id);
+                void navigate('/graph');
+              }}
+            />
+          </div>
+        )}
+        {notFound && (
+          <div className="flex h-full flex-col items-center justify-center text-primary">
+            <p>Page not found</p>
+            <Link to="/graph" className="mt-2 text-link underline">
+              Back to Graph
+            </Link>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+// No ThemeProvider here: App already wraps this in one with the same `config.theme`.
+// A second provider means a second useThemeController, and both write
+// `documentElement.classList.toggle('dark', …)`. Only the inner one is reachable from
+// NavBar, so after a user theme choice the outer controller keeps its own stale
+// `effective` and re-adds/removes `.dark` on the next OS theme change — leaving the
+// html class contradicting the tokens the app actually rendered with.
+export function AppShell({ config }: Readonly<AppShellProps>): JSX.Element {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* React Router 7 treats `/graph` and `/graph/` as the same path, so a
+            Navigate from `/graph/` → `/graph` loops and never commits. Trailing
+            slashes are normalised in ViewHost via pathKey. */}
+        <Route path="/" element={<Navigate to="/graph" replace />} />
+        <Route path="*" element={<ViewHost config={config} />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}

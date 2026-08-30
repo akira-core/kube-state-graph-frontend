@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+.git
+.githooks
+playwright-report
+test-results
+blob-report
+.eslintcache
+**/*.test.ts
+**/*.test.tsx
+openspec
+.claude
+.cursor
+.opencode
