@@ -79,6 +79,44 @@ describe('validateConfig', () => {
     expect(missingGraph.ok).toBe(false);
   });
 
+  it('accepts a root-relative label-values base', () => {
+    const result = validateConfig({
+      endpoints: { graph: '/api/v1/graph', labelValues: '/metrics-api' },
+    });
+    expect(result.ok && result.config.endpoints.labelValues).toBe('/metrics-api');
+  });
+
+  it('accepts an absolute http(s) label-values base', () => {
+    const result = validateConfig({
+      endpoints: { graph: '/api/v1/graph', labelValues: 'https://vm.example/prometheus' },
+    });
+    expect(result.ok && result.config.endpoints.labelValues).toBe('https://vm.example/prometheus');
+  });
+
+  it('rejects a non-string or non-URL label-values base', () => {
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', labelValues: 1 } }).ok).toBe(false);
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', labelValues: '//vm.example' } }).ok).toBe(false);
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', labelValues: 'ftp://vm.example' } }).ok).toBe(false);
+  });
+
+  it('treats labelValues as optional — the controls degrade, the graph still loads', () => {
+    const result = validateConfig({ endpoints: { graph: '/api/v1/graph' } });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.endpoints.labelValues).toBeUndefined();
+  });
+
+  it('accepts the edge-type catalogue endpoint', () => {
+    const result = validateConfig({ endpoints: { graph: '/api/v1/graph', edgeTypes: '/api/v1/edge-types' } });
+    expect(result.ok && result.config.endpoints.edgeTypes).toBe('/api/v1/edge-types');
+  });
+
+  it('does not warn about labelValues or edgeTypes as unknown endpoint keys', () => {
+    const result = validateConfig({
+      endpoints: { graph: '/api/v1/graph', labelValues: '/metrics-api', edgeTypes: '/api/v1/edge-types' },
+    });
+    expect(result.ok && result.warnings).toEqual([]);
+  });
+
   it('requires endpoints.graph when demoMode is false', () => {
     const result = validateConfig({ theme: 'dark' });
     expect(result.ok).toBe(false);

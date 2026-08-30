@@ -1,3 +1,4 @@
+export { buildGraphRequestUrl, graphRequestKey } from './graphRequestUrl';
 export { normalizeGraph } from './normalize';
 export type { NormalizeResult } from './normalize';
 export { wrapSwitchFabric } from './wrapSwitchFabric';

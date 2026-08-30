@@ -4,6 +4,21 @@ export type ConfigTheme = 'dark' | 'light' | 'system';
 
 export interface RuntimeEndpoints {
   graph?: string;
+  /**
+   * Base URL of a Prometheus-compatible HTTP API holding the pod inventory. The filter
+   * controls read their options from `<base>/api/v1/label/<name>/values`, which is the
+   * only shape the backend can act on: the graph response carries the COMPOSED
+   * `<az>-<env>-<cluster>` identity, and sending that back as `?cluster=` matches no
+   * series and returns an empty graph with a 200.
+   */
+  labelValues?: string;
+  /**
+   * The backend's edge-type catalogue (`/v1/edge-types`). It is served from the same
+   * registry that validates `?edge_type=`, so an option read from here is one the
+   * backend accepts — an unregistered value is a 400, not a quietly empty graph. Absent
+   * means the edge-type control is not offered.
+   */
+  edgeTypes?: string;
   codeChanges?: string;
   configChanges?: string;
   dashboard?: string;

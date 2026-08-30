@@ -41,6 +41,7 @@ import { useGraphTheme, useThemeTokens } from '../theme';
 import { buildPinnedTooltip } from './buildPinnedTooltip';
 import { deriveLegendEntries } from './deriveLegendEntries';
 import { deriveContainers } from './deriveNodeContainers';
+import { describeGraphOutcome } from './describeGraphOutcome';
 import { ALL_EDGE_TYPES, ALL_KINDS } from './kinds';
 import { resolveSelectedNode } from './resolveSelectedNode';
 import { useCollapseGroup } from './useCollapseGroup';
@@ -455,27 +456,29 @@ export function GraphView({
   );
 
   const firstError = error ?? errors[0];
-  const isFatal = firstError !== undefined && !hasPayload && status === 'error';
-  const isInitialLoad = status === 'loading' && !hasPayload;
-
   const allTogglableKindsHidden =
     nodeLegendEntries.some((e) => e.togglable) && nodeLegendEntries.every((e) => !e.togglable || e.hidden);
-  const emptyMessage =
-    elements.length === 0
-      ? 'No graph data'
-      : visibleNodeIds.size === 0
-        ? allTogglableKindsHidden
-          ? 'All node types filtered'
-          : 'All elements filtered out'
-        : null;
+  const outcome = describeGraphOutcome({
+    status,
+    hasPayload,
+    firstError,
+    elementCount: elements.length,
+    visibleNodeCount: visibleNodeIds.size,
+    allTogglableKindsHidden,
+  });
+  const emptyMessage = outcome.kind === 'empty' || outcome.kind === 'filtered' ? outcome.message : null;
 
-  if (isInitialLoad) {
+  if (outcome.kind === 'loading') {
     return <LoadingOverlay />;
   }
-  if (isFatal) {
+  if (outcome.kind === 'failed') {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-primary" role="alert">
-        {firstError}
+      <div
+        className="flex h-full items-center justify-center p-6 text-primary"
+        role="alert"
+        data-testid="graph-request-failed"
+      >
+        {outcome.message}
       </div>
     );
   }

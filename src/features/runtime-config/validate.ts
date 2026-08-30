@@ -8,7 +8,7 @@ export type ValidateResult = ValidateOk | ValidateErr;
 
 const KNOWN_ROOT_KEYS = new Set(['endpoints', 'demoMode', 'refreshIntervalSeconds', 'defaultLayout', 'theme']);
 
-const KNOWN_ENDPOINT_KEYS = new Set(['graph', 'codeChanges', 'configChanges', 'dashboard']);
+const KNOWN_ENDPOINT_KEYS = new Set(['graph', 'labelValues', 'edgeTypes', 'codeChanges', 'configChanges', 'dashboard']);
 
 const LAYOUTS = new Set<DefaultLayout>(['fcose', 'dagre']);
 const THEMES = new Set<ConfigTheme>(['dark', 'light', 'system']);
@@ -113,7 +113,7 @@ export function validateConfig(input: unknown): ValidateResult {
           warnings.push(`endpoints.${key}`);
         }
       }
-      for (const key of ['graph', 'codeChanges', 'configChanges', 'dashboard'] as const) {
+      for (const key of ['graph', 'labelValues', 'edgeTypes', 'codeChanges', 'configChanges', 'dashboard'] as const) {
         if (!Object.hasOwn(raw, key)) {
           continue;
         }

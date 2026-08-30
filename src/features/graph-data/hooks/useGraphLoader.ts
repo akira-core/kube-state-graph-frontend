@@ -19,7 +19,20 @@ export interface GraphDataState {
 
 export interface UseGraphLoaderOptions {
   demoMode: boolean;
-  graphUrl: string | undefined;
+  /**
+   * Builds the request URL, called at REQUEST time rather than at render time.
+   *
+   * The window has to be resolved per request: the backend takes absolute timestamps
+   * only, so a URL built once and held stops moving, and a refresh re-asks for the same
+   * minutes until the range falls out of retention and returns an empty graph.
+   */
+  makeUrl: () => string | undefined;
+  /**
+   * Changes exactly when the SELECTION changes — endpoint, time range, filters — and not
+   * when the clock moves. This is what a new load keys on; keying on the built URL would
+   * refetch on every render, because a relative window's URL is different every time.
+   */
+  requestKey: string;
   refreshIntervalSeconds: number;
 }
 
@@ -55,7 +68,7 @@ function describeLoadError(url: string, err: unknown): string {
   return `GET ${url} failed: network error`;
 }
 
-export function useGraphLoader({ demoMode, graphUrl, refreshIntervalSeconds }: UseGraphLoaderOptions): {
+export function useGraphLoader({ demoMode, makeUrl, requestKey, refreshIntervalSeconds }: UseGraphLoaderOptions): {
   state: GraphDataState;
   reload: () => void;
 } {
@@ -63,6 +76,10 @@ export function useGraphLoader({ demoMode, graphUrl, refreshIntervalSeconds }: U
   const inflightRef = useRef(false);
   const mountedRef = useRef(true);
   const generationRef = useRef(0);
+  // Held in a ref so a caller may hand a fresh closure every render without that alone
+  // counting as a new request. What counts as a new request is requestKey.
+  const makeUrlRef = useRef(makeUrl);
+  makeUrlRef.current = makeUrl;
 
   const loadDemo = useCallback(() => {
     const next = normalizePayload(SHOWCASE_GRAPH);
@@ -77,8 +94,12 @@ export function useGraphLoader({ demoMode, graphUrl, refreshIntervalSeconds }: U
     });
   }, []);
 
-  const loadRemote = useCallback(async (url: string, isRefresh: boolean) => {
+  const loadRemote = useCallback(async () => {
     if (inflightRef.current) {
+      return;
+    }
+    const url = makeUrlRef.current();
+    if (url === undefined || url === '') {
       return;
     }
     inflightRef.current = true;
@@ -141,7 +162,6 @@ export function useGraphLoader({ demoMode, graphUrl, refreshIntervalSeconds }: U
       );
     } finally {
       inflightRef.current = false;
-      void isRefresh;
     }
   }, []);
 
@@ -150,11 +170,8 @@ export function useGraphLoader({ demoMode, graphUrl, refreshIntervalSeconds }: U
       loadDemo();
       return;
     }
-    if (graphUrl === undefined || graphUrl === '') {
-      return;
-    }
-    void loadRemote(graphUrl, true);
-  }, [demoMode, graphUrl, loadDemo, loadRemote]);
+    void loadRemote();
+  }, [demoMode, loadDemo, loadRemote]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -164,28 +181,31 @@ export function useGraphLoader({ demoMode, graphUrl, refreshIntervalSeconds }: U
   }, []);
 
   useEffect(() => {
+    // requestKey is this effect's identity: a new selection is a new request.
+    void requestKey;
     generationRef.current += 1;
     inflightRef.current = false;
     if (demoMode) {
       loadDemo();
       return;
     }
-    if (graphUrl === undefined || graphUrl === '') {
+    const url = makeUrlRef.current();
+    if (url === undefined || url === '') {
       setState(INITIAL);
       return;
     }
-    void loadRemote(graphUrl, false);
-  }, [demoMode, graphUrl, loadDemo, loadRemote]);
+    void loadRemote();
+  }, [demoMode, requestKey, loadDemo, loadRemote]);
 
   useEffect(() => {
-    if (demoMode || refreshIntervalSeconds <= 0 || graphUrl === undefined) {
+    if (demoMode || refreshIntervalSeconds <= 0) {
       return;
     }
     const id = window.setInterval(() => {
-      void loadRemote(graphUrl, true);
+      void loadRemote();
     }, refreshIntervalSeconds * 1000);
     return () => window.clearInterval(id);
-  }, [demoMode, graphUrl, refreshIntervalSeconds, loadRemote, state.lastLoadedAt]);
+  }, [demoMode, requestKey, refreshIntervalSeconds, loadRemote, state.lastLoadedAt]);
 
   return { state, reload };
 }

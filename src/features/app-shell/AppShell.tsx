@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
-import { useGraphLoader } from '../graph-data';
+import { buildGraphRequestUrl, graphRequestKey, useGraphLoader } from '../graph-data';
+import { FilterBar, useFilterOptions, useGraphFilters } from '../graph-filters';
 import { GraphView } from '../graph-view';
 import type { RuntimeConfig } from '../runtime-config';
 import { SankeyView } from '../storage-flow-sankey';
@@ -26,9 +27,28 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
   const [graphMounted, setGraphMounted] = useState(isGraph);
   const [sankeyMounted, setSankeyMounted] = useState(isSankey);
   const time = useViewTimeRange();
+  const { filters, setValues, setPrune, clear } = useGraphFilters();
+  // Demo mode renders a bundled fixture, so there is no backend to narrow: the option
+  // sources are not consulted and the bar is not rendered.
+  const filterOptions = useFilterOptions(
+    config.demoMode ? undefined : config.endpoints.labelValues,
+    config.demoMode ? undefined : config.endpoints.edgeTypes
+  );
+  const graphEndpoint = config.demoMode ? undefined : config.endpoints.graph;
+  // The URL is a function rather than a value: a relative window must re-read the clock
+  // on every request, so the loader calls this when it fetches, not when we render.
+  const makeUrl = useCallback(
+    () => (graphEndpoint === undefined ? undefined : buildGraphRequestUrl(graphEndpoint, time.range, filters)),
+    [graphEndpoint, time.range, filters]
+  );
+  const requestKey = useMemo(
+    () => graphRequestKey(graphEndpoint, time.range, filters),
+    [graphEndpoint, time.range, filters]
+  );
   const { state, reload } = useGraphLoader({
     demoMode: config.demoMode,
-    graphUrl: config.demoMode ? undefined : config.endpoints.graph,
+    makeUrl,
+    requestKey,
     refreshIntervalSeconds: config.refreshIntervalSeconds,
   });
   const [locateId, setLocateId] = useState<string | null>(null);
@@ -74,6 +94,9 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
         onRelative={time.setRelative}
         onAbsolute={time.setAbsolute}
       />
+      {!config.demoMode && (
+        <FilterBar filters={filters} options={filterOptions} onValues={setValues} onPrune={setPrune} onClear={clear} />
+      )}
       <main className="relative min-h-0 flex-1">
         {graphMounted && (
           <div className="absolute inset-0" hidden={!isGraph}>

@@ -2,11 +2,26 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SHOWCASE_GRAPH } from '../../../shared/fixtures/showcaseGraph';
+import type { ViewTimeRange } from '../../../shared/time/viewTimeRange';
+import { DEFAULT_GRAPH_FILTERS } from '../../../shared/types/graphFilters';
+import { buildGraphRequestUrl, graphRequestKey } from '../graphRequestUrl';
 
 import { useGraphLoader } from './useGraphLoader';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+const NOW_MS = 1_767_225_600_000; // 2026-01-01T00:00:00Z
+
+/** The window the Nth fetch actually asked for, in Unix seconds. */
+function requestedWindow(fetchMock: { mock: { calls: unknown[][] } }, index: number): { start: number; end: number } {
+  const call = fetchMock.mock.calls[index];
+  const url = new URL(String(call?.[0]), 'http://localhost');
+  return {
+    start: Number(url.searchParams.get('start')),
+    end: Number(url.searchParams.get('end')),
+  };
 }
 
 describe('useGraphLoader', () => {
@@ -19,7 +34,12 @@ describe('useGraphLoader', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const { result } = renderHook(() =>
-      useGraphLoader({ demoMode: true, graphUrl: 'https://ksg.example/v1/graph', refreshIntervalSeconds: 30 })
+      useGraphLoader({
+        demoMode: true,
+        makeUrl: () => 'https://ksg.example/v1/graph',
+        requestKey: 'https://ksg.example/v1/graph',
+        refreshIntervalSeconds: 30,
+      })
     );
     await waitFor(() => {
       expect(result.current.state.status).toBe('ready');
@@ -33,7 +53,7 @@ describe('useGraphLoader', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const { result } = renderHook(() =>
-      useGraphLoader({ demoMode: false, graphUrl: undefined, refreshIntervalSeconds: 0 })
+      useGraphLoader({ demoMode: false, makeUrl: () => undefined, requestKey: 'unset', refreshIntervalSeconds: 0 })
     );
     expect(fetchMock).not.toHaveBeenCalled();
     expect(result.current.state.status).toBe('idle');
@@ -42,7 +62,12 @@ describe('useGraphLoader', () => {
   it('fetches the configured URL and normalizes the payload', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(SHOWCASE_GRAPH)));
     const { result } = renderHook(() =>
-      useGraphLoader({ demoMode: false, graphUrl: 'https://ksg.example/v1/graph', refreshIntervalSeconds: 0 })
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => 'https://ksg.example/v1/graph',
+        requestKey: 'https://ksg.example/v1/graph',
+        refreshIntervalSeconds: 0,
+      })
     );
     await waitFor(() => {
       expect(result.current.state.status).toBe('ready');
@@ -57,7 +82,12 @@ describe('useGraphLoader', () => {
   it('names HTTP errors with URL and status', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 503 })));
     const { result } = renderHook(() =>
-      useGraphLoader({ demoMode: false, graphUrl: 'https://ksg.example/v1/graph', refreshIntervalSeconds: 0 })
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => 'https://ksg.example/v1/graph',
+        requestKey: 'https://ksg.example/v1/graph',
+        refreshIntervalSeconds: 0,
+      })
     );
     await waitFor(() => {
       expect(result.current.state.status).toBe('error');
@@ -74,7 +104,12 @@ describe('useGraphLoader', () => {
       .mockResolvedValueOnce(new Response('down', { status: 502 }));
     vi.stubGlobal('fetch', fetchMock);
     const { result } = renderHook(() =>
-      useGraphLoader({ demoMode: false, graphUrl: 'https://ksg.example/v1/graph', refreshIntervalSeconds: 0 })
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => 'https://ksg.example/v1/graph',
+        requestKey: 'https://ksg.example/v1/graph',
+        refreshIntervalSeconds: 0,
+      })
     );
     await waitFor(() => {
       expect(result.current.state.status).toBe('ready');
@@ -100,7 +135,12 @@ describe('useGraphLoader', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
     const { result } = renderHook(() =>
-      useGraphLoader({ demoMode: false, graphUrl: '/api/v1/graph', refreshIntervalSeconds: 0 })
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => '/api/v1/graph',
+        requestKey: '/api/v1/graph',
+        refreshIntervalSeconds: 0,
+      })
     );
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -119,7 +159,14 @@ describe('useGraphLoader', () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SHOWCASE_GRAPH));
     vi.stubGlobal('fetch', fetchMock);
-    renderHook(() => useGraphLoader({ demoMode: false, graphUrl: '/api/v1/graph', refreshIntervalSeconds: 0 }));
+    renderHook(() =>
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => '/api/v1/graph',
+        requestKey: '/api/v1/graph',
+        refreshIntervalSeconds: 0,
+      })
+    );
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -127,5 +174,57 @@ describe('useGraphLoader', () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('issues a request with a new window when the time selection changes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SHOWCASE_GRAPH));
+    vi.stubGlobal('fetch', fetchMock);
+    const { rerender } = renderHook(
+      ({ range }: { range: ViewTimeRange }) =>
+        useGraphLoader({
+          demoMode: false,
+          makeUrl: () => buildGraphRequestUrl('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS, NOW_MS),
+          requestKey: graphRequestKey('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS),
+          refreshIntervalSeconds: 0,
+        }),
+      { initialProps: { range: { kind: 'relative', window: '1h' } as ViewTimeRange } }
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    rerender({ range: { kind: 'relative', window: '6h' } });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    const first = requestedWindow(fetchMock, 0);
+    const second = requestedWindow(fetchMock, 1);
+    expect(second.start).toBe(first.start - 5 * 3600);
+    expect(second.end).toBe(first.end);
+  });
+
+  it('re-reads the clock on a refresh, so a relative window does not age', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SHOWCASE_GRAPH));
+    vi.stubGlobal('fetch', fetchMock);
+    let now = NOW_MS;
+    const range: ViewTimeRange = { kind: 'relative', window: '1h' };
+    const { result } = renderHook(() =>
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => buildGraphRequestUrl('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS, now),
+        // Unchanged across the refresh: the SELECTION did not move, only the clock did.
+        requestKey: graphRequestKey('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS),
+        refreshIntervalSeconds: 0,
+      })
+    );
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('ready');
+    });
+    now += 3_600_000;
+    act(() => {
+      result.current.reload();
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+    expect(requestedWindow(fetchMock, 1).end).toBe(requestedWindow(fetchMock, 0).end + 3600);
   });
 });
