@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import type cytoscape from 'cytoscape';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SHOWCASE_GRAPH } from '../../shared/fixtures/showcaseGraph';
@@ -8,6 +9,13 @@ import { ThemeProvider } from '../theme';
 import { SankeyView } from './SankeyView';
 
 const { elements } = normalizeGraph(SHOWCASE_GRAPH);
+
+/** A refreshed payload in which `aggr1` no longer carries any measured flow. */
+function withoutAggr1(): cytoscape.ElementDefinition[] {
+  return elements.filter(
+    (el) => el.group !== 'edges' || !((el.data as cytoscape.EdgeDataDefinition).target ?? '').endsWith('/aggr1')
+  );
+}
 
 function renderSankey(
   overrides: {
@@ -62,5 +70,88 @@ describe('SankeyView', () => {
     const tip = screen.getByRole('tooltip');
     expect(tip).toHaveTextContent('netapp-aggr');
     expect(tip).toHaveTextContent('aggr1');
+  });
+
+  it('clears the tooltip and highlight when a refresh removes the hovered node', () => {
+    // The node is gone, so its mouseleave will never fire: without an explicit clear the
+    // tooltip stays open and every remaining link is faded against a node that is not there.
+    const { rerender } = render(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView
+            elements={elements}
+            status="ready"
+            error={undefined}
+            hasPayload
+            demoMode
+            visible
+            onLocateNode={vi.fn()}
+          />
+        </div>
+      </ThemeProvider>
+    );
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr1'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView
+            elements={withoutAggr1()}
+            status="ready"
+            error={undefined}
+            hasPayload
+            demoMode
+            visible
+            onLocateNode={vi.fn()}
+          />
+        </div>
+      </ThemeProvider>
+    );
+
+    expect(screen.queryByTestId('sankey-node-aggr1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(/^sankey-link-/).every((el) => el.getAttribute('stroke-opacity') === '0.7')).toBe(
+      true
+    );
+  });
+
+  it('keeps the highlight for a node that survives the refresh', () => {
+    const { rerender } = render(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView
+            elements={elements}
+            status="ready"
+            error={undefined}
+            hasPayload
+            demoMode
+            visible
+            onLocateNode={vi.fn()}
+          />
+        </div>
+      </ThemeProvider>
+    );
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr2'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView
+            elements={withoutAggr1()}
+            status="ready"
+            error={undefined}
+            hasPayload
+            demoMode
+            visible
+            onLocateNode={vi.fn()}
+          />
+        </div>
+      </ThemeProvider>
+    );
+
+    expect(screen.getByTestId('sankey-node-aggr2')).toBeInTheDocument();
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
   });
 });

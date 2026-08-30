@@ -151,17 +151,31 @@ export function deriveSankey(
     }
   }
 
+  // `hasAnyMeasurement` above is deliberately measured over ALL pvc→aggr edges, before the
+  // cluster narrowing below: the view tells "this graph has no storage I/O at all" apart
+  // from "the selected cluster has none", and a scoped count would collapse the two.
+  //
+  // The cluster filter applies HERE, before any aggregation — not to the finished graph.
+  // Storage tiers are not cluster-owned (netapp-aggr / netapp-node MUST NOT be filtered by
+  // cluster), so narrowing afterwards can only either keep an out-of-scope branch alive or
+  // delete a legitimately shared one. Scoping the pvc edges instead makes every downstream
+  // total — the aggr→node weight, the pod split — fall out of the in-scope links alone,
+  // and leaves an aggr with nothing in scope flowing to it unreferenced, hence undrawn.
+  const inScope = (id: string): boolean => clusterFilter === undefined || resolveCluster(nodes, id) === clusterFilter;
+  const scopedPvcAggr = pvcAggr.filter((edge) => inScope(edge.source));
+  const scopedPodPvc = podPvc.filter((edge) => inScope(edge.source) && inScope(edge.target));
+
   const links: SankeyLink[] = [];
   const used = new Set<string>();
 
   const mountsByPvc = new Map<string, string[]>();
-  for (const edge of podPvc) {
+  for (const edge of scopedPodPvc) {
     const list = mountsByPvc.get(edge.target) ?? [];
     list.push(edge.source);
     mountsByPvc.set(edge.target, list);
   }
 
-  for (const edge of pvcAggr) {
+  for (const edge of scopedPvcAggr) {
     for (const direction of directions) {
       const value = metricOf(edge.metrics, direction);
       if (value === undefined) {
@@ -217,7 +231,7 @@ export function deriveSankey(
 
   const pvcTotals = new Map<string, { read?: number; write?: number }>();
   for (const link of links) {
-    if (!pvcAggr.some((e) => e.source === link.source && e.target === link.target)) {
+    if (!scopedPvcAggr.some((e) => e.source === link.source && e.target === link.target)) {
       continue;
     }
     const cur = pvcTotals.get(link.source) ?? {};
@@ -272,43 +286,7 @@ export function deriveSankey(
     };
   };
 
-  let keptNodes = [...used].map(toNode).filter((n): n is SankeyNode => n !== undefined);
-
-  if (clusterFilter !== undefined) {
-    const allowed = new Set(
-      keptNodes
-        .filter((n) => n.kind === 'pod' || n.kind === 'pvc')
-        .filter((n) => n.cluster === clusterFilter)
-        .map((n) => n.id)
-    );
-    if (allowed.size === 0) {
-      return { nodes: [], links: [], hasAnyMeasurement };
-    }
-    // Keep storage tiers that remain connected after pod/pvc filter.
-    const nextLinks = links.filter((l) => {
-      const src = nodes.get(l.source);
-      const dst = nodes.get(l.target);
-      if (src?.kind === 'pod' || src?.kind === 'pvc') {
-        if (!allowed.has(l.source)) {
-          return false;
-        }
-      }
-      if (dst?.kind === 'pod' || dst?.kind === 'pvc') {
-        if (!allowed.has(l.target)) {
-          return false;
-        }
-      }
-      return true;
-    });
-    const still = new Set<string>();
-    for (const l of nextLinks) {
-      still.add(l.source);
-      still.add(l.target);
-    }
-    keptNodes = keptNodes.filter((n) => still.has(n.id));
-    const filteredLinks = nextLinks.filter((l) => still.has(l.source) && still.has(l.target));
-    return sortSankey({ nodes: keptNodes, links: filteredLinks, hasAnyMeasurement });
-  }
+  const keptNodes = [...used].map(toNode).filter((n): n is SankeyNode => n !== undefined);
 
   const nodeIds = new Set(keptNodes.map((n) => n.id));
   const keptLinks = links.filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target));

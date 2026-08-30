@@ -53,7 +53,6 @@ export interface GraphViewProps {
   error: string | undefined;
   hasPayload: boolean;
   status: 'idle' | 'loading' | 'ready' | 'error';
-  visible: boolean;
   viewTimeRange: ResolvedTimeRange;
   onAlertTimeClick: (timeSec: number) => void;
   locateNodeId?: string | null;
@@ -67,7 +66,6 @@ export function GraphView({
   error,
   hasPayload,
   status,
-  visible,
   viewTimeRange,
   onAlertTimeClick,
   locateNodeId,
@@ -93,11 +91,11 @@ export function GraphView({
     viewportApiRef.current = api;
   }, []);
 
-  useEffect(() => {
-    if (visible) {
-      window.dispatchEvent(new Event('resize'));
-    }
-  }, [visible]);
+  // No synthetic window resize on becoming visible again. The container's ResizeObserver
+  // already fires when the shell un-hides this view (0×0 → real size), which is what makes
+  // the canvas re-measure; announcing a WINDOW resize on top of it told useGraphResize the
+  // environment had changed, and it answered with cy.fit() — discarding the pan and zoom
+  // the user left behind when they switched to Sankey.
 
   const elements = useMemo(
     () => wrapNodeGroup(wrapSwitchFabric(applyPodParentMode(baseElements, podParentMode))),
@@ -214,6 +212,10 @@ export function GraphView({
     // sticks around forever (only Dismiss clears it), telling the user their successful
     // locate was refused.
     setFilterHiddenNotice(null);
+    // The query the user left in the box before switching views is still there, and its
+    // fade would dim the very node this locate brought them here to see. Locating from the
+    // in-view result list keeps its query on purpose — that click is a step inside a search.
+    setSearchQuery('');
     const hit = { id: locateNodeId, label: locateNodeId } as SearchResult;
     handleLocate(hit);
     onLocateConsumed?.();

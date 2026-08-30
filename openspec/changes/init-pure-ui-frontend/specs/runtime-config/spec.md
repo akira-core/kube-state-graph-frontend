@@ -31,17 +31,19 @@
 
 設定文件的根 MUST 為 JSON object。應用 SHALL 依下表驗證每個已知鍵;任一已知鍵存在但型別或值不合法(含 `null`)即為驗證失敗。缺席的選用鍵 MUST 套用預設值。
 
-| 鍵                        | 型別                                | 必要性                       | 預設值     | 語意                                                                                        |
-| ------------------------- | ----------------------------------- | ---------------------------- | ---------- | ------------------------------------------------------------------------------------------- |
-| `endpoints`               | object                              | 選用                         | `{}`       | 後端端點 URL 集合                                                                           |
-| `endpoints.graph`         | string(URL)                         | `demoMode` 為 `false` 時必要 | 無         | 後端 graph 查詢端點的 URL(部署上通常為 `/v1/graph/service_graph`;detail 子端點為其 sibling) |
-| `endpoints.codeChanges`   | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/code_changes` 的 URL                                                        |
-| `endpoints.configChanges` | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/config_changes` 的 URL                                                      |
-| `endpoints.dashboard`     | string(URL)                         | 選用                         | 缺席       | 後端 `/dashboard` 的 URL                                                                    |
-| `demoMode`                | boolean                             | 選用                         | `false`    | 為 `true` 時渲染內建 showcase fixture 而不取數                                              |
-| `refreshIntervalSeconds`  | integer,`>= 0`                      | 選用                         | `0`(關閉)  | graph 資料自動刷新間隔(秒);`0` 表示不自動刷新                                               |
-| `defaultLayout`           | `"fcose"` \| `"dagre"`              | 選用                         | `"fcose"`  | Graph 視圖的初始佈局演算法;使用者可於 app 內切換                                            |
-| `theme`                   | `"dark"` \| `"light"` \| `"system"` | 選用                         | `"system"` | 初始主題;使用者於 app 內的選擇 MUST 優先於此值(見 `app-shell`)                              |
+| 鍵                        | 型別                                | 必要性                       | 預設值     | 語意                                                                                                              |
+| ------------------------- | ----------------------------------- | ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| `endpoints`               | object                              | 選用                         | `{}`       | 後端端點 URL 集合                                                                                                 |
+| `endpoints.graph`         | string(URL)                         | `demoMode` 為 `false` 時必要 | 無         | 後端 graph 查詢端點的 URL(部署上通常為 `/v1/graph/service_graph`;detail 子端點為其 sibling)                       |
+| `endpoints.labelValues`   | string(URL)                         | 選用                         | 缺席       | Prometheus 相容 HTTP API 的根 URL;身分過濾控制自 `<root>/api/v1/label/<name>/values` 列舉選項(見 `graph-filters`) |
+| `endpoints.edgeTypes`     | string(URL)                         | 選用                         | 缺席       | 後端 edge-type 目錄(`/v1/edge-types`)的 URL,供 edge type 過濾控制列舉選項(見 `graph-filters`)                     |
+| `endpoints.codeChanges`   | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/code_changes` 的 URL                                                                              |
+| `endpoints.configChanges` | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/config_changes` 的 URL                                                                            |
+| `endpoints.dashboard`     | string(URL)                         | 選用                         | 缺席       | 後端 `/dashboard` 的 URL                                                                                          |
+| `demoMode`                | boolean                             | 選用                         | `false`    | 為 `true` 時渲染內建 showcase fixture 而不取數                                                                    |
+| `refreshIntervalSeconds`  | integer,`>= 0`                      | 選用                         | `0`(關閉)  | graph 資料自動刷新間隔(秒);`0` 表示不自動刷新                                                                     |
+| `defaultLayout`           | `"fcose"` \| `"dagre"`              | 選用                         | `"fcose"`  | Graph 視圖的初始佈局演算法;使用者可於 app 內切換                                                                  |
+| `theme`                   | `"dark"` \| `"light"` \| `"system"` | 選用                         | `"system"` | 初始主題;使用者於 app 內的選擇 MUST 優先於此值(見 `app-shell`)                                                    |
 
 `refreshIntervalSeconds` MUST 為 JSON 整數:小數、負數、字串形式的數字皆為驗證失敗。`demoMode` MUST 為 JSON boolean:字串 `"true"` / `"false"` 為驗證失敗。列舉型欄位 MUST 精確比對(區分大小寫)。應用 MUST NOT 對任何欄位做自動修正(型別強制轉換、去除空白、補上 scheme)。
 

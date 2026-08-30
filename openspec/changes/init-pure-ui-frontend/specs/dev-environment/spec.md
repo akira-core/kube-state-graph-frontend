@@ -126,7 +126,7 @@ E2E 測試 SHALL 以 Playwright 撰寫並置於 `tests/`;`npm run e2e` SHALL 自
 1. **Demo 模式 showcase smoke**:開啟 `/`,斷言 `[data-testid="graph-canvas"]` 掛載,並斷言依 fixture 內容而存在的 legend 控制項(如 `ingress-toggle`、`edge-legend-row-network-hop`)出現。
 2. **Fetch 路徑 round trip**:以 Playwright route 將 `config.json` 回應為 `demoMode: false` 且 `endpoints.graph` 指向 `/demo/graph.json` 的設定,斷言同一組元素出現。此 spec 證明單元測試無法證明的事:generated payload 經 HTTP 取回、通過 `normalizeGraph`、到 cytoscape 掛載的完整資料路徑。
 
-E2E 由開發者本機觸發(`npm run e2e`),不列入 CI 必要 gate;待穩定後再加入 CI。
+E2E MUST 可由開發者本機以單一指令觸發(`npm run e2e`),且兩個 spec 已穩定,因此**同時列入 CI 必要 gate**(見「CI Workflow(精簡版)」)。兩者跑的是同一個 `npm run e2e`:CI 不得擁有一條本機無法重現的 e2e 路徑。
 
 #### Scenario: Clean checkout 上一個指令跑完 e2e
 
@@ -153,14 +153,14 @@ E2E 由開發者本機觸發(`npm run e2e`),不列入 CI 必要 gate;待穩定�
 
 ### Requirement: CI Workflow(精簡版)
 
-GitHub Actions CI workflow SHALL 於 pull request 與 push 到 `main` 時提供單一 job,依序執行 `npm ci` → `typecheck` → `lint` → `fixture:check` → `test:ci` → `build`;任一步失敗 MUST 標記 PR check failed,阻擋 merge。Node 版本 MUST 讀自 `.nvmrc`,不得在 workflow 內另行硬編。
+GitHub Actions CI workflow SHALL 於 pull request 與 push 到 `main` 時提供單一 job,依序執行 `npm ci` → `typecheck` → `lint` → `fixture:check` → `test:ci` → `e2e` → `build`;任一步失敗 MUST 標記 PR check failed,阻擋 merge。Node 版本 MUST 讀自 `.nvmrc`,不得在 workflow 內另行硬編。`e2e` 之前 MUST 於 job 內安裝 Playwright 的 Chromium(`npx playwright install --with-deps chromium`);瀏覽器安裝是 CI 的環境準備,不列入上述 gate 鏈的語意。
 
-**精簡版:單一 job,無平行矩陣、無獨立 E2E workflow。** Container image 的建置與推送由 `container-deployment` capability 另行規範,不在此 job 內。
+**精簡版:單一 job,無平行矩陣、無獨立 E2E workflow。** E2E 與其餘檢查同在這一個 job 內依序執行(見「E2E 測試(Playwright)」)。Container image 的建置與推送由 `container-deployment` capability 另行規範,不在此 job 內。
 
 #### Scenario: CI 通過所有檢查
 
 - **WHEN** PR 被推送
-- **THEN** GitHub Actions「Checks」清單顯示一個 `ci` job,typecheck / lint / fixture:check / test:ci / build 五步皆通過
+- **THEN** GitHub Actions「Checks」清單顯示一個 `ci` job,typecheck / lint / fixture:check / test:ci / e2e / build 六步皆通過
 
 ### Requirement: Makefile 捷徑
 

@@ -166,11 +166,13 @@
 
 ### 13. 新增檢視時間範圍(view time range)
 
-**Decision:** 導覽列提供相對時間範圍選擇器(1h / 6h / 24h / 7d / 自訂絕對區間),預設 24h,與主題同樣持久化於瀏覽器儲存,**不寫入 URL**。唯一消費端是 `/dashboard` 查詢的 `from_time` / `to_time`;alert 的「Last occurred」點擊將其設為 `[t-300, t+300]`。
+**Decision:** 導覽列提供相對時間範圍選擇器(1h / 6h / 24h / 7d / 自訂絕對區間),預設 24h,與主題同樣持久化於瀏覽器儲存,**不寫入 URL**。消費端有兩個:`/dashboard` 查詢的 `from_time` / `to_time`,以及 graph 查詢的 `start` / `end`;alert 的「Last occurred」點擊將其設為 `[t-300, t+300]`。
 
-**Why:** panel 從 Grafana dashboard 繼承時間範圍,SPA 無此宿主。查證後確認影響面很窄 —— change history 端點不帶時間,graph 查詢也不帶,只有 `/dashboard` 吃這兩個參數。實作成本因此很低,但取回的是實際運維動作:從一則告警跳到**該時刻**的 dashboard。既然 proposal 要求 UI 功能完整移植,這條屬於對等範圍。
+**Why:** panel 從 Grafana dashboard 繼承時間範圍,SPA 無此宿主。取回的是實際運維動作:從一則告警跳到**該時刻**的 dashboard。既然 proposal 要求 UI 功能完整移植,這條屬於對等範圍。
 
-**影響:** `app-shell` spec 需新增一條需求;`node-detail` spec 現有的條件式敘述(「當 app 提供可變更的檢視時間範圍時」)自動成為生效分支,無需改寫。
+**修訂(實作後):** 原本判定「graph 查詢不帶時間」是錯的——上游 `GET /v1/graph` 缺 `start` / `end` 即回 400,設定裡寫死的視窗又會停在原處直到落出保留期、回一張與壞管線無從區分的空圖。時間範圍因此成為 graph 查詢的視窗,並於**每次請求當下**求值;change history 端點仍不帶時間。變更範圍會以新視窗重新取數,走與重新載入相同的路徑(既有圖續留、不重跑佈局、不重置視圖狀態)。
+
+**影響:** `app-shell` spec 的檢視時間範圍需求、`graph-data-source` 的「graph 請求的查詢字串」需求;`node-detail` spec 現有的條件式敘述(「當 app 提供可變更的檢視時間範圍時」)自動成為生效分支,無需改寫。
 
 **Alternatives considered:** _不新增_ —— `/dashboard` 不送時間,由目標 dashboard 用自己的預設視窗,「Last occurred」降級為純文字。省下一個控制項,但失去告警到 dashboard 的時間對齊。_寫入 URL 以便分享_ —— 與 spec 既定的「view state 不入 URL」不一致,且會讓分享連結的語意需要另外定義;日後若有分享需求可單獨提案。
 

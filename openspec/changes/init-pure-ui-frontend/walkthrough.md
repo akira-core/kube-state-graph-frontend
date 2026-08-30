@@ -4,22 +4,23 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## app-shell
 
-| Requirement                                                     | Evidence                                                                   |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Config gate before any view / backend fetch                     | `src/app/App.test.tsx` (hanging config fetch; 404 error screen)            |
-| Retry re-fetches config                                         | `src/app/App.test.tsx` Retry                                               |
-| `/` replace → `/graph`                                          | `src/features/app-shell/AppShell.test.tsx`                                 |
-| Trailing slash `/graph/`                                        | `AppShell.test.tsx`; ViewHost `pathKey`                                    |
-| `/sankey` + `aria-current`                                      | `AppShell.test.tsx`; e2e `tests/demo.spec.ts`                              |
-| Unknown path + back link                                        | `AppShell.test.tsx`                                                        |
-| `/sankey` reload                                                | e2e `sankey deep link reloads`                                             |
-| Demo badge                                                      | `AppShell.test.tsx`; e2e demo-badge                                        |
-| Theme user → config → system                                    | `src/features/theme/useThemeController.test.tsx`                           |
-| Loading screen uses ThemeProvider                               | `src/app/App.tsx`                                                          |
-| View time range default 24h, persist, resolve-at-read, absolute | `useViewTimeRange.test.ts`, `NavBar.test.tsx`                              |
-| Shared loader: demo, in-flight, stale-on-fail                   | `useGraphLoader.test.ts`                                                   |
-| Keep-alive views                                                | `AppShell.tsx` `graphMounted` / `sankeyMounted` + `hidden`; e2e round-trip |
-| Landmarks                                                       | `NavBar.test.tsx` navigation; `AppShell.tsx` `<main>`                      |
+| Requirement                                                     | Evidence                                                                                                |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Config gate before any view / backend fetch                     | `src/app/App.test.tsx` (hanging config fetch; 404 error screen)                                         |
+| Retry re-fetches config                                         | `src/app/App.test.tsx` Retry                                                                            |
+| `/` replace → `/graph`                                          | `src/features/app-shell/AppShell.test.tsx`                                                              |
+| Trailing slash `/graph/`                                        | `AppShell.test.tsx`; ViewHost `pathKey`                                                                 |
+| `/sankey` + `aria-current`                                      | `AppShell.test.tsx`; e2e `tests/demo.spec.ts`                                                           |
+| Unknown path + back link                                        | `AppShell.test.tsx`                                                                                     |
+| `/sankey` reload                                                | e2e `sankey deep link reloads`                                                                          |
+| Demo badge                                                      | `AppShell.test.tsx`; e2e demo-badge                                                                     |
+| Theme user → config → system                                    | `src/features/theme/useThemeController.test.tsx`                                                        |
+| Loading screen uses ThemeProvider                               | `src/app/App.tsx`                                                                                       |
+| View time range default 24h, persist, resolve-at-read, absolute | `useViewTimeRange.test.ts`, `NavBar.test.tsx`                                                           |
+| Shared loader: demo, in-flight, stale-on-fail                   | `useGraphLoader.test.ts`                                                                                |
+| Keep-alive views                                                | `AppShell.tsx` `graphMounted` / `sankeyMounted` + `hidden`; e2e round-trip                              |
+| Routes relative to the app base URL                             | `AppShell.test.tsx` (`BASE_URL=/ksg/`: `/ksg/sankey` renders Sankey, `/ksg/` redirects to `/ksg/graph`) |
+| Landmarks                                                       | `NavBar.test.tsx` navigation; `AppShell.tsx` `<main>`                                                   |
 
 ## runtime-config
 
@@ -33,12 +34,14 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## graph-data-source
 
-| Requirement                                                        | Evidence                                                 |
-| ------------------------------------------------------------------ | -------------------------------------------------------- |
-| normalize (alerts, controller, metrics, NetApp, PVC, ready_status) | `normalize.test.ts`                                      |
-| wrapNodeGroup / wrapSwitchFabric                                   | `wrapNodeGroup.test.ts`, `wrapSwitchFabric.test.ts`      |
-| Demo vs fetch                                                      | `useGraphLoader.test.ts`; e2e `tests/fetch-path.spec.ts` |
-| Fixture dual storage edges                                         | `showcaseGraph.test.ts`; `fixture:check`                 |
+| Requirement                                                           | Evidence                                                                                            |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| normalize (alerts, controller, metrics, NetApp, PVC, ready_status)    | `normalize.test.ts`                                                                                 |
+| wrapNodeGroup / wrapSwitchFabric                                      | `wrapNodeGroup.test.ts`, `wrapSwitchFabric.test.ts`                                                 |
+| Demo vs fetch                                                         | `useGraphLoader.test.ts`; e2e `tests/fetch-path.spec.ts`                                            |
+| Fixture dual storage edges                                            | `showcaseGraph.test.ts`; `fixture:check`                                                            |
+| Query string: `start`/`end`/`prune` always sent, resolved per request | `graphRequestUrl.test.ts`, `useGraphLoader.test.ts`                                                 |
+| A same-name key on the configured URL is replaced, not appended       | `fetchJson.test.ts` (`?start=100` + new window → one `start`; `tenant=ops` and `%20` kept verbatim) |
 
 ## graph-view
 
@@ -48,7 +51,8 @@ Each capability below is mapped to the test or observable behavior that covers i
 | Layout radios                                                | `GraphView.tsx`; `useGraphLayout.test.ts`                                                                                                                                                                                                                                  |
 | Kind / edge-type filter + baseline orphan cascade            | `computeVisibility.test.ts` (leaf kept when the baseline connects it, leaf dropped when it never was, both coexisting, container collapsed when its children are filtered, container not read as a leaf, view-transform-dropped `pod-to-node`), `useElementFilter.test.ts` |
 | Folded edge-legend row surfaced without its anchor type      | `EdgeLegend.test.tsx` (svc-only and `node-to-switch`-only graphs, group toggle)                                                                                                                                                                                            |
-| Resize without fit on app-internal layout change             | `useGraphResize.test.ts` (window resize fits; legend collapse does not)                                                                                                                                                                                                    |
+| Resize without fit on app-internal layout change             | `useGraphResize.test.ts` (window resize fits; legend collapse does not); `GraphView.test.tsx` (returning to the view announces no window resize, so the viewport survives)                                                                                                 |
+| Cross-view locate ends the search                            | `GraphView.test.tsx` (`locateNodeId` clears the query; the in-view result row clears it in `SearchBar`)                                                                                                                                                                    |
 | Endpoint URL used verbatim                                   | `useNodeDashboardUrl.test.ts` (trailing slash preserved)                                                                                                                                                                                                                   |
 | Double-tap collapse on every non-selectable decorative group | `clusterCollapseToggle.test.ts` (`storage-cluster` expand/collapse, selectable container is a no-op)                                                                                                                                                                       |
 | Collapse change re-applies selection ring and fade           | `useGraphFade.test.ts` (re-applies on `collapseToken` alone with a stable `elements` identity)                                                                                                                                                                             |
@@ -89,13 +93,26 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## storage-flow-sankey
 
-| Requirement                       | Evidence                                                                              |
-| --------------------------------- | ------------------------------------------------------------------------------------- |
-| Derive chain + weights + absent≠0 | `deriveSankey.test.ts`                                                                |
-| Both dual links                   | `SankeyView.test.tsx`                                                                 |
-| Cluster selector + `dr` empty     | `SankeyView.test.tsx` `sankey-empty-cluster`                                          |
-| Tooltips kind/label               | `SankeyView.test.tsx`                                                                 |
-| Cross-view locate                 | e2e click `sankey-node-aggr1` → `/graph`; filter-hidden banner `locate-filter-hidden` |
+| Requirement                                  | Evidence                                                                                                                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Derive chain + weights + absent≠0            | `deriveSankey.test.ts`                                                                                                                                                                                  |
+| Both dual links                              | `SankeyView.test.tsx`                                                                                                                                                                                   |
+| Cluster selector + `dr` empty                | `SankeyView.test.tsx` `sankey-empty-cluster`                                                                                                                                                            |
+| Cluster scope applied before aggregation     | `deriveSankey.test.ts` (two clusters on one netapp-node: aggr→node weight re-summed from in-scope pvc links; an aggr with nothing in scope is not drawn; storage tiers are never filtered _by_ cluster) |
+| Hover state cleared when its node disappears | `SankeyView.test.tsx` (tooltip closes and fade lifts on refresh; a surviving node keeps its highlight)                                                                                                  |
+| Tooltips kind/label                          | `SankeyView.test.tsx`                                                                                                                                                                                   |
+| Cross-view locate                            | e2e click `sankey-node-aggr1` → `/graph`; filter-hidden banner `locate-filter-hidden`                                                                                                                   |
+
+## graph-filters
+
+| Requirement                                        | Evidence                                                                                                  |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Filter bar controls, Clear, hidden in demo mode    | `FilterBar.test.tsx`; `AppShell.tsx` renders it only when `demoMode` is false                             |
+| Selection reaches the backend as query parameters  | `graphRequestUrl.test.ts` (repeated keys OR within a name; empty dimensions omitted; `prune` always sent) |
+| Identity options from `kube_pod_info` label values | `labelValues.test.ts` (URL shape, Prometheus envelope, `status: error` is a failure not an empty list)    |
+| Edge-type options from the backend catalogue       | `edgeTypes.test.ts`                                                                                       |
+| A failing source never becomes a missing graph     | `useFilterOptions.test.ts` (per-source `problems`, empty control, load still completes)                   |
+| Selection is not persisted                         | `useGraphFilters.ts` — held in component state only; no storage write, no URL write                       |
 
 ## container-deployment
 

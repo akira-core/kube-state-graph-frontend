@@ -32,7 +32,31 @@ export async function fetchJson(url: string, init?: RequestInit): Promise<unknow
   }
 }
 
+function decodeQueryKey(raw: string): string {
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, ' '));
+  } catch {
+    // A malformed escape is not ours to repair — compare it as written.
+    return raw;
+  }
+}
+
+/**
+ * Appends `params` to `url`, REPLACING any same-name key the url already carries.
+ *
+ * Replacing rather than appending is the whole point. `endpoints.graph` is used verbatim
+ * and may legitimately carry a query of its own, but a configured `?start=…` plus this
+ * request's own `start` would produce `start=old&start=new` — and a Go backend reading
+ * `Query().Get("start")` takes the FIRST value, so the stale window would silently win on
+ * every refresh. Pairs we do not set are left byte-for-byte as configured.
+ */
 export function withQuery(url: string, params: Record<string, string | string[] | number>): string {
+  const queryStart = url.indexOf('?');
+  const base = queryStart === -1 ? url : url.slice(0, queryStart);
+  const existing = queryStart === -1 ? '' : url.slice(queryStart + 1);
+  const ours = new Set(Object.keys(params));
+  const kept = existing.split('&').filter((pair) => pair !== '' && !ours.has(decodeQueryKey(pair.split('=')[0] ?? '')));
+
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (Array.isArray(value)) {
@@ -43,9 +67,6 @@ export function withQuery(url: string, params: Record<string, string | string[] 
       qs.set(key, String(value));
     }
   }
-  const serialized = qs.toString();
-  if (serialized === '') {
-    return url;
-  }
-  return url.includes('?') ? `${url}&${serialized}` : `${url}?${serialized}`;
+  const serialized = [...kept, qs.toString()].filter((part) => part !== '').join('&');
+  return serialized === '' ? base : `${base}?${serialized}`;
 }

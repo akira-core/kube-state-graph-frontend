@@ -136,9 +136,9 @@
 
 導覽列 SHALL 提供一個**檢視時間範圍**控制,選項為相對區間 `1h` / `6h` / `24h` / `7d` 與一個自訂的絕對區間(起訖各為一個時刻)。預設 MUST 為 `24h`。使用者的選擇 MUST 保存於瀏覽器本機、跨重新整理與新分頁沿用;它 MUST NOT 被寫入 URL,亦 MUST NOT 被寫入 runtime config。相對區間 MUST 於每次被讀取時就地換算為當下的絕對起訖(`from` = 現在減去該長度,`to` = 現在),而非於選取當下凍結。
 
-檢視時間範圍 MUST NOT 影響 graph 資料的取得(graph 查詢不帶時間參數),亦 MUST NOT 影響 change history 查詢(該些端點不帶時間參數)。其唯一消費端為 node detail 的 Dashboard 查詢:該查詢 MUST 以目前的檢視時間範圍組出 `from_time` / `to_time`(Unix 秒)——詳見 `node-detail`。
+檢視時間範圍是 graph 查詢的時間視窗,也是 node detail 的 Dashboard 查詢的時間視窗:graph 查詢 MUST 以它組出 `start` / `end`(Unix 秒,見 `graph-data-source`)——上游 `GET /v1/graph` 缺任一者即以 400 拒絕,故該視窗不是選用的裝飾;Dashboard 查詢 MUST 以它組出 `from_time` / `to_time`(Unix 秒,見 `node-detail`)。change history 查詢(`endpoints.codeChanges` / `endpoints.configChanges`)MUST NOT 帶時間參數。
 
-變更檢視時間範圍 MUST NOT 重新載入 graph 資料、MUST NOT 重置任何視圖狀態(選取、collapse、viewport、篩選、搜尋),且 MUST 即時反映於後續的 Dashboard 查詢。該控制 MUST 可經鍵盤到達與啟動,並具有可存取名稱。
+變更檢視時間範圍 MUST 以新視窗對 `endpoints.graph` 重新取數(舊視窗的結果已不代表所選區間),並 MUST 即時反映於後續的 Dashboard 查詢;它 MUST NOT 對 change history 端點發出請求。該次重新取數 MUST 走與「重新載入」相同的路徑(見「共用 graph 資料與載入生命週期」):既有圖於請求進行中持續可見,不重跑佈局,且 MUST NOT 重置任何視圖狀態(選取、collapse、viewport、篩選、搜尋)。該控制 MUST 可經鍵盤到達與啟動,並具有可存取名稱。
 
 #### Scenario: 預設為 24h 且選擇跨重新整理沿用
 
@@ -151,11 +151,12 @@
 - **WHEN** 檢視時間範圍為 `1h`,使用者選取某節點並觸發其 Dashboard 查詢
 - **THEN** 該查詢的 `from_time` / `to_time` 為「查詢當下減一小時」至「查詢當下」的 Unix 秒,而非選取該區間當時所凍結的值
 
-#### Scenario: 不影響 graph 與 change history 取數
+#### Scenario: 變更範圍以新視窗重新取數
 
-- **WHEN** 使用者變更檢視時間範圍
-- **THEN** 應用不對 `endpoints.graph` 發出任何請求,亦不對 `endpoints.codeChanges` / `endpoints.configChanges` 發出任何請求
-- **AND** 目前的選取、collapse、viewport、篩選與搜尋狀態皆不變
+- **WHEN** 使用者將檢視時間範圍自 `24h` 改為 `1h`
+- **THEN** 應用對 `endpoints.graph` 發出一次新請求,其 `start` / `end` 為「現在減一小時」至「現在」的 Unix 秒
+- **AND** 不對 `endpoints.codeChanges` / `endpoints.configChanges` 發出任何請求
+- **AND** 請求進行中既有圖持續可見,完成後目前的選取、collapse、viewport、篩選與搜尋狀態皆不變
 
 #### Scenario: 不寫入 URL 或 runtime config
 

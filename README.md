@@ -75,6 +75,11 @@ npm run build       # typecheck then vite build → dist/
 make image IMAGE=ghcr.io/<owner>/kube-state-graph-frontend:local
 ```
 
+The default build serves from `/`. To serve under a sub-path, build with a matching base —
+`npm run build -- --base=/ksg/` — and serve `dist/` under that prefix. Routing, assets and
+`config.json` all resolve against `import.meta.env.BASE_URL`, so `/ksg/sankey` is a working
+deep link with no further configuration.
+
 See `deploy/README.md` for Kubernetes manifests, ConfigMap mounting, and the optional `KSG_API_PROXY_TARGET` reverse proxy.
 
 ## Troubleshooting

@@ -6,7 +6,7 @@
 
 ### Requirement: 直連後端取數(`GET endpoints.graph`)與 demo 模式
 
-App SHALL 以瀏覽器原生 `fetch` 直接向 runtime config 中 `endpoints.graph` 所指定的 URL 發出 `GET` 請求(request header 帶 `Accept: application/json`)取得圖資料,不經任何中介 datasource 層。請求 MUST 於 app 啟動(runtime config 載入完成)時發出一次;之後的重新取數由「重新載入與自動刷新」定義。`endpoints.graph` MUST 原樣使用——絕對 URL(如 `https://ksg.example/v1/graph`)與 root-relative URL(如 `/api/v1/graph`,由同源 reverse proxy 轉發)皆合法,app MUST NOT 自行拼接、改寫或推導路徑。
+App SHALL 以瀏覽器原生 `fetch` 直接向 runtime config 中 `endpoints.graph` 所指定的 URL 發出 `GET` 請求(request header 帶 `Accept: application/json`)取得圖資料,不經任何中介 datasource 層。請求 MUST 於 app 啟動(runtime config 載入完成)時發出一次;之後的重新取數由「重新載入與自動刷新」定義。`endpoints.graph` 的 **origin 與路徑** MUST 原樣使用——絕對 URL(如 `https://ksg.example/v1/graph`)與 root-relative URL(如 `/api/v1/graph`,由同源 reverse proxy 轉發)皆合法,app MUST NOT 自行拼接、改寫或推導路徑。
 
 回應 body MUST 以 JSON 解析後、以 `unknown` 型別交付 normalize boundary 驗證;app MUST NOT 對 payload 做任何型別斷言或信任(包含 `apiVersion` 與 `clusters` 欄位),所有欄位的存在與型別皆由 normalize boundary 逐一驗證。
 
@@ -39,6 +39,29 @@ CORS 允許或同源反向代理屬部署責任(見 container-deployment capabil
 
 - **WHEN** 後端回應為合法 JSON 但形狀與契約不符(例如頂層為陣列,或 `elements` 為字串)
 - **THEN** app 不拋出例外;normalize boundary 以 `errors` 回報形狀錯誤,錯誤狀態依「載入與錯誤狀態傳遞」呈現
+
+### Requirement: graph 請求的查詢字串
+
+App SHALL 於 `endpoints.graph` 之上組出查詢字串,內容為:時間視窗 `start` / `end`(Unix 秒,取自檢視時間範圍,見 `app-shell`)、投影旗標 `prune`,以及過濾選擇 `cluster` / `az` / `env` / `namespace` / `edge_type`(見 `graph-filters`)。上游 `GET /v1/graph` 缺 `start` 或 `end` 時以 `400`(`missing_start` / `missing_end`)拒絕,故兩者 MUST 恆帶;`prune` 即使為預設值亦 MUST 恆帶,使一則被擷取的請求自身說明它是哪一種投影。
+
+時間視窗 MUST 於**每次請求當下**求值,而非於選取當下凍結:相對區間(如 `1h`)的每次重新載入與自動刷新 MUST 重新讀時鐘。一個組好就被持有的視窗會停在原處——首次刷新重問同一段分鐘,久到落出 metrics store 的保留期後,後端回一張空圖,而空圖與壞掉的管線在畫面上無從區分。
+
+設定的 URL 若自帶查詢字串:與 app 所送**不同名**的參數 MUST 原樣保留(不重新編碼);**同名**者 MUST 被取代而非附加——`start=<設定值>&start=<本次值>` 之下,以 `Query().Get` 讀值的後端只取第一個,設定裡的過期視窗將永遠勝出。
+
+#### Scenario: 請求恆帶時間視窗與投影
+
+- **WHEN** 檢視時間範圍為 `24h`、投影為預設,app 對 `endpoints.graph` 發出請求
+- **THEN** 該請求帶 `start` / `end`(Unix 秒,相距 24 小時)與 `prune`
+
+#### Scenario: 相對區間於每次請求重新求值
+
+- **WHEN** 檢視時間範圍為 `1h`,app 於載入 10 分鐘後自動刷新
+- **THEN** 該次請求的 `start` / `end` 為「刷新當下減一小時」至「刷新當下」,而非首次載入時凍結的值
+
+#### Scenario: 設定 URL 自帶的同名參數被取代
+
+- **WHEN** `endpoints.graph` 為 `https://ksg.example/v1/graph?tenant=ops&start=100`
+- **THEN** 送出的請求保留 `tenant=ops` 原樣,且只帶一個 `start`——其值為本次求得的視窗起點,而非 `100`
 
 ### Requirement: 載入與錯誤狀態傳遞
 

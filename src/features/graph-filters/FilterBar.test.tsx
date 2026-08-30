@@ -50,6 +50,22 @@ describe('FilterBar', () => {
     expect(onValues).toHaveBeenCalledWith('namespace', ['shop']);
   });
 
+  it('offers Clear only once something is narrowed', () => {
+    const { onClear } = renderBar();
+    // At the defaults there is nothing to clear, and an enabled button that does nothing
+    // reads as a filter still applied somewhere off screen.
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDisabled();
+    expect(onClear).not.toHaveBeenCalled();
+  });
+
+  it('clears a narrowed selection back to the defaults', () => {
+    const { onClear } = renderBar({ ...DEFAULT_GRAPH_FILTERS, cluster: ['ksg-demo'], prune: false });
+    const clear = screen.getByRole('button', { name: 'Clear filters' });
+    expect(clear).toBeEnabled();
+    fireEvent.click(clear);
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
   it('switches the projection to the inventory', () => {
     const { onPrune } = renderBar();
     fireEvent.change(screen.getByLabelText('Projection'), { target: { value: 'inventory' } });

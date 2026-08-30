@@ -169,6 +169,16 @@ export function SankeyView({
     return { nodes, links };
   }, [graph, size]);
 
+  // A refresh may remove the node under the cursor. Its `mouseleave` will then never fire,
+  // so nothing else would clear this: the tooltip stays open describing a node that is gone,
+  // and `lit` — lighting a path of zero links — fades every remaining link and node.
+  useEffect(() => {
+    if (hoverId !== null && !graph.nodes.some((n) => n.id === hoverId)) {
+      setHoverId(null);
+      setTip(null);
+    }
+  }, [graph, hoverId]);
+
   const lit = useMemo(() => {
     if (hoverId === null) {
       return null;

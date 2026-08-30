@@ -102,7 +102,6 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
           <div className="absolute inset-0" hidden={!isGraph}>
             <GraphView
               {...graphProps}
-              visible={isGraph}
               onAlertTimeClick={time.setAround}
               locateNodeId={locateId}
               onLocateConsumed={() => setLocateId(null)}
@@ -146,7 +145,10 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
 // html class contradicting the tokens the app actually rendered with.
 export function AppShell({ config }: Readonly<AppShellProps>): JSX.Element {
   return (
-    <BrowserRouter>
+    // Routes are relative to the app base URL: deployed under `/ksg/`, the Sankey deep link
+    // is `/ksg/sankey`. `import.meta.env.BASE_URL` is the same value runtime-config uses to
+    // locate config.json, so both resolve against one build-time base ('/' by default).
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         {/* React Router 7 treats `/graph` and `/graph/` as the same path, so a
             Navigate from `/graph/` → `/graph` loops and never commits. Trailing

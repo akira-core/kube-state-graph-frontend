@@ -149,6 +149,16 @@
 - [x] 18.6 雙擊收合手勢擴及 `isStorageCluster`;驗證:單元測試斷言雙擊 storage-cluster 切換其收合狀態,雙擊可選取容器仍為 no-op
 - [x] 18.7 選取鏡射與 fade 套用加入 collapse 集合為明確輸入(不以 `elements` identity 為代理);驗證:元件測試斷言 `elements` 參照不變而收合集合改變時,選取環與 fade class 仍被重新套用
 
+## 19. Code review 回歸(查詢字串、Sankey cluster、viewport、locate、hover、base URL)
+
+- [x] 19.1 `withQuery` 改為**取代**同名 key 而非附加(設定 URL 自帶的其他參數原樣保留,不重新編碼);驗證:單元測試斷言 `?start=100` 的端點加上本次視窗後只剩一個 `start`、`tenant=ops` 與 `%20` 編碼原樣留存
+- [x] 19.2 Sankey 的 cluster 過濾前移至聚合之前(過濾 pvc→aggr 與 pod→pvc 邊,而非過濾成品圖):storage tier 不依 cluster 過濾,aggr→netapp-node 權重只以在範圍內的 pvc 邊加總,範圍內無邊的 aggr / netapp-node 不繪;驗證:單元測試以雙 cluster 共用一個 netapp-node 的合成圖斷言權重重算與幽靈節點消失
+- [x] 19.3 移除 Graph 視圖切回可見時派送的合成 `window resize`(容器 ResizeObserver 已足以重新量測),並移除隨之無用的 `visible` prop;驗證:元件測試斷言 GraphView 重新可見時不派送 window resize 事件
+- [x] 19.4 跨視圖 locate 於執行前清空搜尋輸入(視圖內 result list 的 locate 由 SearchBar 自行清空,不重複);驗證:元件測試斷言 `locateNodeId` 抵達後搜尋輸入為空
+- [x] 19.5 Sankey 於重新整理移除被 hover 的節點時清除 hover 高亮與 tooltip(節點仍在則依新拓樸重算);驗證:元件測試斷言目標節點消失後 tooltip 關閉且無殘留淡化,仍存在者維持高亮
+- [x] 19.6 `BrowserRouter` 以 `import.meta.env.BASE_URL` 作為 `basename`,與 runtime-config 讀取 `config.json` 的 base 一致;驗證:元件測試以 `BASE_URL=/ksg/` 斷言 `/ksg/sankey` 顯示 Sankey 且 `/ksg/` 導向 `/ksg/graph`
+- [x] 19.7 修訂規格以吻合已實作的決定:app-shell 檢視時間範圍改為 graph 查詢的時間視窗、graph-data-source 新增「graph 請求的查詢字串」需求、新增 `graph-filters` capability 規格、runtime-config 端點表補 `labelValues` / `edgeTypes`、dev-environment 將 e2e 納入 CI gate;驗證:`openspec validate init-pure-ui-frontend --strict` 通過,且全庫無「graph 查詢不帶時間參數」的殘留敘述
+
 ## 17. 整體驗收
 
 - [x] 17.1 全鏈驗證:乾淨 checkout 執行 `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` 全數通過,且單元測試覆蓋率達 80%
