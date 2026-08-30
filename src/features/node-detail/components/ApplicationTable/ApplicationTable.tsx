@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 
+import { dataTableClass } from '../../../../shared/ui/table';
 import { formatChangeTime } from '../../formatChangeTime';
 import { ChangeReportCell } from '../ChangeReportCell';
 import { ChangeTimeCell } from '../ChangeTimeCell';
@@ -11,7 +12,7 @@ export function ApplicationTable({ application, state }: Readonly<ApplicationTab
   const isoPrevious = state.status === 'ready' ? state.previousTime : undefined;
   return (
     <div data-testid="application-table" className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className={dataTableClass}>
         <thead>
           <tr>
             <th>Name</th>

@@ -4,6 +4,7 @@ import type { JSX } from 'react';
 import { severityColor } from '../../../../shared/constants/colorBySeverity';
 import { MISSING_VALUE_PLACEHOLDER } from '../../../../shared/constants/missingValuePlaceholder';
 import type { NodeAlert } from '../../../../shared/constants/types';
+import { dataTableClass } from '../../../../shared/ui/table';
 import { formatChangeTime } from '../../formatChangeTime';
 
 import type { AlertTableProps } from './AlertTable.types';
@@ -26,7 +27,7 @@ export function AlertTable({ alerts, onAlertTimeClick }: Readonly<AlertTableProp
   }
   return (
     <Tooltip.Provider delayDuration={200}>
-      <table className="w-full text-left text-sm">
+      <table className={dataTableClass}>
         <thead>
           <tr>
             <th>Pod</th>

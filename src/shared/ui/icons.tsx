@@ -129,3 +129,58 @@ export function CaretDownIcon(props: Readonly<IconProps>): JSX.Element {
     </SvgIcon>
   );
 }
+
+export function RefreshIcon(props: Readonly<IconProps>): JSX.Element {
+  return (
+    <SvgIcon {...props}>
+      <path d="M20 11a8 8 0 0 0-13.7-5.3L3 9" />
+      <path d="M3 4v5h5" />
+      <path d="M4 13a8 8 0 0 0 13.7 5.3L21 15" />
+      <path d="M21 20v-5h-5" />
+    </SvgIcon>
+  );
+}
+
+export function ChevronLeftIcon(props: Readonly<IconProps>): JSX.Element {
+  return (
+    <SvgIcon {...props}>
+      <path d="M15 6l-6 6 6 6" />
+    </SvgIcon>
+  );
+}
+
+export function ChevronRightIcon(props: Readonly<IconProps>): JSX.Element {
+  return (
+    <SvgIcon {...props}>
+      <path d="M9 6l6 6-6 6" />
+    </SvgIcon>
+  );
+}
+
+export function FilterIcon(props: Readonly<IconProps>): JSX.Element {
+  return (
+    <SvgIcon {...props}>
+      <path d="M4 6h16" />
+      <path d="M7 12h10" />
+      <path d="M10 18h4" />
+    </SvgIcon>
+  );
+}
+
+/**
+ * Brand mark: three linked nodes.
+ *
+ * The product draws topology, so the mark is a topology — the smallest graph that still
+ * has a fan-out. No wordmark lockup, no logo import; it is drawn from the same stroke
+ * vocabulary as every other icon here.
+ */
+export function GraphMarkIcon({ size = 16, className }: Readonly<IconProps>): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+      <path d="M8 10.5 15.4 6.6M8 13.5l7.4 3.9" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
+      <circle cx="5" cy="12" r="3.4" fill="currentColor" />
+      <circle cx="18" cy="5.6" r="2.6" fill="currentColor" fillOpacity="0.55" />
+      <circle cx="18" cy="18.4" r="2.6" fill="currentColor" fillOpacity="0.55" />
+    </svg>
+  );
+}

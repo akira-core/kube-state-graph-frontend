@@ -1,7 +1,10 @@
 import type { JSX } from 'react';
 
 import { STATUS_COLOR } from '../../../../shared/constants/colorByStatus';
+import { Badge } from '../../../../shared/ui/Badge';
+import { Button } from '../../../../shared/ui/Button';
 import { CloseIcon } from '../../../../shared/ui/icons';
+import { eyebrowClass } from '../../../../shared/ui/Section';
 import { DETAIL_URL_KINDS } from '../../detailUrlKinds';
 import { IDLE_NODE_DETAIL_LOOKUPS } from '../../hooks/useNodeDetailUrls';
 import { AlertTable } from '../AlertTable';
@@ -29,54 +32,61 @@ export function NodeDetailPanel({
   const showAlerts = alerts.length > 0;
   return (
     <div
-      className="absolute bottom-2 left-2 right-2 z-[1000] flex max-h-[50%] flex-col overflow-hidden rounded border border-weak bg-surface p-2.5 text-primary shadow"
+      className="absolute bottom-2 left-2 right-2 z-[1000] flex max-h-[50%] flex-col overflow-hidden rounded-lg border border-hairline bg-surface text-primary shadow-panel"
       data-testid="node-detail-panel"
     >
-      <div className="mb-2.5 flex items-center gap-2 border-b-2 border-strong pb-2.5">
-        <span className="font-semibold">{node.label}</span>
-        {dashboard !== undefined && <DashboardButton state={dashboard} />}
-        <span className="flex items-center gap-1">
-          {node.kind !== undefined && (
-            <span className="rounded bg-[var(--ksg-border-weak)] px-1.5 py-0.5 text-xs" data-testid="node-detail-kind">
-              {node.kind}
-            </span>
-          )}
-          {node.status !== undefined && (
+      <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">
+        <span className="truncate font-mono text-[13px] font-semibold">{node.label}</span>
+        {node.kind !== undefined && (
+          <Badge size="xs" data-testid="node-detail-kind">
+            {node.kind}
+          </Badge>
+        )}
+        {node.status !== undefined && (
+          <span
+            className="inline-flex items-center gap-1.5 rounded border border-hairline px-1.5 py-1 text-[10px] font-semibold uppercase leading-none tracking-eyebrow"
+            data-testid="node-detail-status"
+          >
             <span
-              className="rounded px-1.5 py-0.5 text-xs text-black"
-              data-testid="node-detail-status"
+              className="h-1.5 w-1.5 rounded-full"
               style={{ backgroundColor: STATUS_COLOR[node.status] }}
-            >
-              {node.status}
-            </span>
-          )}
-        </span>
-        <button
-          type="button"
-          className="ml-auto rounded p-1"
+              aria-hidden
+            />
+            {node.status}
+          </span>
+        )}
+        {dashboard !== undefined && <DashboardButton state={dashboard} />}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="ml-auto"
           aria-label="Close detail panel"
           title="Close detail panel"
           onClick={onClose}
         >
-          <CloseIcon size={16} />
-        </button>
+          <CloseIcon size={14} />
+        </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" style={{ overflowY: 'auto' }} data-testid="node-detail-scroll">
+      <div
+        className="ksg-scroll min-h-0 flex-1 overflow-y-auto px-3 py-2.5"
+        style={{ overflowY: 'auto' }}
+        data-testid="node-detail-scroll"
+      >
         {showApplication && node.application !== undefined && (
           <div className="mb-3" style={{ flexGrow: 0 }} data-testid="node-detail-section-application">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-secondary">Application</div>
+            <div className={`mb-1.5 ${eyebrowClass}`}>Application</div>
             <ApplicationTable application={node.application} state={lookupsState.application} />
           </div>
         )}
         {showContainers && node.containers !== undefined && (
           <div className="mb-3" style={{ flexGrow: 0 }} data-testid="node-detail-section-containers">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-secondary">Containers</div>
+            <div className={`mb-1.5 ${eyebrowClass}`}>Containers</div>
             <ContainerTable containers={node.containers} lookups={lookupsState.containers} />
           </div>
         )}
         {showAlerts && (
           <div style={{ flexGrow: 0 }} data-testid="node-detail-section-alerts">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-secondary">Alerts</div>
+            <div className={`mb-1.5 ${eyebrowClass}`}>Alerts</div>
             <AlertTable alerts={alerts} onAlertTimeClick={onAlertTimeClick} />
           </div>
         )}

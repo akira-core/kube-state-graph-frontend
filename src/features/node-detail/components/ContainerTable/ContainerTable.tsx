@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 
+import { dataTableClass } from '../../../../shared/ui/table';
 import { formatChangeTime } from '../../formatChangeTime';
 import type { DetailLookup } from '../../hooks/useNodeDetailUrls';
 import { ChangeReportCell } from '../ChangeReportCell';
@@ -21,7 +22,7 @@ function rowLookup(lookups: ContainerTableProps['lookups'], name: string): Detai
 export function ContainerTable({ containers, lookups }: Readonly<ContainerTableProps>): JSX.Element {
   return (
     <div data-testid="container-table" className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className={dataTableClass}>
         <thead>
           <tr>
             <th>Name</th>

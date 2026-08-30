@@ -21,7 +21,8 @@ export const SEARCH_PINNED_STACK_GAP_PX = 8;
 export const PINNED_TOOLTIP_TOP_BELOW_SEARCH_PX = SEARCH_BAR_TOP_PX + SEARCH_BAR_HEIGHT_PX + SEARCH_PINNED_STACK_GAP_PX;
 
 const ROOT_CLASS = 'pointer-events-auto absolute left-auto top-2 z-[1001] flex w-[min(360px,calc(100%-16px))] flex-col';
-const INPUT_WRAP_CLASS = 'flex items-center gap-2 rounded bg-surface px-2 py-1 shadow';
+const INPUT_WRAP_CLASS =
+  'flex h-9 items-center gap-2 rounded-md border border-hairline bg-overlay px-2.5 text-secondary shadow-panel backdrop-blur-sm transition-colors duration-100 focus-within:border-hairline-strong';
 
 export function SearchBar({
   query,
@@ -198,7 +199,7 @@ export function SearchBar({
           placeholder="Search nodes…"
           aria-label="Search nodes"
           data-testid="graph-search-input"
-          className="w-full border-0 bg-transparent text-sm text-primary outline-none"
+          className="w-full border-0 bg-transparent text-[13px] text-primary outline-none placeholder:text-muted"
         />
       </div>
       {showList && (

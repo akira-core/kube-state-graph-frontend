@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 
 import type { DashboardButtonProps } from './DashboardButton.types';
 
-const TRIGGER_CLASS = 'rounded border border-medium px-2 py-0.5 text-sm text-primary';
+const TRIGGER_CLASS =
+  'inline-flex h-6 shrink-0 items-center rounded-md border border-hairline-strong bg-raised px-2 text-[11px] font-medium text-primary transition-colors duration-100 hover:bg-raised-hover';
 const MENU_GAP_PX = 4;
 
 export function DashboardButton({ state }: Readonly<DashboardButtonProps>): JSX.Element | null {
@@ -96,7 +97,7 @@ export function DashboardButton({ state }: Readonly<DashboardButtonProps>): JSX.
           <div
             ref={menuRef}
             role="menu"
-            className="fixed z-[1200] min-w-[8rem] rounded border border-weak bg-surface p-1 shadow"
+            className="fixed z-[1200] min-w-[9rem] rounded-md border border-hairline bg-surface p-1 shadow-panel"
             style={{ top: anchor?.top ?? 0, left: anchor?.left ?? 0 }}
           >
             {urls.map((link, index) => (
@@ -107,7 +108,7 @@ export function DashboardButton({ state }: Readonly<DashboardButtonProps>): JSX.
                 rel="noopener noreferrer"
                 role="menuitem"
                 data-testid={`node-detail-dashboard-link-${index}`}
-                className="block cursor-pointer rounded px-2 py-1 text-sm text-primary outline-none hover:bg-[var(--ksg-border-weak)]"
+                className="block cursor-pointer rounded px-2 py-1.5 text-[13px] text-primary outline-none hover:bg-raised-hover"
               >
                 {link.label ?? link.url}
               </a>

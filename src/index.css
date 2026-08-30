@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Chrome tokens.
+ *
+ * `shared/theme/tokens.ts` owns the DATA palette — every colour the graph canvas, the
+ * Sankey and the legends paint with. These variables are the complement: the surfaces,
+ * hairlines and shadows of the application chrome around that data. They are declared
+ * here rather than in tokens.ts on purpose — nothing in the rendering pipeline reads
+ * them, so the chrome can be restyled without moving a pixel on the canvas.
+ *
+ * The palette rule of this console: hue belongs to the data. Node kinds, edge types and
+ * status already spend every hue on the canvas, so a chrome that also carried a brand
+ * colour would compete with the reading. The chrome is achromatic; the one hue it keeps
+ * is the focus ring, which has to be unmistakably an affordance.
+ */
+:root {
+  /* Native widgets (listboxes, date pickers, dropdown popups, scrollbars) take their
+     light/dark rendering from color-scheme; without it a dark app still gets white ones. */
+  color-scheme: light;
+  --ksg-ui-font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Machine-produced values (timestamps, ids, counts, kind names) are set in mono so a
+     reader can tell at a glance what the system said from what the UI labelled. */
+  --ksg-ui-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --ksg-ui-rail: #ffffff;
+  --ksg-ui-raised: #ffffff;
+  --ksg-ui-raised-hover: #f1f3f5;
+  --ksg-ui-selected: rgba(36, 41, 46, 0.09);
+  --ksg-ui-hairline: rgba(15, 23, 42, 0.1);
+  --ksg-ui-hairline-strong: rgba(15, 23, 42, 0.2);
+  --ksg-ui-shadow-panel: 0 10px 30px -14px rgba(15, 23, 42, 0.4);
+  --ksg-ui-shadow-rail: 1px 0 0 rgba(15, 23, 42, 0.06);
+  --ksg-ui-scrollbar: rgba(15, 23, 42, 0.22);
+}
+
+.dark {
+  color-scheme: dark;
+  --ksg-ui-rail: #15171d;
+  --ksg-ui-raised: #1e2129;
+  --ksg-ui-raised-hover: #262a33;
+  --ksg-ui-selected: rgba(204, 204, 220, 0.14);
+  --ksg-ui-hairline: rgba(148, 163, 184, 0.15);
+  --ksg-ui-hairline-strong: rgba(148, 163, 184, 0.28);
+  --ksg-ui-shadow-panel: 0 14px 36px -14px rgba(0, 0, 0, 0.8);
+  --ksg-ui-shadow-rail: 1px 0 0 rgba(148, 163, 184, 0.08);
+  --ksg-ui-scrollbar: rgba(204, 204, 220, 0.22);
+}
+
 html,
 body,
 #root {
@@ -12,9 +59,107 @@ body,
 body {
   background-color: var(--ksg-bg-canvas, #111217);
   color: var(--ksg-fg-primary, #ccccdc);
+  font-family: var(--ksg-ui-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 :focus-visible {
   outline: 2px solid var(--ksg-accent-primary, #3871dc);
   outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Native selects keep their semantics (and their tests), but not their platform chrome:
+   the caret is drawn here so light and dark render the same control. */
+select.ksg-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    right 11px top 55%,
+    right 6px top 55%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+select.ksg-select[multiple] {
+  background-image: none;
+  /* The UA paints a listbox with its own surface once color-scheme is set; pin it to the
+     same raised surface every other control in the bar uses. */
+  background-color: var(--ksg-ui-raised);
+}
+
+select.ksg-select[multiple] option {
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+/* WebKit paints a selected option with the OS highlight colour, which is the one hue the
+   chrome does not get to choose. The gradient is the long-standing way to override it. */
+select.ksg-select[multiple] option:checked {
+  background: var(--ksg-ui-selected) linear-gradient(0deg, var(--ksg-ui-selected), var(--ksg-ui-selected));
+  color: var(--ksg-fg-primary);
+}
+
+/* A rail that scrolls should not announce itself with a platform scrollbar. */
+.ksg-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ksg-ui-scrollbar) transparent;
+}
+
+.ksg-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ksg-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--ksg-ui-scrollbar);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.ksg-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* The one animated element in the chrome: an indeterminate strip under the nav that runs
+   only while a fetch is in flight, so "is this data live?" is answerable without reading. */
+@keyframes ksg-strip {
+  0% {
+    transform: translateX(-60%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+.ksg-strip {
+  animation: ksg-strip 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes ksg-lamp {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.ksg-lamp-pulse {
+  animation: ksg-lamp 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ksg-strip,
+  .ksg-lamp-pulse,
+  .animate-spin {
+    animation: none;
+  }
 }

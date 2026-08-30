@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { CaretDownIcon, CaretRightIcon, MinusCircleIcon, PlusCircleIcon } from '../../../../shared/ui/icons';
+import { eyebrowClass } from '../../../../shared/ui/Section';
 import { legendListClass, legendRowClass } from '../../legendStyles';
 
 export interface SwatchLegendEntry {
@@ -54,18 +55,19 @@ export function SwatchLegend({
   const collapseLabel = allCollapsed ? `Expand all ${collapseNoun}` : `Collapse all ${collapseNoun}`;
   const Caret = folded ? CaretRightIcon : CaretDownIcon;
   return (
-    <div data-testid={testId}>
-      <div className="flex items-center justify-between">
-        <h4 className="m-0">
+    <section className="border-t border-hairline px-3 py-1.5" data-testid={testId}>
+      <div className="flex min-h-[22px] items-center justify-between gap-2">
+        <h4 className="m-0 min-w-0">
           <button
             type="button"
-            className="m-0 inline-flex cursor-pointer items-center gap-1 whitespace-nowrap border-0 bg-transparent p-0 font-inherit text-inherit"
+            className={`${eyebrowClass} m-0 inline-flex w-full cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-left transition-colors duration-100 hover:text-primary`}
             aria-expanded={!folded}
             data-testid={`${testId}-fold-toggle`}
             onClick={() => setFolded((f) => !f)}
           >
-            <Caret size={16} />
-            {`${title}(${entries.length})`}
+            <Caret size={13} className="shrink-0 opacity-70" />
+            <span className="truncate">{title}</span>
+            <span className="font-mono tabular-nums text-muted">({entries.length})</span>
           </button>
         </h4>
         {onToggleCollapseAll !== undefined && (
@@ -74,26 +76,28 @@ export function SwatchLegend({
             data-testid={collapseToggleTestId}
             aria-label={collapseLabel}
             title={collapseLabel}
-            className="inline-flex items-center justify-center rounded p-1 text-primary hover:bg-[var(--ksg-border-weak)]"
+            className="inline-flex shrink-0 items-center justify-center rounded p-1 text-muted transition-colors duration-100 hover:bg-raised-hover hover:text-primary"
             onClick={onToggleCollapseAll}
           >
-            {allCollapsed ? <PlusCircleIcon size={18} /> : <MinusCircleIcon size={18} />}
+            {allCollapsed ? <PlusCircleIcon size={15} /> : <MinusCircleIcon size={15} />}
           </button>
         )}
       </div>
       {!folded && (
-        <ul className={legendListClass}>
+        <ul className={`${legendListClass} mt-1`}>
           {entries.map(({ name, color }) => (
             <li key={name} className={legendRowClass} data-testid={`${rowTestIdPrefix}${name}`}>
               <span
-                className="h-3.5 w-3.5 shrink-0 rounded-[3px] border-[1.5px] border-solid"
+                className="h-3 w-3 shrink-0 rounded-[3px] border-[1.5px] border-solid"
                 style={{ backgroundColor: `${color}22`, borderColor: color }}
               />
-              <span style={{ color }}>{name}</span>
+              <span className="truncate font-mono text-[11px]" style={{ color }}>
+                {name}
+              </span>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

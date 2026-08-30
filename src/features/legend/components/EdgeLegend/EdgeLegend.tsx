@@ -1,3 +1,4 @@
+import { clsx } from 'clsx';
 import React from 'react';
 
 import {
@@ -9,6 +10,7 @@ import {
 import { drawnEdgeTypesForMode } from '../../../../shared/constants/drawnEdgeTypesForMode';
 import type { EdgeType, NodeKind } from '../../../../shared/constants/types';
 import { EyeButton } from '../../../../shared/ui/EyeButton';
+import { RailGroup } from '../../../../shared/ui/Section';
 import { legendDimmedClass, legendListClass, legendRowClass, legendToggleClass } from '../../legendStyles';
 import { EdgeGlyph } from '../EdgeGlyph';
 
@@ -160,8 +162,7 @@ export function EdgeLegend({
     return null;
   }
   return (
-    <div data-testid="edge-legend">
-      <h4 className="mb-1 text-sm font-semibold">Edge Types</h4>
+    <RailGroup title="Edge Types" data-testid="edge-legend">
       <ul className={legendListClass}>
         {rows.map(({ key, color, lineStyle, fromLabel, toLabel, bidirectional, dashPattern, note }) => {
           const hidden = hiddenTypes?.has(key) === true;
@@ -178,8 +179,8 @@ export function EdgeLegend({
             ) : null;
           const endpoints = (
             <>
-              <span className={hidden ? legendDimmedClass : undefined}>{fromLabel}</span>
-              <span className="inline-flex w-[30px] shrink-0 items-center justify-center">
+              <span className={clsx('font-mono', hidden && legendDimmedClass)}>{fromLabel}</span>
+              <span className="inline-flex w-[26px] shrink-0 items-center justify-center">
                 <EdgeGlyph
                   color={color}
                   lineStyle={lineStyle}
@@ -187,7 +188,7 @@ export function EdgeLegend({
                   {...(dashPattern !== undefined ? { dashPattern } : {})}
                 />
               </span>
-              <span className={hidden ? legendDimmedClass : undefined}>{toLabel}</span>
+              <span className={clsx('font-mono', hidden && legendDimmedClass)}>{toLabel}</span>
             </>
           );
           return note === undefined ? (
@@ -206,11 +207,11 @@ export function EdgeLegend({
                 {endpoints}
                 {toggle}
               </span>
-              <span className="text-[11px] opacity-70">{note}</span>
+              <span className="pl-[3px] text-[10px] italic opacity-70">{note}</span>
             </li>
           );
         })}
       </ul>
-    </div>
+    </RailGroup>
   );
 }

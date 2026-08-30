@@ -4,6 +4,7 @@ import React from 'react';
 import { CATEGORY_ORDER, categoryForKind, type NodeCategory } from '../../../../shared/constants/categoryByKind';
 import { ICON_SVG_BY_KIND } from '../../../../shared/constants/iconSvgByKind';
 import { EyeButton } from '../../../../shared/ui/EyeButton';
+import { RailGroup, subEyebrowClass } from '../../../../shared/ui/Section';
 import { legendDimmedClass, legendListClass, legendRowClass, legendToggleClass } from '../../legendStyles';
 import { IconGlyph } from '../IconGlyph';
 
@@ -65,11 +66,10 @@ export function NodeLegend({ entries, onToggleKind }: Readonly<NodeLegendProps> 
     return null;
   }
   return (
-    <div data-testid="node-legend">
-      <h4 className="mb-1 text-sm font-semibold">Node Kinds</h4>
+    <RailGroup title="Node Kinds" data-testid="node-legend">
       {CATEGORY_ORDER.filter((category) => (grouped.get(category)?.length ?? 0) > 0).map((category) => (
-        <div key={category} className="mb-1.5" data-testid={`node-legend-group-${category}`}>
-          <div className="mb-0.5 mt-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-60">{category}</div>
+        <div key={category} className="mb-1 last:mb-0" data-testid={`node-legend-group-${category}`}>
+          <div className={`mb-0.5 ${subEyebrowClass}`}>{category}</div>
           <ul className={legendListClass}>
             {(grouped.get(category) ?? []).map((entry) => {
               const label = LABEL_BY_KIND[entry.kind] ?? entry.kind;
@@ -77,13 +77,13 @@ export function NodeLegend({ entries, onToggleKind }: Readonly<NodeLegendProps> 
                 <li key={entry.kind} className={legendRowClass} data-testid={`node-legend-row-${entry.kind}`}>
                   <span
                     className={clsx(
-                      'inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center',
+                      'inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center',
                       entry.hidden && legendDimmedClass
                     )}
                   >
-                    <IconGlyph kind={entry.kind} />
+                    <IconGlyph kind={entry.kind} size={18} />
                   </span>
-                  <span className={clsx(entry.hidden && legendDimmedClass)}>{label}</span>
+                  <span className={clsx('truncate font-mono', entry.hidden && legendDimmedClass)}>{label}</span>
                   {onToggleKind !== undefined && entry.togglable && (
                     <EyeButton
                       className={legendToggleClass}
@@ -100,6 +100,6 @@ export function NodeLegend({ entries, onToggleKind }: Readonly<NodeLegendProps> 
           </ul>
         </div>
       ))}
-    </div>
+    </RailGroup>
   );
 }

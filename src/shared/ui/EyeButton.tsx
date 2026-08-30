@@ -27,13 +27,13 @@ export function EyeButton({
       aria-label={tooltip}
       title={tooltip}
       className={clsx(
-        'inline-flex shrink-0 items-center justify-center rounded p-1 text-primary hover:bg-[var(--ksg-border-weak)]',
+        'inline-flex shrink-0 items-center justify-center rounded p-1 text-muted transition-colors duration-100 hover:bg-raised-hover hover:text-primary',
         className
       )}
       onClick={onClick}
       {...(testId !== undefined ? { 'data-testid': testId } : {})}
     >
-      <Icon size={size === 'lg' ? 18 : 14} />
+      <Icon size={size === 'lg' ? 14 : 12} />
     </button>
   );
 }

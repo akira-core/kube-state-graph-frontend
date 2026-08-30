@@ -48,12 +48,12 @@ export function ResultList({
   if (results.length === 0) {
     return (
       <div
-        className="mt-1 max-h-[40%] overflow-y-auto rounded border border-weak bg-surface shadow"
+        className="ksg-scroll mt-1.5 max-h-[45vh] overflow-y-auto rounded-md border border-hairline bg-surface shadow-panel"
         data-testid="search-result-list"
         role="listbox"
         aria-label="Search results"
       >
-        <div className="px-2.5 py-2 text-sm text-secondary" data-testid="search-no-results">
+        <div className="px-3 py-2.5 text-[13px] text-secondary" data-testid="search-no-results">
           No matching nodes
         </div>
       </div>
@@ -65,7 +65,7 @@ export function ResultList({
 
   return (
     <div
-      className="mt-1 max-h-[40%] overflow-y-auto rounded border border-weak bg-surface shadow"
+      className="ksg-scroll mt-1.5 max-h-[45vh] overflow-y-auto rounded-md border border-hairline bg-surface shadow-panel"
       data-testid="search-result-list"
     >
       <ul className="m-0 list-none p-0" role="listbox" aria-label="Search results">
@@ -85,8 +85,8 @@ export function ResultList({
               data-testid={`search-result-${result.id}`}
               data-disabled={disabled ? 'true' : undefined}
               className={clsx(
-                'flex cursor-pointer flex-col gap-0.5 border-b border-weak px-2.5 py-1.5 last:border-b-0 hover:bg-[var(--ksg-border-weak)]',
-                highlighted && 'bg-[var(--ksg-border-weak)]',
+                'flex cursor-pointer flex-col gap-0.5 border-b border-hairline px-3 py-2 last:border-b-0 hover:bg-raised-hover',
+                highlighted && 'bg-selected',
                 disabled && 'cursor-default opacity-55 hover:bg-transparent'
               )}
               onMouseDown={(evt) => {
@@ -103,12 +103,14 @@ export function ResultList({
                   {result.label}
                 </span>
                 {result.kind !== undefined && (
-                  <span className="rounded bg-[var(--ksg-border-weak)] px-1.5 py-0.5 text-[11px]">{result.kind}</span>
+                  <span className="shrink-0 rounded border border-hairline bg-selected px-1.5 py-0.5 font-mono text-[10px] text-secondary">
+                    {result.kind}
+                  </span>
                 )}
                 {disabled && <EyeSlashIcon size={14} aria-label="Hidden by filter" />}
               </div>
               {subline.length > 0 && (
-                <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-secondary">
+                <div className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10px] text-muted">
                   {subline}
                 </div>
               )}
@@ -117,7 +119,10 @@ export function ResultList({
         })}
       </ul>
       {overflow > 0 && (
-        <div className="px-2.5 py-1.5 text-[11px] italic text-secondary" data-testid="search-result-more">
+        <div
+          className="border-t border-hairline px-3 py-1.5 font-mono text-[10px] text-muted"
+          data-testid="search-result-more"
+        >
           {overflow} more
         </div>
       )}

@@ -32,13 +32,14 @@ interface TooltipContent {
 }
 
 const STYLES = {
-  root: 'absolute z-10 w-[280px] overflow-x-hidden overflow-y-auto rounded border border-weak bg-surface p-2 text-xs leading-snug text-primary shadow opacity-90',
-  title: 'mb-1 overflow-hidden text-ellipsis whitespace-nowrap font-semibold',
-  row: 'flex gap-1 whitespace-nowrap',
-  rowKey: 'text-secondary',
+  root: 'ksg-scroll absolute z-10 w-[300px] overflow-x-hidden overflow-y-auto rounded-md border border-hairline bg-overlay p-2.5 text-[11px] leading-relaxed text-primary shadow-panel backdrop-blur-sm',
+  title:
+    'mb-1.5 overflow-hidden text-ellipsis whitespace-nowrap border-b border-hairline pb-1.5 font-mono text-[12px] font-semibold',
+  row: 'flex gap-1.5 whitespace-nowrap font-mono',
+  rowKey: 'shrink-0 font-sans text-muted',
   dangerValue: 'text-[var(--ksg-status-error)]',
-  labelRow: 'flex gap-1 break-all',
-  labelsHint: 'mt-1 text-[10px] uppercase tracking-wide text-muted',
+  labelRow: 'flex gap-1.5 break-all font-mono',
+  labelsHint: 'mt-2 border-t border-hairline pt-1.5 text-[9px] font-semibold uppercase tracking-eyebrow text-muted',
 };
 
 // String entries of a labels map as rows, skipping keys already promoted to attrs.

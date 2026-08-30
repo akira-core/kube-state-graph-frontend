@@ -8,6 +8,10 @@ import { ancestorChain, buildParentIndex, collapsedAncestorChain } from '../../s
 import { collectIngressNodeIds } from '../../shared/graph/collectIngressNodeIds';
 import { themeColors } from '../../shared/theme/tokens';
 import type { ResolvedTimeRange } from '../../shared/time/viewTimeRange';
+import { Button } from '../../shared/ui/Button';
+import { ChevronLeftIcon, ChevronRightIcon } from '../../shared/ui/icons';
+import { subEyebrowClass } from '../../shared/ui/Section';
+import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { collectEdgeBearingNodeIds, computeVisibility, isFilterableKind } from '../element-filter';
 import { EmptyState, GraphCanvas, LoadingOverlay, type GraphViewportApi, type LayoutName } from '../graph-canvas';
 import { wrapNodeGroup, wrapSwitchFabric } from '../graph-data';
@@ -45,6 +49,11 @@ import { describeGraphOutcome } from './describeGraphOutcome';
 import { ALL_EDGE_TYPES, ALL_KINDS } from './kinds';
 import { resolveSelectedNode } from './resolveSelectedNode';
 import { useCollapseGroup } from './useCollapseGroup';
+
+const LAYOUT_ALGORITHM_OPTIONS: ReadonlyArray<SegmentedOption<LayoutName>> = [
+  { value: 'fcose', label: 'fCoSE', ariaLabel: 'fcose', title: 'Force-directed layout' },
+  { value: 'dagre', label: 'Dagre', ariaLabel: 'dagre', title: 'Layered layout' },
+];
 
 export interface GraphViewProps {
   config: RuntimeConfig;
@@ -475,12 +484,10 @@ export function GraphView({
   }
   if (outcome.kind === 'failed') {
     return (
-      <div
-        className="flex h-full items-center justify-center p-6 text-primary"
-        role="alert"
-        data-testid="graph-request-failed"
-      >
-        {outcome.message}
+      <div className="flex h-full items-center justify-center p-6" role="alert" data-testid="graph-request-failed">
+        <div className="max-w-md rounded-lg border border-hairline bg-surface px-5 py-4 text-center text-[13px] leading-relaxed text-primary shadow-panel">
+          {outcome.message}
+        </div>
       </div>
     );
   }
@@ -488,41 +495,35 @@ export function GraphView({
   return (
     <div className="flex h-full w-full" data-testid="graph-view">
       {!legendCollapsed && (
-        <aside className="w-[200px] shrink-0 overflow-y-auto border-r border-weak px-2 py-1 text-primary">
+        <aside className="ksg-scroll w-[240px] shrink-0 overflow-y-auto border-r border-hairline bg-rail text-primary shadow-rail">
           <LayoutModeControl
             mode={podParentMode}
             onChange={setPodParentMode}
             action={
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label="Collapse legend"
                 title="Collapse legend"
                 data-testid="legend-collapse"
-                className="rounded px-1 text-secondary hover:text-primary"
                 onClick={() => setLegendCollapsed(true)}
               >
-                ‹
-              </button>
+                <ChevronLeftIcon size={14} />
+              </Button>
             }
-          />
-          <div className="mt-2 flex flex-col gap-1">
-            <span className="text-[11px] font-medium opacity-85">Algorithm</span>
-            <div className="flex">
-              {(['fcose', 'dagre'] as const).map((name) => (
-                <label key={name} className="flex flex-1 items-center justify-center gap-1 text-xs">
-                  <input
-                    type="radio"
-                    name="layout-algorithm"
-                    value={name}
-                    checked={layout === name}
-                    aria-label={name}
-                    onChange={() => setLayout(name)}
-                  />
-                  {name}
-                </label>
-              ))}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`${subEyebrowClass} w-14 shrink-0`}>Engine</span>
+              <Segmented
+                name="layout-algorithm"
+                aria-label="Layout algorithm"
+                value={layout}
+                options={LAYOUT_ALGORITHM_OPTIONS}
+                onChange={setLayout}
+                className="min-w-0 flex-1"
+              />
             </div>
-          </div>
+          </LayoutModeControl>
           <NodeLegend entries={nodeLegendEntries} onToggleKind={handleToggleKind} />
           {ingressNodeIds.size > 0 && (
             <IngressToggle visible={showIngress} onToggle={() => setShowIngress((v) => !v)} />
@@ -564,16 +565,16 @@ export function GraphView({
       )}
       <div className="relative min-w-0 flex-1">
         {legendCollapsed && (
-          <button
-            type="button"
+          <Button
+            size="icon"
             aria-label="Show legend"
             title="Show legend"
             data-testid="legend-expand"
-            className="absolute left-2 top-2 z-[1000] rounded bg-surface px-2 py-1 text-primary shadow"
+            className="absolute left-2 top-2 z-[1000] shadow-panel"
             onClick={() => setLegendCollapsed(false)}
           >
-            ›
-          </button>
+            <ChevronRightIcon size={14} />
+          </Button>
         )}
         <SearchBar
           query={searchQuery}
@@ -585,20 +586,22 @@ export function GraphView({
           onFitToIds={handleFitToIds}
         />
         {hasPayload && errors.length > 0 && (
-          <div className="pointer-events-none absolute left-2 right-[380px] top-2 z-[3] text-sm text-primary">
-            Some graph entries were skipped: {errors[0]}
+          <div className="pointer-events-none absolute left-2 right-[380px] top-2 z-[3] flex">
+            <span className="truncate rounded-md border border-[color-mix(in_srgb,var(--ksg-status-warning)_45%,transparent)] bg-overlay px-2.5 py-1.5 text-[11px] text-primary shadow-panel backdrop-blur-sm">
+              Some graph entries were skipped: <span className="font-mono text-secondary">{errors[0]}</span>
+            </span>
           </div>
         )}
         {filterHiddenNotice !== null && (
           <div
-            className="absolute left-2 right-[380px] top-8 z-[4] rounded border border-medium bg-surface px-2 py-1 text-sm text-primary"
+            className="absolute left-2 top-11 z-[4] flex max-w-md items-center gap-3 rounded-md border border-hairline bg-overlay px-3 py-2 text-[12px] text-primary shadow-panel backdrop-blur-sm"
             data-testid="locate-filter-hidden"
             role="status"
           >
             Node is hidden by the current filters and was not selected.
-            <button type="button" className="ml-2 underline" onClick={() => setFilterHiddenNotice(null)}>
+            <Button variant="ghost" size="sm" className="-mr-1 ml-auto" onClick={() => setFilterHiddenNotice(null)}>
               Dismiss
-            </button>
+            </Button>
           </div>
         )}
         {emptyMessage !== null && (
