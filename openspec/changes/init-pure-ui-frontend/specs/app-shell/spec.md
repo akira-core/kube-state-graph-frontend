@@ -75,7 +75,7 @@
 
 ### Requirement: 頂部導覽列
 
-應用 SHALL 於視圖區上方持續顯示一列固定高度、不隨內容捲動的導覽列;在 Graph 視圖、Sankey 視圖與找不到頁面畫面皆存在。導覽列 MUST 含:
+應用 SHALL 於視圖區上方持續顯示一列固定高度、不隨內容捲動的導覽列;在 Graph 視圖、Sankey 視圖與找不到頁面畫面皆存在。**唯一的例外是 Sankey 視圖的專注模式**(見 `storage-flow-sankey` 的「專注模式」):其啟用期間導覽列 MUST 收起以讓圖填滿視窗,離開專注模式後 MUST 立即回復。除此之外任何情況 MUST NOT 隱藏導覽列。導覽列 MUST 含:
 
 1. 應用名稱;
 2. Graph 與 Sankey 兩個視圖連結,對應目前路由者 MUST 呈現 active 樣式並標示為目前頁面;
@@ -98,6 +98,11 @@
 
 - **WHEN** 設定的 `demoMode` 為 `false`
 - **THEN** 導覽列不含 demo 模式標記
+
+#### Scenario: Sankey 專注模式收起導覽列
+
+- **WHEN** 使用者於 Sankey 視圖進入專注模式,隨後離開
+- **THEN** 進入期間導覽列不顯示、Sankey 圖區填滿視窗;離開後導覽列立即回復,其 active 連結、主題切換與狀態指示器均維持進入前的狀態
 
 ### Requirement: 主題切換與持久化
 
@@ -224,7 +229,7 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 
 ### Requirement: 視圖區填滿剩餘視窗高度並響應尺寸
 
-導覽列之下的視圖區 MUST 填滿視窗扣除導覽列後的全部剩餘高度與全部寬度;頁面本身 MUST NOT 出現整頁捲軸。Graph 與 Sankey 視圖 MUST 依視圖區尺寸繪製;視窗尺寸改變時視圖區 MUST 隨之改變,且視圖 MUST 重新適配(Graph 視圖的 canvas 重新調整並 fit;Sankey 視圖重新佈局),內容不得被裁切至視圖區之外。**由 app 內部配置改變(而非視窗尺寸改變)所導致的視圖區尺寸變化 —— 如視圖自隱藏切回可見 —— MUST 只使 Graph 視圖重算 canvas 尺寸,MUST NOT 重新 fit:該視圖切走前的 zoom 與 pan MUST 被保留(見 `graph-view` 的「容器尺寸響應」需求)。**
+導覽列之下的視圖區 MUST 填滿視窗扣除導覽列後的全部剩餘高度與全部寬度;頁面本身 MUST NOT 出現整頁捲軸。Graph 與 Sankey 視圖 MUST 依視圖區尺寸繪製;視窗尺寸改變時視圖區 MUST 隨之改變,且視圖 MUST 重新適配(Graph 視圖的 canvas 重新調整並 fit;Sankey 視圖以 `viewBox` 等比重新適配,**不重新佈局** —— 見 `storage-flow-sankey` 的「尺寸與容器 resize」),內容不得被裁切至視圖區之外。**唯一例外**:Sankey 使用者已建立的圖內縮放平移視角 MUST 被保留,即使該視角使部分內容落於可視範圍外 —— 視窗縮放 MUST NOT 重置使用者的圖內視角。**由 app 內部配置改變(而非視窗尺寸改變)所導致的視圖區尺寸變化 —— 如視圖自隱藏切回可見 —— MUST 只使 Graph 視圖重算 canvas 尺寸,MUST NOT 重新 fit:該視圖切走前的 zoom 與 pan MUST 被保留(見 `graph-view` 的「容器尺寸響應」需求)。**
 
 #### Scenario: 視圖區高度等於視窗扣除導覽列
 
@@ -234,11 +239,11 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 #### Scenario: 縮放視窗後視圖重新適配
 
 - **WHEN** 使用者將視窗由 1600×900 縮至 1000×700
-- **THEN** 視圖區隨之縮小,目前視圖以新尺寸重繪且全部內容仍在可視範圍內
+- **THEN** 視圖區隨之縮小,目前視圖以新尺寸重繪且全部內容仍在可視範圍內;若 Sankey 存在使用者自訂的圖內縮放平移視角,則維持該視角而不強制全圖可見
 
 ### Requirement: 跨視圖保留各視圖的暫時狀態
 
-各視圖的暫時狀態 SHALL 在同一 session 內於視圖切換時保留:Graph 視圖的選取、collapse 集合、篩選(kind / edge type / ingress 可見性)、pod-parent mode、搜尋字串、legend 收合狀態;Sankey 視圖的模式與選取。使用者離開再返回某視圖時,MUST 見到離開時的狀態。
+各視圖的暫時狀態 SHALL 在同一 session 內於視圖切換時保留:Graph 視圖的選取、collapse 集合、篩選(kind / edge type / ingress 可見性)、pod-parent mode、搜尋字串、legend 收合狀態;Sankey 視圖的 mode selector、cluster selector 與縮放平移視角(Sankey MUST NOT 持有持久的選取狀態,見 `storage-flow-sankey`;專注模式則於切走視圖時解除)。使用者離開再返回某視圖時,MUST 見到離開時的狀態。
 
 上述狀態 MUST NOT 持久化至瀏覽器本機儲存,MUST NOT 寫入 URL(路由路徑 MUST 維持精確的 `/graph` / `/sankey`,無 query string、無 hash);完整重新整理後 MUST 全部回到初始值(其中 Graph 視圖的佈局演算法初始值來自設定的 `defaultLayout`)。資料重新載入 MUST NOT 主動清除這些狀態;資料改變後個別狀態如何對應(例如被選取的節點已不存在)由各視圖規範。
 

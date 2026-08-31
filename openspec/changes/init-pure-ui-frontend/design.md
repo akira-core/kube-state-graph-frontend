@@ -90,7 +90,7 @@
 
 ### 7. 視圖切換:首訪時延遲掛載,之後保持掛載
 
-**Decision:** 兩個視圖各自在**首次進入時**掛載,之後切換視圖只切換可見性(以 `hidden` 屬性),**不卸載**。切回可見時,對該視圖發一次尺寸重算(cytoscape `resize()`,Sankey 重新量測容器)。
+**Decision:** 兩個視圖各自在**首次進入時**掛載,之後切換視圖只切換可見性(以 `hidden` 屬性),**不卸載**。切回可見時,對該視圖發一次尺寸重算(cytoscape `resize()`;Sankey 只在**首次**可見時量一次容器以決定開場視角,之後 `viewBox` 自行適配、不需重算)。
 
 **Why:** spec 要求「跨視圖切換保留各視圖的暫時狀態」且「切換不得重新取數或重新正規化」。若卸載重掛,cytoscape instance 被銷毀 → 重建 → 重跑佈局,使用者會失去 viewport、zoom、collapse 與選取,且佈局重算是本 app 最貴的操作。保持掛載讓這些狀態自然存續。延遲首次掛載則避免使用者直接深連結到 `/sankey` 時仍付出 graph 佈局成本。
 
@@ -98,13 +98,26 @@
 
 **Alternatives considered:** _兩視圖都在啟動時掛載_ —— 深連結到 Sankey 時仍付 graph 佈局成本。_切換即卸載,狀態提升到 shell_ —— cytoscape 的 viewport / zoom / collapse 難以完整序列化再還原,且重跑佈局的視覺跳動無法接受。
 
-### 8. Sankey:d3-sankey 算佈局,React 自繪 SVG
+### 8. Sankey:自算佈局 + React 自繪 SVG,盒卡節點與單一縮放層
 
-**Decision:** `d3-sankey` 只負責節點與連線的幾何計算;渲染由 React 產生 SVG(`<path>` / `<rect>` / `<text>`)。read / write 雙向連線、零權重的最小厚度虛線、hover 全路徑高亮(切 class)、tooltip、點擊跨視圖 locate,全部是自己的 JSX 與事件處理。顏色取自決策 3 的 token。
+**Decision:** 不引入圖表庫,也**不使用 `d3-sankey`**;佈局是自己的純函式,渲染由 React 產生 SVG(`<path>` / `<rect>` / `<text>`)。
 
-**Why:** spec 對這張圖的規定(同一對 source/target 畫兩條可區分連線、零權重仍需可見、hover 點亮上下游全路徑、顏色不得只靠色相區分)幾乎每一條都是圖表庫的邊緣案例。自繪 SVG 讓每條規則變成普通的 React 程式碼,且與 Tailwind + token 的架構一致 —— 不需要第二套主題系統。
+佈局分四步,每步都是可單測的純函式:
 
-**Alternatives considered:** _Apache ECharts_ —— sankey 為內建 series,設定即出圖,但 canvas 渲染使 CSS 變數主題化失效(需在 JS 端重建 option)、自訂高亮須走其 `dispatchAction`、雙向連線與零權重樣式受其 API 限制,且體積約 300KB+。_@nivo/sankey_ —— React 原生且可傳自訂節點元件,但自有 theme 系統會與 Tailwind + token 並行,且同一對 source/target 的兩條連線是其資料模型的邊緣案例。
+1. **欄 x** —— tier 固定四欄(`pod` / `pvc` / `netapp-aggr` / `netapp-node`),欄寬取該欄最寬盒卡,欄距固定。
+2. **欄內順序** —— 依 spec 的確定性排序(總流量降序,同值 `label` 字典序);pod 欄先依 namespace 分組再排序。
+3. **槽位疊** —— 每個節點左右兩側各一疊槽位,槽高 `max(緞帶厚度, 最小列高)`、固定間距、於盒卡內文垂直置中;盒卡高度由此推出(不與權重成正比)。
+4. **緞帶幾何** —— 兩端錨在槽位中心的三次貝茲填色區域,厚度出自全圖共用的一把比例尺 `最大厚度 / 全圖最大權重`,下限為最小厚度。
+
+渲染層再加三件事:節點盒卡(標題 / 分隔線 / 副標,kind 以實線與虛線描邊區分,`netapp-node` 為葉卡)、緞帶漸層與帶上數值(描邊光暈,非不透明底板)、欄位標題與 namespace 色條。hover 全路徑高亮切 class、tooltip、點擊跨視圖 locate 都是普通的 React 事件處理。顏色一律取自決策 3 的 token。
+
+**縮放平移是一層 `<g transform>`,不是重新佈局。** SVG 以 `viewBox` + `preserveAspectRatio="xMidYMid meet"` 填滿容器,所以容器 resize 只是換一次適配比例,佈局函式不重跑;縮放與平移只改那一層 `<g>` 的 `transform`,`<defs>`(漸層)留在外面以免被一起縮放。這帶來真幾何縮放:字級與線寬跟著放大,不需要反向補償。鍵盤(`+` `-` `0` `1` `F` `Esc`)綁在圖區容器而非 `document`,因為 `app-shell` 明文禁止 shell 層級的全域快捷鍵。
+
+**Why 不用 `d3-sankey`:** 盒卡模型讓它的每一個輸出都被覆寫。它的核心是「節點高度與通過量成正比」,而盒卡高度來自槽位最小列高與標題副標,兩者不相容;欄內順序 spec 指定為確定性排序而非它的 barycenter 疊代;連線端點錨在槽位中心而非節點高度的比例位置,`sankeyLinkHorizontal` 的等寬路徑也不是這裡的形狀。留著它等於付一個相依去算一組全部丟掉的值。改為自算後,佈局是四個小純函式,測試比整合一個被覆寫的函式庫更直接。
+
+**Why 自繪而非圖表庫:** spec 對這張圖的規定(同一對 source/target 畫兩條可區分連線、零權重仍需可見、hover 點亮上下游全路徑、顏色不得只靠色相區分、盒卡節點、圖內縮放平移)幾乎每一條都是圖表庫的邊緣案例。自繪 SVG 讓每條規則變成普通的 React 程式碼,且與 Tailwind + token 的架構一致 —— 不需要第二套主題系統。
+
+**Alternatives considered:** _Apache ECharts_ —— sankey 為內建 series,設定即出圖,但 canvas 渲染使 CSS 變數主題化失效(需在 JS 端重建 option)、自訂高亮須走其 `dispatchAction`、雙向連線與零權重樣式受其 API 限制,盒卡節點與槽位更不在其資料模型內,且體積約 300KB+。_@nivo/sankey_ —— React 原生且可傳自訂節點元件,但自有 theme 系統會與 Tailwind + token 並行,且同一對 source/target 的兩條連線是其資料模型的邊緣案例。_保留 `d3-sankey` 只用它排序_ —— 排序規則已由 spec 固定,它算的其餘一切都要丟掉。
 
 ### 9. Cytoscape × React 整合慣例(自 panel 移植,兩處修正)
 
@@ -208,13 +221,15 @@ CI 鏈:`typecheck → lint → fixture:check → unit → e2e → build`。
 
 - **搜尋列、tooltip、legend 需自寫** → 這三塊佔前端工作量的顯著比例,且 spec 規定到按鍵層級,實作偏差不易在 code review 中看出。**Mitigation:** 每條鍵盤與定位規則都有對應 scenario,以元件測試逐條覆蓋;`right: 8`、40% 最大高度、z-index 相對關係等定位契約寫成可斷言的測試。
 
-- **隱藏視圖的尺寸量測** → 決策 7 讓非作用中的視圖容器尺寸為 0,cytoscape 與 Sankey 在該期間的量測無效。**Mitigation:** 切回可見時顯式觸發尺寸重算,並以 e2e 覆蓋「切到 Sankey 再切回 Graph,圖面尺寸正確且 viewport 未重置」。
+- **隱藏視圖的尺寸量測** → 決策 7 讓非作用中的視圖容器尺寸為 0,cytoscape 在該期間的量測無效;Sankey 只有「開場視角」這一次量測會被影響(`viewBox` 適配本身不需要量容器)。**Mitigation:** cytoscape 於切回可見時顯式觸發尺寸重算;Sankey 把開場視角的計算延到容器量得到非零尺寸之後。以 e2e 覆蓋「切到 Sankey 再切回 Graph,圖面尺寸正確且 viewport 未重置」與「深連結直接進 `/sankey`,開場視角為符合視窗且不放大」。
 
 - **`ResizeObserver` 與 cytoscape `resize()` 的抖動** → debounce 太短會在拖曳視窗時反覆重算,太長則感覺遲鈍。**Mitigation:** 沿用 panel 已調校過的 debounce 值,並以 spec 的尺寸響應 scenario 驗證。
 
-- **Sankey 自繪的工作量** → 約 300 行渲染碼,含路徑幾何、雙向連線佈局與 hover 路徑追蹤。**Mitigation:** 幾何交給 `d3-sankey`,自寫部分限於 SVG 產生與事件;hover 路徑追蹤是純函式(給定節點求上下游連線集合),可獨立單測。
+- **Sankey 自繪的工作量** → 去掉 `d3-sankey` 後連佈局也自寫:欄 x、欄內順序、槽位疊、緞帶幾何,加上盒卡、欄位標題、色條、縮放平移與專注模式,量級約在 600 行。**Mitigation:** 佈局四步與 hover 路徑追蹤(給定節點求上下游連線集合)全是純函式,可脫離 DOM 單測;渲染層只做「純函式輸出 → SVG」的直譯,沒有藏在渲染裡的幾何。縮放平移不碰佈局,兩者的測試互不干擾。
 
-- **cytoscape bundle 約 300KB** → 首次載入成本固定存在。**Mitigation:** 接受(見 Non-Goals);Sankey 選 d3-sankey 而非 ECharts 已避免再疊加 300KB。
+- **cytoscape bundle 約 300KB** → 首次載入成本固定存在。**Mitigation:** 接受(見 Non-Goals);Sankey 完全自繪,不再疊加任何圖表相依(ECharts 約 300KB+、`d3-sankey` 亦已移除)。
+
+- **專注模式收起 shell 導覽列** → 這是全 app 唯一由視圖隱藏 shell chrome 的路徑,離開的出口只剩 `Esc` 與控制列的按鈕;若兩者同時失效,使用者會被困在一個沒有導覽的畫面。**Mitigation:** `app-shell` 的導覽列需求寫死這條例外並只給 Sankey 專注模式;離開的兩條路徑各有 scenario;專注模式不入 URL、不持久化,重新整理必定回到有導覽列的狀態。
 
 - **`demoMode` 誤設於生產** → ConfigMap 打錯字可能讓生產環境顯示假資料。**Mitigation:** demo 模式必須在 UI 顯眼處標示;且設定錯誤絕不靜默退回 demo(決策 12)。
 

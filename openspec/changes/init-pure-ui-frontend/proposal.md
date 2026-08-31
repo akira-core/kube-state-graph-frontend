@@ -18,7 +18,7 @@
   - Ingress visibility toggle:`ingress-gateway` 節點集合隱藏與 dashed 樣式
   - Switch-tier layout:自 `labels.level` 讀取 switch 層級並施加佈局約束
   - Node-group compound:panel 端合成的 `cluster > node group > node` 容器
-- **新增 Sankey 儲存流量視圖**:以 `pvc-to-netapp-aggr` edge 的 `read_bytes_per_sec` / `write_bytes_per_sec` 為 link 權重,沿 `pod → pvc → netapp-aggr → netapp-node` 鏈呈現儲存 throughput 流向;讀 / 寫可區分;無 metrics 的 edge 不畫入(absent ≠ 0)。以主流 charting 框架繪製,選型於 design 決定。
+- **新增 Sankey 儲存流量視圖**:以 `pvc-to-netapp-aggr` edge 的 `read_bytes_per_sec` / `write_bytes_per_sec` 為 link 權重,沿 `pod → pvc → netapp-aggr → netapp-node` 鏈呈現儲存 throughput 流向;讀 / 寫可區分;無 metrics 的 edge 不畫入(absent ≠ 0)。視覺語彙為盒卡節點加共用比例尺的漸層緞帶,並提供圖內縮放平移與專注模式;渲染方式於 design 決定。
 - **多視圖 app shell**:Graph 與 Sankey 兩視圖間切換(client-side routing),共用同一份已載入 / 正規化的 graph 資料;主題切換、pod-parent mode、legend 收合等 view state 為 app 自有狀態。
 - **新增檢視時間範圍(view time range)**:取代 panel 自 Grafana dashboard 繼承的時間範圍。導覽列提供相對區間(1h / 6h / 24h / 7d)與自訂絕對區間;它同時是 graph 查詢的視窗(`start` / `end`,上游缺任一者即回 400)與 node detail Dashboard 查詢的視窗(`from_time` / `to_time`),alert「Last occurred」點擊將其設為該時刻 ±5 分鐘。
 - **新增後端 graph 過濾(`graph-filters`)**:取代 Grafana dashboard 變數所做的窄化。導覽列之下的過濾列提供 cluster / AZ / env / namespace / edge type 與投影(`prune`)控制,以查詢參數送往後端而非於前端套用;選項自 pod inventory 的 label values 與後端 edge-type 目錄列舉。
@@ -40,7 +40,7 @@
 - `ingress-visibility-toggle`:ingress-gateway 節點集合辨識、隱藏切換、dashed 樣式——自 panel `ingress-visibility-toggle` 移植。
 - `switch-tier-layout`:switch level 讀取與佈局約束——自 panel `switch-tier-layout` 移植。
 - `node-group-compound`:panel 端合成的 node group 容器——自 panel `node-group-compound` 移植。
-- `storage-flow-sankey`:自正規化 graph 推導 Sankey 節點與 link(tier、權重、讀 / 寫分流、缺值處理)、Sankey 渲染、hover / 選取與 Graph 視圖的互通(如點選 Sankey 節點可跳至 Graph 定位)。
+- `storage-flow-sankey`:自正規化 graph 推導 Sankey 節點與 link(tier、權重、讀 / 寫分流、缺值處理)、Sankey 渲染(盒卡節點與槽位、漸層緞帶與帶上數值、欄位標題、namespace 分組色條、圖外數字摘要)、圖區的縮放平移與專注模式、hover 與 Graph 視圖的互通(如點選 Sankey 節點可跳至 Graph 定位)。
 - `graph-filters`:送往後端的 graph 過濾——cluster / AZ / env / namespace / edge type 與投影(`prune`)控制、其查詢參數對應、選項自 pod inventory label values 與後端 edge-type 目錄列舉、來源失敗時的降級——取代 Grafana dashboard 變數。
 
 ### Modified Capabilities
@@ -50,7 +50,7 @@
 ## Impact
 
 - **新增程式碼**:整個 `src/` 樹(feature-first 結構,沿用 panel 慣例)、`tests/`、`vite.config.ts`、`package.json` 等專案設定。
-- **新增依賴**(候選,最終於 design 定案):`react`、`react-dom`、`vite`、`typescript`;`cytoscape`、`cytoscape-fcose`、`cytoscape-dagre`、`cytoscape-expand-collapse`(與 panel 相同);Sankey 候選 —— `d3-sankey`(佈局)+ React 自繪 SVG、Apache ECharts(內建 sankey series)、`@nivo/sankey`;client-side router(如 `react-router`);測試 `vitest`、`@playwright/test`。
+- **新增依賴**(候選,最終於 design 定案):`react`、`react-dom`、`vite`、`typescript`;`cytoscape`、`cytoscape-fcose`、`cytoscape-dagre`、`cytoscape-expand-collapse`(與 panel 相同);Sankey 候選 —— 完全自繪 SVG(自算佈局,無圖表相依)、`d3-sankey`(佈局)+ React 自繪 SVG、Apache ECharts(內建 sankey series)、`@nivo/sankey`;client-side router(如 `react-router`);測試 `vitest`、`@playwright/test`。
 - **外部系統**:kube-state-graph 後端 graph 查詢端點(`/v1/graph/service_graph`)與 detail 子端點(`code_changes`、`config_changes`、`dashboard`),每個 URL 皆由 runtime config 指定(需 CORS 允許前端 origin,或以 web server 反向代理 / dev proxy 處理)。不改動後端契約。
 - **部署**:Kubernetes 叢集;新增 `Dockerfile`、web server 設定、`deploy/` manifests;CI 需建置與推送 image。
 - **與 panel repo 的關係**:`src/shared/**` 與各 feature 純邏輯以複製移植方式帶入(非 monorepo、非套件依賴);兩 repo 之後獨立演進。fixture 需與後端契約同步,沿用 panel 的 `fixture:check` 防漂移機制。

@@ -12,7 +12,11 @@ vi.mock('../graph-view', () => ({
 }));
 
 vi.mock('../storage-flow-sankey', () => ({
-  SankeyView: () => <div data-testid="sankey-view" />,
+  SankeyView: (props: { focusMode: boolean; onFocusModeChange: (next: boolean) => void }) => (
+    <div data-testid="sankey-view" data-focus-mode={props.focusMode}>
+      <button onClick={() => props.onFocusModeChange(!props.focusMode)}>toggle-sankey-focus</button>
+    </div>
+  ),
 }));
 
 const DEMO: RuntimeConfig = {
@@ -123,5 +127,34 @@ describe('AppShell routing', () => {
     unmount();
     renderAt('/graph', { ...DEMO, demoMode: false });
     expect(screen.queryByTestId('demo-badge')).not.toBeInTheDocument();
+  });
+
+  it('hides the top nav while Sankey is in focus mode, and restores it on exit', async () => {
+    const user = userEvent.setup();
+    renderAt('/sankey', DEMO);
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'toggle-sankey-focus' }));
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-view')).toHaveAttribute('data-focus-mode', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'toggle-sankey-focus' }));
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+  });
+
+  it('drops focus mode when the user navigates away from Sankey by other means (browser back)', async () => {
+    const user = userEvent.setup();
+    renderAt('/graph', DEMO);
+    await user.click(screen.getByRole('link', { name: 'Sankey' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/sankey'));
+
+    await user.click(screen.getByRole('button', { name: 'toggle-sankey-focus' }));
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+
+    window.history.back();
+    await waitFor(() => expect(window.location.pathname).toBe('/graph'));
+    await waitFor(() => {
+      expect(screen.getByRole('navigation')).toBeInTheDocument();
+    });
   });
 });

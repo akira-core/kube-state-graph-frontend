@@ -1,6 +1,14 @@
 import type cytoscape from 'cytoscape';
-import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey';
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 
 import { formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
@@ -9,6 +17,11 @@ import { Select } from '../../shared/ui/Select';
 import { useThemeTokens } from '../theme';
 
 import { deriveSankey, formatBytesPerSec, hoverPathLinks, type SankeyMode } from './deriveSankey';
+import { layoutSankey, TIER_LABEL, type LayoutLink } from './layoutSankey';
+import { SankeyChart, type HoverLit } from './SankeyChart';
+import { SankeyControlBar } from './SankeyControlBar';
+import { SankeySummary, type NamespaceSubtotalRow, type NodeSummaryRow } from './SankeySummary';
+import { openingViewport, useZoomPan } from './useZoomPan';
 
 const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
   { value: 'read', label: 'Read' },
@@ -23,29 +36,15 @@ export interface SankeyViewProps {
   hasPayload: boolean;
   demoMode: boolean;
   visible: boolean;
+  focusMode: boolean;
+  onFocusModeChange: (next: boolean) => void;
   onLocateNode: (id: string) => void;
 }
 
-interface LaidNode {
-  id: string;
-  label: string;
-  kind: string;
-  x0: number;
-  x1: number;
-  y0: number;
-  y1: number;
-}
-
-interface LaidLink {
-  source: string;
-  target: string;
-  direction: 'read' | 'write';
-  value: number;
-  width: number;
-  path: string;
-  splitAmong?: number;
-  maxBytesPerSec?: number;
-  maxIops?: number;
+interface Tip {
+  x: number;
+  y: number;
+  text: string[];
 }
 
 export function SankeyView({
@@ -55,20 +54,25 @@ export function SankeyView({
   hasPayload,
   demoMode,
   visible,
+  focusMode,
+  onFocusModeChange,
   onLocateNode,
 }: Readonly<SankeyViewProps>): JSX.Element {
   const tokens = useThemeTokens();
   const [mode, setMode] = useState<SankeyMode>('both');
   const [cluster, setCluster] = useState<string | undefined>(undefined);
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [tip, setTip] = useState<{ x: number; y: number; text: string[] } | null>(null);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ w: 800, h: 480 });
+  const [tip, setTip] = useState<Tip | null>(null);
+  const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const chartHostRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ w: 800, h: 480 });
+  const openedRef = useRef(false);
 
-  // `status`/`hasPayload` are deps, not decoration: the ref'd container is rendered only
-  // AFTER the loading / fatal-error early returns below, so on a first load the effect
-  // would otherwise run once with a null ref, bail, and never re-run — leaving `size`
-  // pinned at the 800x480 seed for the life of the view.
+  // See SankeyView.test.tsx: the ref'd box only renders once the loading / fatal-error
+  // early returns below have passed, so a first-load effect with a null ref must re-run
+  // once the box actually mounts, not just once at first render.
   useEffect(() => {
     if (!visible) {
       return;
@@ -84,7 +88,7 @@ export function SankeyView({
       }
       const { width, height } = entry.contentRect;
       if (width > 0 && height > 0) {
-        setSize({ w: width, h: height });
+        setContainerSize({ w: width, h: height });
       }
     });
     ro.observe(el);
@@ -106,83 +110,46 @@ export function SankeyView({
   }, [elements]);
 
   const graph = useMemo(() => deriveSankey(elements, mode, cluster), [elements, mode, cluster]);
+  // Layout depends only on the derived graph and the theme's namespace palette — never on
+  // container size or the pan/zoom viewport, so a resize or a drag can never re-run it
+  // (see storage-flow-sankey "尺寸與容器 resize" / "圖區的縮放與平移").
+  const namespacePalette = useMemo(
+    () => [
+      tokens.sankey.namespace1,
+      tokens.sankey.namespace2,
+      tokens.sankey.namespace3,
+      tokens.sankey.namespace4,
+      tokens.sankey.namespace5,
+    ],
+    [tokens]
+  );
+  const layout = useMemo(() => layoutSankey(graph, namespacePalette), [graph, namespacePalette]);
 
-  const layout = useMemo(() => {
-    if (graph.nodes.length === 0 || size.w < 40 || size.h < 40) {
-      return { nodes: [] as LaidNode[], links: [] as LaidLink[] };
+  const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize);
+  // A fresh `zoom` object comes back every render; pull out just the one stable setter the
+  // opening-viewport effect below needs so its dep array doesn't chase the whole object.
+  const { setViewport } = zoom;
+
+  // One-shot opening viewport: fit-but-never-enlarge, computed the first time real content
+  // and a real container measurement are both available, then never touched again by data
+  // changes — mode/cluster/refresh/theme/resize all preserve whatever the user set after.
+  useEffect(() => {
+    if (openedRef.current || layout.nodes.length === 0 || containerSize.w < 40 || containerSize.h < 40) {
+      return;
     }
-    const layoutGen = d3Sankey<
-      { id: string },
-      { source: string; target: string; value: number; direction: 'read' | 'write' }
-    >()
-      .nodeId((d) => d.id)
-      .nodeWidth(16)
-      .nodePadding(12)
-      // The right inset is wider than the left: the last column's labels are drawn to the
-      // RIGHT of their node (x1 + 6), so an even inset clips every terminal node's name.
-      .extent([
-        [24, 24],
-        [size.w - Math.min(160, size.w * 0.25), size.h - 24],
-      ]);
-    const inputNodes = graph.nodes.map((n) => ({ id: n.id, label: n.label, kind: n.kind }));
-    const inputLinks = graph.links.map((l) => ({
-      source: l.source,
-      target: l.target,
-      value: l.value === 0 ? 0.0001 : l.value,
-      direction: l.direction,
-    }));
-    const sankeyed = layoutGen({
-      nodes: inputNodes.map((n) => ({ ...n })),
-      links: inputLinks.map((l) => ({ ...l })),
-    });
-    const path = sankeyLinkHorizontal();
-    const nodes: LaidNode[] = (
-      sankeyed.nodes as Array<{
-        id: string;
-        label: string;
-        kind: string;
-        x0?: number;
-        x1?: number;
-        y0?: number;
-        y1?: number;
-      }>
-    ).map((n) => ({
-      id: n.id,
-      label: n.label,
-      kind: n.kind,
-      x0: n.x0 ?? 0,
-      x1: n.x1 ?? 0,
-      y0: n.y0 ?? 0,
-      y1: n.y1 ?? 0,
-    }));
-    const links: LaidLink[] = (
-      sankeyed.links as Array<{
-        source: { id: string };
-        target: { id: string };
-        value: number;
-        width?: number;
-        direction: 'read' | 'write';
-      }>
-    ).map((l, i) => {
-      const original = graph.links[i];
-      return {
-        source: l.source.id,
-        target: l.target.id,
-        direction: l.direction,
-        value: original?.value ?? l.value,
-        width: Math.max(l.width ?? 1, original?.value === 0 ? 1.5 : 1),
-        path: path(l as never) ?? '',
-        ...(original?.splitAmong !== undefined ? { splitAmong: original.splitAmong } : {}),
-        ...(original?.maxBytesPerSec !== undefined ? { maxBytesPerSec: original.maxBytesPerSec } : {}),
-        ...(original?.maxIops !== undefined ? { maxIops: original.maxIops } : {}),
-      };
-    });
-    return { nodes, links };
-  }, [graph, size]);
+    setViewport(openingViewport({ w: layout.width, h: layout.height }, containerSize));
+    openedRef.current = true;
+  }, [layout, containerSize, setViewport]);
 
-  // A refresh may remove the node under the cursor. Its `mouseleave` will then never fire,
-  // so nothing else would clear this: the tooltip stays open describing a node that is gone,
-  // and `lit` — lighting a path of zero links — fades every remaining link and node.
+  useEffect(() => {
+    if (zoom.dragging) {
+      setTip(null);
+    }
+  }, [zoom.dragging]);
+
+  // A refresh may remove the node under the cursor; its mouseleave never fires, so nothing
+  // else clears this — the tooltip would describe a gone node and `lit` would fade
+  // everything against zero surviving links.
   useEffect(() => {
     if (hoverId !== null && !graph.nodes.some((n) => n.id === hoverId)) {
       setHoverId(null);
@@ -190,7 +157,7 @@ export function SankeyView({
     }
   }, [graph, hoverId]);
 
-  const lit = useMemo(() => {
+  const lit: HoverLit | null = useMemo(() => {
     if (hoverId === null) {
       return null;
     }
@@ -203,6 +170,66 @@ export function SankeyView({
     }
     return { keys, nodeIds };
   }, [graph, hoverId]);
+
+  useLayoutEffect(() => {
+    if (tip === null) {
+      setTipPos(null);
+      return;
+    }
+    const el = tipRef.current;
+    const box = boxRef.current;
+    if (el === null || box === null) {
+      setTipPos({ left: tip.x + 12, top: tip.y + 12 });
+      return;
+    }
+    const rect = box.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = Math.max(rect.left + 4, Math.min(tip.x + 12, rect.right - w - 4));
+    const top = Math.max(rect.top + 4, Math.min(tip.y + 12, rect.bottom - h - 4));
+    setTipPos({ left, top });
+  }, [tip]);
+
+  const summary = useMemo(() => {
+    const inbound = new Map<string, number>();
+    const outbound = new Map<string, number>();
+    for (const l of graph.links) {
+      inbound.set(l.target, (inbound.get(l.target) ?? 0) + l.value);
+      outbound.set(l.source, (outbound.get(l.source) ?? 0) + l.value);
+    }
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    const nodes: NodeSummaryRow[] = layout.nodes.map((ln) => {
+      const gn = byId.get(ln.id);
+      const used = gn?.usage?.usedBytes;
+      const capacity = gn?.usage?.capacityBytes;
+      const usageText = used !== undefined && capacity !== undefined ? formatUsage(used, capacity) : undefined;
+      return {
+        id: ln.id,
+        tier: TIER_LABEL[ln.kind],
+        label: ln.label,
+        inbound: inbound.get(ln.id) ?? 0,
+        outbound: outbound.get(ln.id) ?? 0,
+        ...(usageText !== undefined ? { usage: usageText } : {}),
+        ...((ln.kind === 'netapp-aggr' || ln.kind === 'netapp-node') && gn?.health !== undefined
+          ? { health: gn.health }
+          : {}),
+      };
+    });
+    const nsAgg = new Map<string, { count: number; total: number }>();
+    for (const n of graph.nodes) {
+      if (n.kind !== 'pod' || n.namespace === undefined) {
+        continue;
+      }
+      const cur = nsAgg.get(n.namespace) ?? { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += outbound.get(n.id) ?? 0;
+      nsAgg.set(n.namespace, cur);
+    }
+    const namespaces: NamespaceSubtotalRow[] = [...nsAgg.entries()]
+      .map(([namespace, v]) => ({ namespace, podCount: v.count, total: v.total }))
+      .sort((a, b) => b.total - a.total || a.namespace.localeCompare(b.namespace));
+    return { nodes, namespaces };
+  }, [graph, layout]);
 
   if (status === 'loading' && !hasPayload) {
     return <div className="flex h-full items-center justify-center text-secondary">Loading…</div>;
@@ -218,50 +245,152 @@ export function SankeyView({
   const emptyAll = !graph.hasAnyMeasurement;
   const emptyCluster = cluster !== undefined && graph.hasAnyMeasurement && graph.nodes.length === 0;
   const emptyMode = graph.hasAnyMeasurement && graph.links.length === 0 && !emptyCluster;
+  const chartReady = !emptyAll && !emptyMode && !emptyCluster;
+
+  const onNodeEnter = (id: string, evt: MouseEvent): void => {
+    if (zoom.dragging) {
+      return;
+    }
+    setHoverId(id);
+    const node = graph.nodes.find((g) => g.id === id);
+    const inboundLinks = graph.links.filter((l) => l.target === id);
+    const outboundLinks = graph.links.filter((l) => l.source === id);
+    const sum = (list: typeof inboundLinks, dir?: 'read' | 'write'): number =>
+      list.filter((l) => dir === undefined || l.direction === dir).reduce((acc, l) => acc + l.value, 0);
+    const flowLines =
+      mode === 'both'
+        ? [
+            `in read ${formatBytesPerSec(sum(inboundLinks, 'read'))}`,
+            `in write ${formatBytesPerSec(sum(inboundLinks, 'write'))}`,
+            `out read ${formatBytesPerSec(sum(outboundLinks, 'read'))}`,
+            `out write ${formatBytesPerSec(sum(outboundLinks, 'write'))}`,
+          ]
+        : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
+    const usage =
+      node !== undefined && (node.kind === 'pvc' || node.kind === 'netapp-aggr')
+        ? formatUsage(node.usage?.usedBytes, node.usage?.capacityBytes)
+        : undefined;
+    const lines = [
+      `${node?.kind ?? ''} / ${node?.label ?? id}`,
+      ...(node?.kind === 'pod' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
+      ...flowLines,
+      ...(usage !== undefined && usage.length > 0 ? [usage] : []),
+      ...(node !== undefined &&
+      (node.kind === 'netapp-aggr' || node.kind === 'netapp-node') &&
+      node.health !== undefined
+        ? [`health ${node.health}`]
+        : []),
+    ];
+    setTip({ x: evt.clientX, y: evt.clientY, text: lines });
+  };
+
+  const onLinkEnter = (link: LayoutLink, evt: MouseEvent): void => {
+    if (zoom.dragging) {
+      return;
+    }
+    const src = graph.nodes.find((g) => g.id === link.source);
+    const dst = graph.nodes.find((g) => g.id === link.target);
+    const lines = [
+      `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
+      `${link.direction}: ${formatBytesPerSec(link.value)}`,
+      ...(link.splitAmong !== undefined ? [`evenly split estimate across ${String(link.splitAmong)} pods`] : []),
+      ...(link.maxBytesPerSec !== undefined ? [`QoS ceiling ${formatBytesPerSec(link.maxBytesPerSec)}`] : []),
+      ...(link.maxIops !== undefined ? [`QoS ceiling ${String(link.maxIops)} IOPS`] : []),
+    ];
+    setTip({ x: evt.clientX, y: evt.clientY, text: lines });
+  };
+
+  const handleKeyDown = (evt: KeyboardEvent<HTMLDivElement>): void => {
+    const target = evt.target as HTMLElement;
+    // A plain button (the zoom/focus control bar) has no native keydown behavior for any
+    // of these keys, so it is deliberately not excluded here — unlike an input, select, or
+    // radio, which do, and whose own key handling this must not clobber.
+    if (target.closest('input, select, textarea, [role="radio"]') !== null) {
+      return;
+    }
+    switch (evt.key) {
+      case '+':
+      case '=':
+        evt.preventDefault();
+        zoom.zoomIn();
+        break;
+      case '-':
+        evt.preventDefault();
+        zoom.zoomOut();
+        break;
+      case '0':
+        evt.preventDefault();
+        zoom.fit();
+        break;
+      case '1':
+        evt.preventDefault();
+        zoom.resetOne();
+        break;
+      case 'f':
+      case 'F':
+        evt.preventDefault();
+        onFocusModeChange(!focusMode);
+        break;
+      case 'Escape':
+        if (focusMode) {
+          evt.preventDefault();
+          onFocusModeChange(false);
+        }
+        break;
+      default:
+        break;
+    }
+  };
 
   return (
     <div className="flex h-full w-full flex-col bg-canvas text-primary" data-testid="sankey-view">
-      <div className="flex h-11 shrink-0 items-center gap-3 border-b border-hairline bg-rail px-3">
-        <span className={eyebrowClass}>Storage flow</span>
-        <Segmented name="sankey-mode" aria-label="Sankey mode" value={mode} options={MODE_OPTIONS} onChange={setMode} />
-        {clusters.length >= 2 && (
-          <label className="flex items-center gap-1.5">
-            <span className={eyebrowClass}>Cluster</span>
-            <Select
-              value={cluster ?? ''}
-              onChange={(e) => setCluster(e.target.value === '' ? undefined : e.target.value)}
-            >
-              <option value="">All</option>
-              {clusters.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </label>
-        )}
-        {/* The direction key: the same stroke the chart draws, at legend scale. */}
-        <div className="ml-auto flex items-center gap-3">
-          {(mode === 'both' || mode === 'read') && (
-            <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-              <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-                <path d="M0 3h22" stroke={tokens.sankey.read} strokeWidth="3" />
-              </svg>
-              read
-            </span>
+      {!focusMode && (
+        <div className="flex h-11 shrink-0 items-center gap-3 border-b border-hairline bg-rail px-3">
+          <span className={eyebrowClass}>Storage flow</span>
+          <Segmented
+            name="sankey-mode"
+            aria-label="Sankey mode"
+            value={mode}
+            options={MODE_OPTIONS}
+            onChange={setMode}
+          />
+          {clusters.length >= 2 && (
+            <label className="flex items-center gap-1.5">
+              <span className={eyebrowClass}>Cluster</span>
+              <Select
+                value={cluster ?? ''}
+                onChange={(e) => setCluster(e.target.value === '' ? undefined : e.target.value)}
+              >
+                <option value="">All</option>
+                {clusters.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            </label>
           )}
-          {(mode === 'both' || mode === 'write') && (
-            <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-              <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-                <path d="M0 3h22" stroke={tokens.sankey.write} strokeWidth="3" strokeDasharray="4 3" />
-              </svg>
-              write
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-3">
+            {(mode === 'both' || mode === 'read') && (
+              <span className="flex items-center gap-1.5 text-[11px] text-secondary">
+                <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
+                  <path d="M0 3h22" stroke={tokens.sankey.read} strokeWidth="3" />
+                </svg>
+                read
+              </span>
+            )}
+            {(mode === 'both' || mode === 'write') && (
+              <span className="flex items-center gap-1.5 text-[11px] text-secondary">
+                <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
+                  <path d="M0 3h22" stroke={tokens.sankey.write} strokeWidth="3" strokeDasharray="4 3" />
+                </svg>
+                write
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-      {/* The measured box is the chart area, not the whole view: sizing the diagram to a
-          box that includes the toolbar pushes its bottom row off screen. */}
+      )}
+
       <div className="relative flex min-h-0 flex-1 flex-col" ref={boxRef}>
         {emptyAll && (
           <div
@@ -292,109 +421,47 @@ export function SankeyView({
                 : 'No measurements for the current direction. Try switching Read / Write / Both.'}
           </div>
         )}
-        {!emptyAll && !emptyMode && !emptyCluster && (
-          <svg className="min-h-0 flex-1" width={size.w} height={size.h} data-testid="sankey-svg">
-            {layout.links.map((l) => {
-              const key = `${l.source}|${l.target}|${l.direction}`;
-              const active = lit === null || lit.keys.has(key);
-              const color = l.direction === 'read' ? tokens.sankey.read : tokens.sankey.write;
-              const dashed = l.value === 0 || l.direction === 'write';
-              return (
-                <path
-                  key={key}
-                  d={l.path}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={Math.max(l.width, 1.5)}
-                  strokeOpacity={active ? 0.7 : 0.12}
-                  strokeDasharray={dashed ? '4 3' : undefined}
-                  data-testid={`sankey-link-${l.direction}`}
-                  onMouseEnter={(ev) => {
-                    const src = graph.nodes.find((g) => g.id === l.source);
-                    const dst = graph.nodes.find((g) => g.id === l.target);
-                    const lines = [
-                      `${src?.label ?? l.source} → ${dst?.label ?? l.target}`,
-                      `${l.direction}: ${formatBytesPerSec(l.value)}`,
-                      ...(l.splitAmong !== undefined
-                        ? [`evenly split estimate across ${String(l.splitAmong)} pods`]
-                        : []),
-                      ...(l.maxBytesPerSec !== undefined ? [`QoS ceiling ${formatBytesPerSec(l.maxBytesPerSec)}`] : []),
-                      ...(l.maxIops !== undefined ? [`QoS ceiling ${String(l.maxIops)} IOPS`] : []),
-                    ];
-                    setTip({ x: ev.clientX, y: ev.clientY, text: lines });
-                  }}
-                  onMouseLeave={() => setTip(null)}
-                />
-              );
-            })}
-            {layout.nodes.map((n) => {
-              const node = graph.nodes.find((g) => g.id === n.id);
-              const faded = lit !== null && !lit.nodeIds.has(n.id);
-              return (
-                <g
-                  key={n.id}
-                  data-testid={`sankey-node-${n.label}`}
-                  onMouseEnter={(ev) => {
-                    setHoverId(n.id);
-                    const inbound = graph.links.filter((l) => l.target === n.id);
-                    const outbound = graph.links.filter((l) => l.source === n.id);
-                    const sum = (list: typeof inbound, dir?: 'read' | 'write'): number =>
-                      list.filter((l) => dir === undefined || l.direction === dir).reduce((acc, l) => acc + l.value, 0);
-                    const flowLines =
-                      mode === 'both'
-                        ? [
-                            `in read ${formatBytesPerSec(sum(inbound, 'read'))}`,
-                            `in write ${formatBytesPerSec(sum(inbound, 'write'))}`,
-                            `out read ${formatBytesPerSec(sum(outbound, 'read'))}`,
-                            `out write ${formatBytesPerSec(sum(outbound, 'write'))}`,
-                          ]
-                        : [`in ${formatBytesPerSec(sum(inbound))}`, `out ${formatBytesPerSec(sum(outbound))}`];
-                    const usage =
-                      node !== undefined && (node.kind === 'pvc' || node.kind === 'netapp-aggr')
-                        ? formatUsage(node.usage?.usedBytes, node.usage?.capacityBytes)
-                        : undefined;
-                    const lines = [
-                      `${n.kind} / ${n.label}`,
-                      ...(node?.kind === 'pod' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
-                      ...flowLines,
-                      ...(usage !== undefined && usage.length > 0 ? [usage] : []),
-                      ...(node !== undefined &&
-                      (node.kind === 'netapp-aggr' || node.kind === 'netapp-node') &&
-                      node.health !== undefined
-                        ? [`health ${node.health}`]
-                        : []),
-                    ];
-                    setTip({ x: ev.clientX, y: ev.clientY, text: lines });
-                  }}
-                  onMouseLeave={() => {
-                    setHoverId(null);
-                    setTip(null);
-                  }}
-                  onClick={() => onLocateNode(n.id)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <rect
-                    x={n.x0}
-                    y={n.y0}
-                    width={Math.max(n.x1 - n.x0, 1)}
-                    height={Math.max(n.y1 - n.y0, 1)}
-                    fill={tokens.sankey.nodeFill}
-                    stroke={tokens.sankey.nodeStroke}
-                    opacity={faded ? 0.25 : 1}
-                  />
-                  <text x={n.x1 + 6} y={(n.y0 + n.y1) / 2} fill="currentColor" fontSize={11} dominantBaseline="middle">
-                    {n.label}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
+        {chartReady && (
+          <div className="relative min-h-0 flex-1">
+            <SankeyChart
+              layout={layout}
+              tokens={tokens}
+              viewport={zoom.viewport}
+              hostRef={chartHostRef}
+              hostProps={zoom.hostProps}
+              dragging={zoom.dragging}
+              lit={lit}
+              onNodeEnter={onNodeEnter}
+              onNodeLeave={() => {
+                setHoverId(null);
+                setTip(null);
+              }}
+              onNodeClick={onLocateNode}
+              onLinkEnter={onLinkEnter}
+              onLinkLeave={() => setTip(null)}
+              onKeyDown={handleKeyDown}
+            >
+              <SankeyControlBar
+                percent={zoom.percent}
+                focusMode={focusMode}
+                onZoomIn={zoom.zoomIn}
+                onZoomOut={zoom.zoomOut}
+                onFit={zoom.fit}
+                onResetOne={zoom.resetOne}
+                onToggleFocus={() => onFocusModeChange(!focusMode)}
+              />
+            </SankeyChart>
+          </div>
         )}
       </div>
-      {tip !== null && (
+
+      {!focusMode && chartReady && <SankeySummary nodes={summary.nodes} namespaces={summary.namespaces} />}
+
+      {tip !== null && tipPos !== null && (
         <div
+          ref={tipRef}
           className="pointer-events-none fixed z-[1100] max-w-xs rounded-md border border-hairline bg-elevated px-2.5 py-1.5 font-mono text-[11px] leading-relaxed shadow-panel"
-          style={{ left: tip.x + 12, top: tip.y + 12 }}
+          style={{ left: tipPos.left, top: tipPos.top }}
           role="tooltip"
         >
           {tip.text.map((line) => (

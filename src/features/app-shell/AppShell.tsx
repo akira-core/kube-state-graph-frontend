@@ -26,6 +26,7 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
   const isSankey = path === '/sankey';
   const [graphMounted, setGraphMounted] = useState(isGraph);
   const [sankeyMounted, setSankeyMounted] = useState(isSankey);
+  const [sankeyFocusMode, setSankeyFocusMode] = useState(false);
   const time = useViewTimeRange();
   const { filters, setValues, setPrune, clear } = useGraphFilters();
   // Demo mode renders a bundled fixture, so there is no backend to narrow: the option
@@ -66,6 +67,14 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
     document.title = isSankey ? 'Kube State Graph — Sankey' : isGraph ? 'Kube State Graph — Graph' : 'Kube State Graph';
   }, [isGraph, isSankey]);
 
+  // Sankey's focus mode is the one place a view hides the shell chrome — it MUST NOT
+  // outlive the view it was entered from (app-shell "頂部導覽列", the Sankey exception).
+  useEffect(() => {
+    if (!isSankey && sankeyFocusMode) {
+      setSankeyFocusMode(false);
+    }
+  }, [isSankey, sankeyFocusMode]);
+
   const notFound = !isGraph && !isSankey && path !== '/';
 
   const graphProps = useMemo(
@@ -83,17 +92,19 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <NavBar
-        demoMode={config.demoMode}
-        lastLoadedAt={state.lastLoadedAt}
-        refreshing={state.refreshing || (state.status === 'loading' && !state.hasPayload)}
-        error={state.error}
-        refreshIntervalSeconds={config.refreshIntervalSeconds}
-        onReload={reload}
-        viewRange={time.range}
-        onRelative={time.setRelative}
-        onAbsolute={time.setAbsolute}
-      />
+      {!sankeyFocusMode && (
+        <NavBar
+          demoMode={config.demoMode}
+          lastLoadedAt={state.lastLoadedAt}
+          refreshing={state.refreshing || (state.status === 'loading' && !state.hasPayload)}
+          error={state.error}
+          refreshIntervalSeconds={config.refreshIntervalSeconds}
+          onReload={reload}
+          viewRange={time.range}
+          onRelative={time.setRelative}
+          onAbsolute={time.setAbsolute}
+        />
+      )}
       {!config.demoMode && (
         <FilterBar filters={filters} options={filterOptions} onValues={setValues} onPrune={setPrune} onClear={clear} />
       )}
@@ -117,6 +128,8 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
               hasPayload={state.hasPayload}
               demoMode={config.demoMode}
               visible={isSankey}
+              focusMode={sankeyFocusMode}
+              onFocusModeChange={setSankeyFocusMode}
               onLocateNode={(id) => {
                 setLocateId(id);
                 void navigate('/graph');

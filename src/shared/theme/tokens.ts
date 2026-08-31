@@ -62,8 +62,22 @@ export interface ThemeTokens {
     write: string;
     readMuted: string;
     writeMuted: string;
+    /** Far (target) end of a link's gradient — same hue family as `read`, so direction stays legible mid-ribbon. */
+    readGradientEnd: string;
+    writeGradientEnd: string;
     nodeFill: string;
     nodeStroke: string;
+    /**
+     * Pod-tier namespace stripe colors — five flat keys (not an array) so every token leaf
+     * stays a plain string with its own CSS variable, matching every other entry in this
+     * file. Assigned by first-appearance order and cycled; kept out of the read/write hue
+     * families.
+     */
+    namespace1: string;
+    namespace2: string;
+    namespace3: string;
+    namespace4: string;
+    namespace5: string;
   };
 }
 
@@ -131,8 +145,15 @@ export const DARK_TOKENS: ThemeTokens = {
     write: '#c2410c',
     readMuted: 'rgba(56, 189, 248, 0.28)',
     writeMuted: 'rgba(194, 65, 12, 0.28)',
+    readGradientEnd: '#0ea5e9',
+    writeGradientEnd: '#ea580c',
     nodeFill: '#22252b',
     nodeStroke: 'rgba(204, 204, 220, 0.3)',
+    namespace1: '#a78bfa',
+    namespace2: '#34d399',
+    namespace3: '#fbbf24',
+    namespace4: '#818cf8',
+    namespace5: '#fb7185',
   },
 };
 
@@ -196,8 +217,15 @@ export const LIGHT_TOKENS: ThemeTokens = {
     write: '#9a3412',
     readMuted: 'rgba(2, 132, 199, 0.22)',
     writeMuted: 'rgba(154, 52, 18, 0.22)',
+    readGradientEnd: '#0369a1',
+    writeGradientEnd: '#c2410c',
     nodeFill: '#ffffff',
     nodeStroke: 'rgba(36, 41, 46, 0.3)',
+    namespace1: '#7c3aed',
+    namespace2: '#059669',
+    namespace3: '#d97706',
+    namespace4: '#4f46e5',
+    namespace5: '#e11d48',
   },
 };
 
