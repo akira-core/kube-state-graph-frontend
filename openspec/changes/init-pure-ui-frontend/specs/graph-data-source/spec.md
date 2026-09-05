@@ -399,13 +399,19 @@ Normalize boundary SHALL 於 anti-corruption boundary 將上游 leaf node 的選
 | kube-state-graph 的 alert overlay                        | `{ name, state, severity }`,讀自上游 `ALERTS` series | **完全沒有**——該 series 只陳述「此 alert 在請求視窗內 firing」,`last_over_time` 不保留發生史 |
 | panel 時代的產生者(內建 fixture、既有部署前置的告警來源) | 將同一 alert 的重複發生聚合為單筆                    | `time_records`(或 legacy `time`)                                                             |
 
-因此 `name` 與 `severity` 是**唯二**必填欄位,**發生時間不是**。沒有發生時間的 alert 是一筆**完整**的 alert,MUST NOT 因此丟棄——丟棄會讓真實後端的整個 overlay 在 200 回應下靜默清空,而那正是 overlay 存在要揭露的狀態。規則:
+因此 `name` 是**唯一**必填欄位——它是該 alert 的身分。**發生時間與 `severity` 都不是**:
 
-- 每筆 alert MUST 至少帶非空 `name` 與非空 `severity`(自由字串),否則丟棄。
+- overlay 完全不帶發生時間;
+- overlay 的 `severity` 以 `omitempty` 序列化,**未宣告 severity label 的規則會產出沒有該欄的 alert**。
+
+兩者缺漏都是一筆**完整**的 alert,MUST NOT 因此丟棄——丟棄會讓真實後端的 overlay 在 200 回應下靜默清空,而那正是 overlay 存在要揭露的狀態。兩者的降級方式與 `pod` / `service` 一致:省略該欄,由表格於該儲存格顯示 missing-value placeholder。規則:
+
+- 每筆 alert MUST 至少帶非空 `name`(自由字串),否則丟棄。
 - 發生時間自上游 wire 欄位 `time_records`(數字陣列)取得:MUST 僅保留有限(`Number.isFinite`)且 ≥ 0 的值,並**升序排序**後存為 `timeRecords`。
 - **相容舊後端**:缺 `time_records`(或其元素全部無效)時,MUST 退讀 legacy scalar 欄位 `time`(Unix 秒,須有限且 ≥ 0)→ `timeRecords: [time]`。
 - 經上述過濾後無任何有效發生時間時,`timeRecords` MUST **省略**(不得寫成 `[]`,亦不得寫成 `undefined` 值)——「無發生史」只有一種表示法,下游無須測試兩種。該 alert 本身 MUST 保留。
 - 上游的 `state` 欄(`firing` / `pending`)MUST NOT 投影至 `NodeAlert`:後端查詢帶固定 `alertstate="firing"` selector 且其 reader 會再測一次,抵達此處者皆已 firing,呈現該欄只會是一個常數。
+- `severity` 為選用的自由字串:非空字串時保留原樣,缺漏 / 空字串 / 非字串時 MUST **省略該欄**(不得代入預設等級)。缺漏 `severity` 與**無法辨識的自訂 label 不同**——後者仍是一個等級,取 fallback 顏色;前者是「無人評級」,由表格顯示 placeholder。
 - `pod` / `service` / `id` 為選用字串,缺值則省略。
 - 分組容器(`cluster` / `namespace` / `application` / `controller`)MUST NOT 攜帶自身 `alerts`(即使上游帶亦丟棄;controller 的 alerts 改由 enrichment 自子 pod 聚合——見「controller 告警(alerts)自子 pod 聚合」)。
 
@@ -441,10 +447,20 @@ Normalize boundary SHALL 於 anti-corruption boundary 將上游 leaf node 的選
 - **WHEN** 上游 alert 帶 `state: 'firing'`
 - **THEN** 產出的 `NodeAlert` **MUST NOT** 有 `state` 欄,其餘欄位照常解析
 
-#### Scenario: 缺 name / severity 的 alert 丟棄
+#### Scenario: 保留無 severity 的 alert
 
-- **WHEN** 上游 alert 缺 `name` 或 `severity` 為空字串
-- **THEN** 該 alert 被丟棄(即使 `time_records` 有效),其餘合法 alert 正常解析
+- **WHEN** 上游 alert 的 `severity` 缺漏、為空字串,或非字串
+- **THEN** 該 alert 仍出現於 `data.alerts`,且 **MUST NOT** 帶 `severity` 欄(不得代入 `info` / `critical` 等預設值)
+
+#### Scenario: 同時缺 severity 與發生時間
+
+- **WHEN** 上游 alert 僅為 `{ name: 'Ungraded', state: 'firing' }`
+- **THEN** 產出的 `NodeAlert` 為 `{ name: 'Ungraded' }`,既無 `severity` 亦無 `timeRecords`
+
+#### Scenario: 缺 name 的 alert 丟棄
+
+- **WHEN** 上游 alert 缺 `name`、`name` 為空字串,或 `name` 非字串
+- **THEN** 該 alert 被丟棄(即使 `time_records` 與 `severity` 有效),其餘合法 alert 正常解析
 
 #### Scenario: 分組容器不帶 alerts
 

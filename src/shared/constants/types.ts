@@ -101,7 +101,13 @@ export interface NodeAlert {
   // Free-form label from the backend: 'info'/'warning'/'critical' get a dedicated
   // colour (see SEVERITY_COLOR), any other custom label is kept verbatim and
   // rendered in the critical fallback colour. Never dropped for being "unknown".
-  severity: string;
+  //
+  // OPTIONAL, for the same reason timeRecords is: the backend omits the field when the
+  // alerting rule declared no severity label, and an alert nobody graded is still an
+  // alert. Absent is NOT the same as an unrecognised label — a custom label gets the
+  // fallback COLOUR, whereas absent gets the missing-value placeholder, because inventing
+  // a grade the producer never stated would be a fabricated reading.
+  severity?: string;
   // Every occurrence time of this (grouped) alert, Unix epoch SECONDS, ASCENDING.
   // Count = timeRecords.length, last-occurred = max(timeRecords) (the last element); both
   // are derived at render, never stored. A legacy backend's single `time` scalar

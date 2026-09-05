@@ -119,7 +119,11 @@ function nodeTooltip(node: SankeyNode | undefined, id: string, flowLines: readon
     ...raw('total_ops', node.perf?.totalOps, String),
     ...raw('total_latency_us', node.perf?.totalLatencyUs, String),
     ...raw('total_bytes_per_sec', node.perf?.totalBytesPerSec, formatBytes),
-    ...(node.alerts ?? []).map((alert) => `${alert.severity} ${alert.name}`),
+    // `severity` is optional (a rule may declare none), so the prefix has to drop with it
+    // rather than render the string "undefined" in front of the alert name.
+    ...(node.alerts ?? []).map((alert) =>
+      alert.severity === undefined ? alert.name : `${alert.severity} ${alert.name}`
+    ),
     ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
   ];
 }

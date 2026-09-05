@@ -27,7 +27,12 @@
  */
 export interface WireAlert {
   name: string;
-  severity: string;
+  /**
+   * The alert's `severity` label. OPTIONAL: kube-state-graph serialises this field with
+   * `omitempty`, so an alerting rule that declares no severity label produces an entry with
+   * no `severity` at all. `name` is the only field every producer always sends.
+   */
+  severity?: string;
   pod?: string;
   service?: string;
   /**

@@ -57,6 +57,11 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           parent: 'netapp/ontap-prod/ontap-prod-01',
           health: 'online',
           usage: { used_bytes: 700000000000, capacity_bytes: 1000000000000 },
+          // The third producer shape: an alerting rule that declares no severity label.
+          // The backend serialises `severity` with omitempty, so the field is simply gone.
+          // Between this node and ontap-prod-02 the fixture covers every combination of
+          // "graded / ungraded" and "with / without occurrence history".
+          alerts: [{ name: 'AggrFilling', state: 'firing' }],
           labels: { ontap_cluster: 'ontap-prod', node: 'ontap-prod-01' },
         },
       },

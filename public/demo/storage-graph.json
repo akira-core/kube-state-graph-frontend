@@ -72,6 +72,12 @@
             "used_bytes": 700000000000,
             "capacity_bytes": 1000000000000
           },
+          "alerts": [
+            {
+              "name": "AggrFilling",
+              "state": "firing"
+            }
+          ],
           "labels": {
             "ontap_cluster": "ontap-prod",
             "node": "ontap-prod-01"

@@ -131,4 +131,45 @@ describe('AlertTable', () => {
       expect(screen.getByTestId('alert-time')).toHaveTextContent(localTime(1717501200));
     });
   });
+
+  // A rule that declares no severity label produces an entry without one. Absent is not an
+  // unrecognised label: a custom label still earns the fallback-coloured badge, but a grade
+  // nobody assigned gets the placeholder.
+  describe('an alert with no severity', () => {
+    const ungraded: NodeAlert = {
+      pod: 'ontap-lab-02',
+      service: 'ontap',
+      name: 'Ungraded',
+      timeRecords: [1717500300],
+    };
+
+    it('still renders the row with its name and occurrence data', () => {
+      render(<AlertTable alerts={[ungraded]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.getByText('Ungraded')).toBeInTheDocument();
+      expect(screen.getByTestId('alert-count')).toHaveTextContent('1');
+      expect(screen.getByTestId('alert-time')).toHaveTextContent(localTime(1717500300));
+    });
+
+    it('shows n/a instead of a badge asserting a severity nobody assigned', () => {
+      render(<AlertTable alerts={[ungraded]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.queryByTestId('alert-severity')).not.toBeInTheDocument();
+      expect(screen.getAllByText('n/a')).toHaveLength(1); // severity only; pod/service present
+    });
+
+    it('still badges a custom label — unrecognised is not the same as absent', () => {
+      const custom: NodeAlert = { ...ungraded, severity: 'P1' };
+      render(<AlertTable alerts={[custom]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.getByTestId('alert-severity')).toHaveTextContent('P1');
+      expect(screen.queryByText('n/a')).not.toBeInTheDocument();
+    });
+
+    it('degrades every cell the producer left unstated, all in one row', () => {
+      const bare: NodeAlert = { name: 'Bare' };
+      render(<AlertTable alerts={[bare]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.getByText('Bare')).toBeInTheDocument();
+      // pod, service, severity, count, last occurred
+      expect(screen.getAllByText('n/a')).toHaveLength(5);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    });
+  });
 });

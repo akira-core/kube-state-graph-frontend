@@ -210,6 +210,16 @@
 - [x] 22.4 alert 表格降級:`timeRecords` 缺漏時 Count 與 Last occurred 各顯示 muted 的「n/a」,Last occurred 不再是按鈕(無時刻可回捲),不得以 `0` 與 epoch 起點日期代替;驗證:元件測試斷言該列仍渲染、兩格為 n/a、無 `alert-count` / `alert-time` testid、無 button,且同表格中帶時間的列不受影響
 - [x] 22.5 `SHOWCASE_STORAGE_GRAPH` 的 `ontap-prod-02` 同時掛一筆帶 `time` 與一筆 overlay 形狀的 alert,使 demo 模式同時走過正常與降級兩條路徑;驗證:`npm run fixture:check` 通過,fixture 測試全綠
 
+## 23. `severity` 亦為選用
+
+跨 repo 規範走查發現同一類缺陷還差一欄:後端 `AlertDTO.Severity` 以 `omitempty` 序列化(其 `graph-api` 規範明寫「`severity` is omitted from an entry when empty」),而 `parseAlerts` 要求非空 `severity`,否則丟棄整筆。未宣告 severity label 的告警規則因此同樣靜默消失——與 §22 的 `timeRecords` 同一個失效形狀,只差一個欄位。
+
+- [x] 23.1 `WireAlert.severity` 與 `NodeAlert.severity` 改為選用,型別註解寫明後端以 `omitempty` 序列化,且「缺漏」與「無法辨識的自訂 label」是兩回事;驗證:`npm run typecheck` 通過,所有消費端經編譯器暴露
+- [x] 23.2 `parseAlerts` 僅以 `name` 為必填:`severity` 缺漏 / 空字串 / 非字串時**省略該欄**並保留該 alert,不得代入預設等級;驗證:單元測試以 `toStrictEqual` 斷言三種輸入皆產出無 `severity` 欄的 alert,並斷言 `{name:'Ungraded', state:'firing'}` 產出 `{name:'Ungraded'}`,缺 `name` 者仍丟棄
+- [x] 23.3 alert 表格 Severity 欄於缺漏時顯示 muted 的「n/a」而非 badge(含 fallback 色),自訂 label 仍照常 badge;驗證:元件測試斷言無 `alert-severity` testid、自訂 label `P1` 仍 badge,且只帶 `name` 的 alert 呈現一列五個 n/a 且 Last occurred 非按鈕
+- [x] 23.4 Sankey 節點 tooltip 的 alert 行於 `severity` 缺漏時只印名稱,不得印出 `undefined` 前綴;驗證:型別檢查通過,fixture 走過該分支
+- [x] 23.5 `SHOWCASE_STORAGE_GRAPH` 的 `aggr1` 掛一筆無 `severity` 的 alert,使 fixture 涵蓋「有無評級 × 有無發生史」四種組合;驗證:`npm run fixture:check` 通過
+
 ## 17. 整體驗收
 
 - [x] 17.1 全鏈驗證:乾淨 checkout 執行 `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` 全數通過,且單元測試覆蓋率達 80%
@@ -217,3 +227,4 @@
 - [x] 17.3 兩端點拆分後重跑全鏈驗證(含新增的第三個 e2e spec),覆蓋率仍達 80%;驗證:乾淨 checkout 上整條 CI 鏈綠燈
 - [x] 17.4 對照修訂後的 `specs/` 重走查 `runtime-config` / `graph-data-source` / `storage-flow-sankey` / `app-shell` / `dev-environment` / `container-deployment` 六支的異動需求;驗證:走查清單標註每條新需求對應的測試或可觀察行為
 - [x] 17.5 alert overlay 修正後重跑全鏈驗證;驗證:`npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci` 全綠,並以真實 kube-state-graph 後端確認節點 `data.alerts` 於面板實際成列
+- [x] 17.6 `severity` 改為選用後重跑全鏈驗證(含 `npm run e2e`);驗證:整條 CI 鏈綠燈,覆蓋率仍達 80%,且 alert 列上唯一必填欄位為 `name` 這件事在 `graph-data-source` 與 `node-detail` 兩支規範中一致

@@ -1069,17 +1069,37 @@ describe('normalizeGraph', () => {
       ]);
     });
 
-    // name and severity are the only required fields — an occurrence time is NOT one.
-    it('drops alert entries with a bad/missing name or non-string/empty severity, keeping valid ones', () => {
+    // `name` is the ONLY required field — neither an occurrence time nor a severity is.
+    it('drops alert entries with a bad/missing name, keeping valid ones', () => {
       const { elements } = withAlerts([
         { name: 'ok', severity: 'warning', time_records: [1717500000] },
         { severity: 'critical', time_records: [1717500000] }, // missing name
-        { name: 'noSev', time_records: [1717500000] }, // missing severity
-        { name: 'emptySev', severity: '', time_records: [1717500000] }, // empty severity string
-        { name: 'numSev', severity: 2, time_records: [1717500000] }, // severity not a string
+        { name: '', severity: 'critical', time_records: [1717500000] }, // empty name string
+        { name: 2, severity: 'critical', time_records: [1717500000] }, // name not a string
         'nope', // not an object
       ]);
       expect(elements[0]?.data.alerts).toEqual([{ name: 'ok', severity: 'warning', timeRecords: [1717500000] }]);
+    });
+
+    // The backend serialises `severity` with omitempty, so a rule declaring no severity
+    // label produces an entry without one. Requiring it dropped those silently, the same
+    // way requiring an occurrence time did.
+    it('keeps an alert whose severity is absent, empty, or not a string, omitting the field', () => {
+      for (const entry of [
+        { name: 'noSev', time_records: [1717500000] },
+        { name: 'noSev', severity: '', time_records: [1717500000] },
+        { name: 'noSev', severity: 2, time_records: [1717500000] },
+      ]) {
+        expect(withAlerts([entry]).elements[0]?.data.alerts).toStrictEqual([
+          { name: 'noSev', timeRecords: [1717500000] },
+        ]);
+      }
+    });
+
+    it('keeps an alert carrying neither a severity nor an occurrence time', () => {
+      expect(withAlerts([{ name: 'Ungraded', state: 'firing' }]).elements[0]?.data.alerts).toStrictEqual([
+        { name: 'Ungraded' },
+      ]);
     });
 
     it('keeps any non-empty severity string, including custom labels the backend defines', () => {

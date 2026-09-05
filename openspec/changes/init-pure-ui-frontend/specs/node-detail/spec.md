@@ -22,7 +22,9 @@
 
 Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `data.alerts`;缺漏或空陣列 → 該 section 不渲染)。每筆 alert 以**選用**的 `timeRecords: number[]`(Unix 秒,升冪)表示重複發生;產生者已將同一 alert 聚合為**單一**筆,故表格**一列一 alert**。**Count** 欄 MUST 顯示 `timeRecords.length`,並 MUST 以 hover 提示列出每一個發生時間(以瀏覽器本地時區格式化)。**Last occurred** 欄 MUST 顯示 `max(timeRecords)`(格式化);當 app 提供可變更的**檢視時間範圍**(view time range)時,該欄 MUST 可點擊,點擊將檢視時間範圍設為以 `t = max(timeRecords)`(Unix 秒)為中心、固定 ±5 分鐘(300 秒)的視窗 `[t-300, t+300]`;app 未提供檢視時間範圍時,該欄以純文字呈現。
 
-**Count 與 Last occurred 皆為 `timeRecords` 的衍生欄,而該欄是選用的**(kube-state-graph 的 alert overlay 不帶任何發生時間——見 `graph-data-source`)。`timeRecords` 缺漏時,這兩格 MUST 各自降級為統一的 missing-value placeholder「n/a」,且 Last occurred MUST NOT 可點擊——沒有時刻可供回捲。兩格 MUST NOT 以 `0` 與 epoch 起點日期代替:那是捏造的讀數,與「該 alert 發生過一次、時間為 1970-01-01」無法區分。`severity` 為自由字串:`info` / `warning` / `critical` 取各自的語意色;其他任何自訂標籤 MUST 原樣保留並以 critical 色作為 fallback 上色。**alert 表格中缺漏的 Pod / Service 儲存格 MUST 顯示 muted 的「n/a」**(全面板統一的 missing-value placeholder——見「Node-detail Application and Containers sections」)。
+**Alert 列上唯一保證存在的欄位是 Alert(`name`)。** 其餘每一欄都對應一個選用的上游欄位,任一缺漏時該儲存格各自降級為統一的「n/a」,列本身永遠渲染——只帶 `name` 的 alert 呈現為一列五個 n/a。
+
+**Count 與 Last occurred 皆為 `timeRecords` 的衍生欄,而該欄是選用的**(kube-state-graph 的 alert overlay 不帶任何發生時間——見 `graph-data-source`)。`timeRecords` 缺漏時,這兩格 MUST 各自降級為統一的 missing-value placeholder「n/a」,且 Last occurred MUST NOT 可點擊——沒有時刻可供回捲。兩格 MUST NOT 以 `0` 與 epoch 起點日期代替:那是捏造的讀數,與「該 alert 發生過一次、時間為 1970-01-01」無法區分。`severity` 為**選用**的自由字串:`info` / `warning` / `critical` 取各自的語意色;其他任何自訂標籤 MUST 原樣保留並以 critical 色作為 fallback 上色。**`severity` 缺漏時該儲存格 MUST 顯示 muted 的「n/a」而非 badge**——缺漏與「無法辨識的標籤」不同:後者仍是產生者給出的等級,前者無人評級,以 fallback 色渲染一個 badge 等於宣稱一個沒人指定的嚴重度。**alert 表格中缺漏的 Pod / Service 儲存格 MUST 顯示 muted 的「n/a」**(全面板統一的 missing-value placeholder——見「Node-detail Application and Containers sections」)。
 
 #### Scenario: 左鍵點擊任一 detail-eligible 節點開啟面板
 
@@ -107,6 +109,17 @@ Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `da
 - **THEN** 該列的 Severity 以對應語意色的 badge 呈現
 - **WHEN** `severity` 不在已知集合中(如自訂標籤 `fatal`)
 - **THEN** 以 critical 色作為 fallback 上色,badge 原樣保留該標籤文字,且不發生錯誤
+
+#### Scenario: 無 severity 的 alert 顯示 n/a 而非 badge
+
+- **WHEN** 某 alert 沒有 `severity` 欄(產生者的規則未宣告 severity label)
+- **THEN** 該列仍 MUST 渲染,Alert 欄與其發生時間相關欄位如常
+- **AND** Severity 欄 MUST 顯示 muted 的「n/a」,MUST NOT 渲染任何 badge(含 fallback 色的)
+
+#### Scenario: 只帶 name 的 alert 仍成列
+
+- **WHEN** 某 alert 僅帶 `name`(無 pod / service / severity / timeRecords)
+- **THEN** 該列渲染,Alert 欄顯示名稱,其餘五欄皆為 muted 的「n/a」,且 Last occurred 不可點擊
 
 #### Scenario: 點擊 Last occurred 調整檢視時間範圍
 

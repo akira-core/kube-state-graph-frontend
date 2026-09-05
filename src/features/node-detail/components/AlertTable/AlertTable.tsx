@@ -59,14 +59,21 @@ export function AlertTable({ alerts, onAlertTimeClick }: Readonly<AlertTableProp
                   {alert.service ?? MISSING_VALUE_PLACEHOLDER}
                 </td>
                 <td>{alert.name}</td>
-                <td>
-                  <span
-                    className="inline-block rounded-full px-1.5 py-px text-[10px] font-semibold uppercase text-black"
-                    style={{ backgroundColor: severityColor(alert.severity) }}
-                    data-testid="alert-severity"
-                  >
-                    {alert.severity}
-                  </span>
+                {/* An absent severity is not an unrecognised one: a custom label gets the
+                    fallback colour, but a grade the producer never stated gets the
+                    placeholder — a badge would assert a severity nobody assigned. */}
+                <td className={alert.severity === undefined ? 'text-muted' : undefined}>
+                  {alert.severity === undefined ? (
+                    MISSING_VALUE_PLACEHOLDER
+                  ) : (
+                    <span
+                      className="inline-block rounded-full px-1.5 py-px text-[10px] font-semibold uppercase text-black"
+                      style={{ backgroundColor: severityColor(alert.severity) }}
+                      data-testid="alert-severity"
+                    >
+                      {alert.severity}
+                    </span>
+                  )}
                 </td>
                 {/* Count and Last occurred are BOTH derived from the occurrence list, so
                     an alert with no history degrades both to the panel-wide placeholder

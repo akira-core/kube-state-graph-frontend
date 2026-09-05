@@ -212,12 +212,18 @@ function parseTimeRecords(entry: Record<string, unknown>): number[] | undefined 
 // dropped, not thrown (partial-parse contract). `severity` kept as free-form string —
 // custom labels survive and are colour-mapped downstream. undefined = no alerts field.
 //
-// `name` and `severity` are the ONLY required fields. An occurrence time is not one of
-// them: kube-state-graph's alert overlay emits `{name, state, severity}` and no time at
-// all, so requiring one here discarded every alert a real backend produced — an empty
-// overlay behind a 200, which is exactly the failure the overlay exists to make visible.
-// A time-less entry keeps no `timeRecords` field and the table degrades its two derived
-// cells; see NodeAlert.
+// `name` is the ONLY required field — it is the alert's identity. Neither an occurrence
+// time nor a severity is one:
+//
+//   - kube-state-graph's alert overlay emits no time at all, so requiring one here
+//     discarded every alert a real backend produced — an empty overlay behind a 200,
+//     which is exactly the failure the overlay exists to make visible.
+//   - the same backend serialises `severity` with `omitempty`, so a rule that declares no
+//     severity label produces an entry without one. Requiring it dropped those the same
+//     silent way, one field over.
+//
+// Both therefore degrade like `pod` / `service`: the field is omitted and the table shows
+// the missing-value placeholder in that cell. See NodeAlert.
 function parseAlerts(v: unknown): NodeAlert[] | undefined {
   if (!Array.isArray(v)) {
     return undefined;
@@ -227,16 +233,16 @@ function parseAlerts(v: unknown): NodeAlert[] | undefined {
     if (!isPlainObject(entry)) {
       continue;
     }
-    if (!isString(entry.name) || !isString(entry.severity)) {
+    if (!isString(entry.name)) {
       continue;
     }
     const timeRecords = parseTimeRecords(entry);
     alerts.push({
       name: entry.name,
-      severity: entry.severity,
       // Omitted rather than written as [] — one representation of "no history", so no
       // consumer has to test both.
       ...(timeRecords !== undefined ? { timeRecords } : {}),
+      ...(isString(entry.severity) ? { severity: entry.severity } : {}),
       ...(isString(entry.pod) ? { pod: entry.pod } : {}),
       ...(isString(entry.service) ? { service: entry.service } : {}),
       ...(isString(entry.id) ? { id: entry.id } : {}),
