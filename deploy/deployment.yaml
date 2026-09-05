@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-graph-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-graph-frontend
+  template:
+    metadata:
+      labels:
+        app: kube-state-graph-frontend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: ghcr.io/example/kube-state-graph-frontend:main
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          # Optional same-origin reverse proxies. Two upstreams, because the graph API
+          # does not serve `/api/v1/label/<name>/values` — `endpoints.labelValues` needs a
+          # Prometheus-compatible store or the az / env and filter controls enumerate
+          # nothing. Unset targets serve 404 on their own prefix and nothing else.
+          # env:
+          #   - name: KSG_API_PROXY_TARGET
+          #     value: http://kube-state-graph.monitoring.svc:8080
+          #   - name: KSG_METRICS_PROXY_TARGET
+          #     value: http://vmselect.monitoring.svc:8481/select/0/prometheus
+          volumeMounts:
+            - name: config
+              mountPath: /srv/config
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+            runAsNonRoot: true
+            runAsUser: 101
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+      volumes:
+        - name: config
+          configMap:
+            name: kube-state-graph-frontend
