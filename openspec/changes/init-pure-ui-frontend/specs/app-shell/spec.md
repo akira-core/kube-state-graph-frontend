@@ -1,353 +1,376 @@
 ## Purpose
 
-定義 SPA 的進入點與全域框架:啟動序列(設定載入閘門 → 錯誤畫面或應用)、Graph / Sankey 視圖的 client-side 路由與 deep link、持續顯示的頂部導覽列(視圖切換、主題、重新載入、狀態與 demo 標示)、填滿視窗的視圖區、由 shell 持有的兩個獨立資料來源(Graph 視圖的 `/v1/graph` 與 Sankey 視圖的 `/v1/storage-graph`)、跨視圖保留的暫時性視圖狀態,以及基本無障礙。視圖內部行為不在此規範。
+Defines the SPA's entry point and global frame: the startup sequence (config-load gate → error screen or application), client-side routing where `/graph` / `/sankey` are each independent pages, page scope and view time range carried in the URL query, deep links, the persistently shown top nav bar (view switching, theme, reload, status and demo badge), the view area that fills the window, the data sources held by each page (the Graph page's `/v1/graph` and the Sankey page's `/v1/storage-graph`), transient view state discarded on leaving a route, and basic accessibility. Behavior inside the views is not specified here.
 
 ## ADDED Requirements
 
-### Requirement: 啟動序列與設定閘門
+### Requirement: Startup sequence and configuration gate
 
-應用進入點 SHALL 依序經歷三個階段:(1) **載入中畫面**——設定文件取得與驗證期間顯示,僅含最小的載入指示,不含導覽列與任何視圖;(2) 設定失敗時切換為 `runtime-config` 規範的**設定錯誤畫面**;(3) 設定成功時渲染**應用**(導覽列 + 路由對應的視圖)。導覽列、任一視圖與任何後端資料請求 MUST NOT 早於設定載入完成出現或發出。載入中畫面與設定錯誤畫面 MUST 依主題規則呈現(見「主題切換與持久化」)。
+The application entry point SHALL pass through three phases in order: (1) the **loading screen** — shown while the configuration document is fetched and validated, containing only a minimal loading indicator, without the nav bar or any view; (2) on configuration failure, switching to the **configuration error screen** specified by `runtime-config`; (3) on configuration success, rendering the **application** (nav bar + the view matching the route). The nav bar, any view and any backend data request MUST NOT appear or be issued before configuration loading completes. The loading screen and the configuration error screen MUST be presented according to the theme rules (see "Theme switching and persistence").
 
-#### Scenario: 設定成功後進入應用
+#### Scenario: Entering the application after configuration succeeds
 
-- **WHEN** 使用者開啟 `/graph`,設定文件於 300ms 後成功取得並驗證通過
-- **THEN** 該 300ms 內僅顯示載入中畫面;之後導覽列與 Graph 視圖出現,graph 資料請求在此時才發出,storage-graph 請求則不發出
+- **WHEN** the user opens `/graph`, and the configuration document is fetched and validated successfully after 300ms
+- **THEN** only the loading screen is shown during those 300ms; afterwards the nav bar and the Graph view appear, the graph data request is issued only at this point, and no storage-graph request is issued
 
-#### Scenario: 設定失敗只顯示錯誤畫面
+#### Scenario: Configuration failure shows only the error screen
 
-- **WHEN** 設定文件取得失敗或驗證失敗
-- **THEN** 應用顯示設定錯誤畫面,不渲染導覽列與任何視圖,且整個 session 不對任何圖資料端點發出請求
+- **WHEN** the configuration document fails to fetch or fails validation
+- **THEN** the application shows the configuration error screen, renders neither the nav bar nor any view, and issues no request to any graph data endpoint for the entire session
 
-#### Scenario: 設定載入前不取數
+#### Scenario: No fetching before configuration loads
 
-- **WHEN** 設定文件的回應尚未抵達
-- **THEN** 應用尚未對任何 `endpoints.*` 發出請求
+- **WHEN** the configuration document's response has not yet arrived
+- **THEN** the application has not yet issued a request to any `endpoints.*`
 
-### Requirement: 視圖路由
+### Requirement: View routing
 
-應用 SHALL 提供下列 client-side 路由,路徑皆相對於 app base URL(部署於 `/ksg/` 時為 `/ksg/graph` 等):
+The application SHALL provide the following client-side routes, all paths relative to the app base URL (`/ksg/graph` etc. when deployed at `/ksg/`):
 
-- `/graph` → Graph 視圖(cytoscape.js canvas,行為見 `graph-view`)。
-- `/sankey` → Sankey 視圖(行為見 `storage-flow-sankey`)。
-- `/` → MUST 以取代歷史紀錄(replace)的方式導向 `/graph`,使「上一頁」不會回到 `/`。
-- 其他任何路徑 → **找不到頁面**畫面,顯示於導覽列之下的視圖區,含一個返回 `/graph` 的連結;導覽列於此畫面仍持續顯示。
+- `/graph` → the **Graph page** (cytoscape.js canvas, behavior in `graph-view`), with its own filter bar and graph data source.
+- `/sankey` → the **Sankey page** (behavior in `storage-flow-sankey`), with its own estate / root control bar and storage-graph data source.
+- `/` → MUST redirect to `/graph` by replacing the history entry (replace), so that "Back" does not return to `/`.
+- Any other path → the **not-found page** screen, shown in the view area below the nav bar, containing a link back to `/graph`; the nav bar remains shown on this screen.
 
-結尾斜線 MUST 視為等價(`/graph/` 等同 `/graph`)。視圖間切換 MUST 為 client-side 導覽:MUST NOT 觸發完整文件載入,MUST NOT 重新讀取設定文件。瀏覽器分頁標題 SHALL 反映目前視圖(含應用名稱與視圖名稱)。
+Trailing slashes MUST be treated as equivalent (`/graph/` is the same as `/graph`). Switching between views MUST be client-side navigation: it MUST NOT trigger a full document load, and MUST NOT re-read the configuration document. The browser tab title SHALL reflect the current view (including the application name and the view name).
 
-#### Scenario: 根路徑導向 Graph 視圖
+Each route MUST render **its own page component**; the page of a non-current route MUST NOT stay mounted and MUST NOT exist hidden in the DOM. Switching routes unmounts the previous page and mounts the new one — **switch = reset**. The nav bar's two view links MUST point to the **bare paths** (`/graph`, `/sankey`, without query); clicking one enters that page with its initial scope.
 
-- **WHEN** 使用者開啟 `/`
-- **THEN** 位址列變為 `/graph`,顯示 Graph 視圖,且按「上一頁」不會回到 `/`
+The route's **query string is the carrier of that page's scope and view time range** (the Grafana dashboard-variable model): for the Graph page, the filter parameters specified by `graph-filters`; for the Sankey page, the estate / root / narrowing / `mode` specified by `storage-flow-sankey`; both additionally carry `from` / `to` (see "View time range"). Parameter names MUST mirror the backend request parameter names (multiple values expressed as repeated keys), with no prefix. Changes from in-page controls MUST update the query with **replace** (no new history entry); switching between routes MUST be a push. The query carries only scope and time range — selection, collapse, viewport, search, legend, pod-parent mode and focus mode MUST NOT enter the URL. A page MUST ignore parameters it does not recognize, and strip them on its next write of the query.
 
-#### Scenario: 開啟 Sankey 視圖
+#### Scenario: Root path redirects to the Graph view
 
-- **WHEN** 使用者開啟 `/sankey` 或在導覽列點擊 Sankey 連結
-- **THEN** 視圖區顯示 Sankey 視圖,位址列為 `/sankey`
+- **WHEN** the user opens `/`
+- **THEN** the address bar becomes `/graph`, the Graph view is shown, and pressing "Back" does not return to `/`
 
-#### Scenario: 未知路徑顯示找不到頁面
+#### Scenario: Opening the Sankey view
 
-- **WHEN** 使用者開啟 `/foo/bar`
-- **THEN** 視圖區顯示找不到頁面畫面,含返回 `/graph` 的連結,導覽列仍顯示;點擊該連結後顯示 Graph 視圖
+- **WHEN** the user opens `/sankey` or clicks the Sankey link in the nav bar
+- **THEN** the view area shows the Sankey view, and the address bar is `/sankey`
 
-#### Scenario: 視圖切換不重新載入文件
+#### Scenario: Unknown path shows the not-found page
 
-- **WHEN** 使用者在 `/graph` 點擊導覽列的 Sankey 連結
-- **THEN** 不發生完整文件載入,不重新請求設定文件;Sankey 視圖若已有資料則立即渲染,若為首次進入則依「兩個獨立的資料生命週期」取得其自身的資料
+- **WHEN** the user opens `/foo/bar`
+- **THEN** the view area shows the not-found page screen, containing a link back to `/graph`, and the nav bar is still shown; after clicking that link the Graph view is shown
 
-### Requirement: Deep link 與瀏覽歷史
+#### Scenario: View switching does not reload the document
 
-任一路由的 URL MUST 可直接開啟與重新整理:使用者於 `/sankey` 按重新整理後 MUST 再次看到 Sankey 視圖(而非 404 或 Graph 視圖)。此行為依賴伺服器對未知路徑回應 `index.html` 的 history fallback(正式環境由 `container-deployment` 提供,開發伺服器亦 MUST 提供)。瀏覽器「上一頁 / 下一頁」MUST 在 Graph 與 Sankey 視圖間依歷史順序切換,且同樣不觸發完整文件載入。
+- **WHEN** the user clicks the Sankey link in the nav bar while on `/graph`
+- **THEN** no full document load occurs and the configuration document is not re-requested; the Sankey page mounts and fetches its own data according to "Page-owned data lifecycle"
 
-#### Scenario: 於 Sankey 視圖重新整理
+#### Scenario: Switching routes resets
 
-- **WHEN** 使用者在 `/sankey` 按重新整理
-- **THEN** 應用重新啟動(重新讀取設定)並顯示 Sankey 視圖;此時 Sankey 為當前視圖,故取得的是 storage-graph 資料——graph 來源在使用者切到 Graph 視圖前不被取數
+- **WHEN** the user, on `/graph?namespace=shop`, clicks the Sankey link in the nav bar, then clicks the Graph link
+- **THEN** the address bar is `/graph` (without `namespace`), the Graph page remounts with its initial scope and refetches; the previous selection, collapse and viewport no longer exist
 
-#### Scenario: 分享 deep link
+#### Scenario: In-page changes update the query with replace
 
-- **WHEN** 使用者直接在新分頁開啟 `https://ops.example/ksg/sankey`
-- **THEN** 顯示 Sankey 視圖
+- **WHEN** the user, on `/graph`, selects namespace `shop` and then `infra`
+- **THEN** the address bar is `/graph?namespace=shop&namespace=infra&from=…&to=…`, and the browser history length is unchanged; pressing "Back" leaves `/graph` rather than returning to the previous namespace selection
 
-#### Scenario: 上一頁回到前一視圖
+#### Scenario: Unknown parameters are ignored and stripped
 
-- **WHEN** 使用者由 `/graph` 切至 `/sankey` 後按「上一頁」
-- **THEN** 顯示 Graph 視圖,位址列為 `/graph`,不發生完整文件載入
+- **WHEN** the user opens `/graph?foo=bar&namespace=shop`
+- **THEN** the Graph page fetches with `namespace=shop`, and `foo` affects no behavior; after the user's next change to any control, the address bar no longer contains `foo`
 
-### Requirement: 頂部導覽列
+### Requirement: Deep links and browser history
 
-應用 SHALL 於視圖區上方持續顯示一列固定高度、不隨內容捲動的導覽列;在 Graph 視圖、Sankey 視圖與找不到頁面畫面皆存在。**唯一的例外是 Sankey 視圖的專注模式**(見 `storage-flow-sankey` 的「專注模式」):其啟用期間導覽列 MUST 收起以讓圖填滿視窗,離開專注模式後 MUST 立即回復。除此之外任何情況 MUST NOT 隱藏導覽列。導覽列 MUST 含:
+The URL of any route MUST be directly openable and refreshable: after the user refreshes on `/sankey`, they MUST see the Sankey view again (not a 404 or the Graph view). This behavior depends on the server answering unknown paths with `index.html` as a history fallback (provided by `container-deployment` in production; the dev server MUST provide it too). The browser's "Back / Forward" MUST switch between the Graph and Sankey views in history order, and likewise MUST NOT trigger a full document load.
 
-1. 應用名稱;
-2. Graph 與 Sankey 兩個視圖連結,對應目前路由者 MUST 呈現 active 樣式並標示為目前頁面;
-3. 主題切換控制(見「主題切換與持久化」);
-4. 「重新載入資料」動作(見「重新載入動作與狀態指示器」);
-5. 狀態指示器(見「重新載入動作與狀態指示器」);
-6. 僅當 `demoMode` 為 `true` 時顯示的 **demo 模式標記**,文字明確指出資料為內建 demo 資料;`demoMode` 為 `false` 時該標記 MUST NOT 存在於 DOM;
-7. 檢視時間範圍控制(見「檢視時間範圍」)。
+A URL with a query MUST likewise be directly openable, shareable and refreshable: after `/sankey?az=zone-a&env=prod&aggr=aggr1&mode=write` is opened, it MUST immediately fetch and render with that scope and mode, without the user operating any control. The browser's "Back / Forward" restores the full address **including the query**, so Sankey → Locate → Back MUST return to the Sankey scope as it was on leaving.
 
-導覽列之下 SHALL 另有一列**視圖專屬的控制列**,其內容隨當前視圖而異且 MUST NOT 跨視圖共用:Graph 視圖為 filter bar(`cluster` / `az` / `env` / `namespace` / `edge_type` 多選與 Projection 切換);Sankey 視圖為其估計與 root 選擇器(`az` / `env` 單選、root、選用的 `cluster` / `namespace`,見 `storage-flow-sankey`)。兩列控制的選擇 MUST 各自獨立——同名維度出現在兩處是刻意的:它們送往兩個不同的端點,語意與基數(多值 vs 單值)也不同。控制列 MUST NOT 因另一個視圖的選擇而改變。
+#### Scenario: Refreshing on the Sankey view
 
-#### Scenario: 控制列隨視圖切換
+- **WHEN** the user refreshes on `/sankey`
+- **THEN** the application restarts (re-reading the configuration) and shows the Sankey view; the scope and time range carried by the URL are restored, and what is fetched is the storage-graph data — the Graph page is not mounted, and `endpoints.graph` is not fetched
 
-- **WHEN** 使用者自 Graph 視圖切換至 Sankey 視圖
-- **THEN** filter bar 被 Sankey 的估計 / root 控制取代;切回 Graph 視圖時 filter bar 的選擇與離開時相同,Sankey 的選擇亦然
+#### Scenario: Sharing a deep link
 
-#### Scenario: 同名維度互不影響
+- **WHEN** the user opens `https://ops.example/ksg/sankey` directly in a new tab
+- **THEN** the Sankey view is shown
 
-- **WHEN** 使用者於 Graph filter bar 選 `az: zone-a` 與 `az: zone-b`,再於 Sankey 選 `az: zone-c`
-- **THEN** 兩處各自維持自己的值;graph 請求帶 `az=zone-a&az=zone-b`,storage-graph 請求帶 `az=zone-c`
+#### Scenario: Back returns to the previous view
 
-#### Scenario: 目前視圖的連結呈現 active
+- **WHEN** the user switches from `/graph` to `/sankey` and then presses "Back"
+- **THEN** the Graph view is shown, the address bar is `/graph`, and no full document load occurs
 
-- **WHEN** 使用者位於 `/sankey`
-- **THEN** 導覽列的 Sankey 連結呈現 active 樣式並標示為目前頁面,Graph 連結則否
+#### Scenario: Back restores the Sankey scope
 
-#### Scenario: demo 模式標記
+- **WHEN** the user, on `/sankey?az=zone-a&env=prod&aggr=aggr1`, selects a node and Locates to `/graph`, then presses "Back"
+- **THEN** the address bar returns to `/sankey?az=zone-a&env=prod&aggr=aggr1…`, the Sankey page remounts and fetches with that scope, and the `az` / `env` / root controls show the same values
 
-- **WHEN** 設定的 `demoMode` 為 `true`
-- **THEN** 導覽列顯示 demo 模式標記,且於 Graph 與 Sankey 視圖切換時持續顯示
+### Requirement: Top nav bar
 
-#### Scenario: 非 demo 模式無標記
+The application SHALL persistently show, above the view area, a nav bar of fixed height that does not scroll with content; it is present on the Graph view, the Sankey view and the not-found page screen. **The sole exception is the Sankey view's focus mode** (see "Focus mode" in `storage-flow-sankey`): while it is active the nav bar MUST collapse so the diagram fills the window, and on leaving focus mode it MUST be restored immediately. In any other situation the nav bar MUST NOT be hidden. The nav bar MUST contain:
 
-- **WHEN** 設定的 `demoMode` 為 `false`
-- **THEN** 導覽列不含 demo 模式標記
+1. the application name;
+2. the two view links, Graph and Sankey, of which the one matching the current route MUST be presented in the active style and marked as the current page;
+3. the theme switching control (see "Theme switching and persistence");
+4. the "Reload data" action (see "Reload action and status indicator");
+5. the status indicator (see "Reload action and status indicator");
+6. a **demo mode badge** shown only when `demoMode` is `true`, whose text states explicitly that the data is built-in demo data; when `demoMode` is `false` the badge MUST NOT exist in the DOM;
+7. the view time range control (see "View time range").
 
-#### Scenario: Sankey 專注模式收起導覽列
+Below the nav bar there SHALL be a further row, the **page-owned control bar**, rendered by the current page rather than held by the shell: for the Graph page, the filter bar (see `graph-filters`); for the Sankey page, its estate / root / narrowing and mode controls (see `storage-flow-sankey`). Both are presented with the same dropdown component (contract in `graph-filters`), but the selections MUST be independent — the same dimension appearing in both places is deliberate: they are sent to two different endpoints, differ in semantics and cardinality (multi-value vs single-value), and each exists only in its own page's URL query.
 
-- **WHEN** 使用者於 Sankey 視圖進入專注模式,隨後離開
-- **THEN** 進入期間導覽列不顯示、Sankey 圖區填滿視窗;離開後導覽列立即回復,其 active 連結、主題切換與狀態指示器均維持進入前的狀態
+#### Scenario: Control bar follows the view switch
 
-### Requirement: 主題切換與持久化
+- **WHEN** the user switches from the Graph view to the Sankey view
+- **THEN** the filter bar disappears as the Graph page unmounts, and the Sankey control bar appears as its page mounts; on clicking the Graph link again to return to `/graph`, the filter bar is in its initial state (bare path = no scope)
 
-導覽列的主題切換控制 SHALL 提供 `dark` / `light` / `system` 三個選項。有效主題的決定順序 MUST 為:瀏覽器本機保存的使用者選擇(若有)→ 設定文件的 `theme` → `system`。使用者一旦選擇,該選擇 MUST 保存於瀏覽器本機、跨重新整理與新分頁沿用,並優先於設定文件的 `theme`。`system` MUST 跟隨作業系統的 dark / light 偏好,且偏好改變時 MUST 即時套用,無需重新整理。
+#### Scenario: Same-named dimensions do not affect each other
 
-有效主題 MUST 套用至整個應用:導覽列、Graph 視圖(含 canvas 樣式)、Sankey 視圖、所有 overlay(hover tooltip、pinned card、node detail 面板、搜尋結果清單、legend、選單)、找不到頁面畫面、載入中畫面與設定錯誤畫面。載入中畫面與設定錯誤畫面出現時設定尚不可用,MUST 以「瀏覽器本機保存的使用者選擇 → `system`」決定主題。
+- **WHEN** the user selects `az: zone-a` and `az: zone-b` in the Graph filter bar, then selects `az: zone-c` in Sankey
+- **THEN** each place keeps its own values: the graph request for `/graph?az=zone-a&az=zone-b` carries `az=zone-a&az=zone-b`, and the storage-graph request for `/sankey?az=zone-c` carries `az=zone-c`; neither page's URL contains the other page's parameters
 
-切換主題 MUST NOT 重新載入資料、MUST NOT 重置任何視圖狀態(選取、collapse、viewport、篩選、搜尋)、MUST NOT 重建 Graph 視圖的 canvas;既有元素 MUST 就地換色。
+#### Scenario: The current view's link is presented as active
 
-#### Scenario: 使用者選擇持久化並優先於設定
+- **WHEN** the user is on `/sankey`
+- **THEN** the Sankey link in the nav bar is presented in the active style and marked as the current page, and the Graph link is not
 
-- **WHEN** 設定文件 `theme` 為 `"light"`,使用者於導覽列選擇 `dark` 後重新整理頁面
-- **THEN** 重新整理後應用以 dark 主題呈現(含載入中畫面)
+#### Scenario: Demo mode badge
 
-#### Scenario: 無使用者選擇時採用設定值
+- **WHEN** the configured `demoMode` is `true`
+- **THEN** the nav bar shows the demo mode badge, and it remains shown when switching between the Graph and Sankey views
 
-- **WHEN** 瀏覽器無保存的主題選擇,設定文件 `theme` 為 `"light"`
-- **THEN** 應用以 light 主題呈現,主題切換控制顯示目前為 `light`
+#### Scenario: No badge outside demo mode
 
-#### Scenario: system 跟隨作業系統偏好
+- **WHEN** the configured `demoMode` is `false`
+- **THEN** the nav bar does not contain the demo mode badge
 
-- **WHEN** 有效主題為 `system`,作業系統由 light 切換為 dark
-- **THEN** 應用立即改以 dark 主題呈現,無需重新整理
+#### Scenario: Sankey focus mode collapses the nav bar
 
-#### Scenario: 主題套用至 overlay
+- **WHEN** the user enters focus mode on the Sankey view, then leaves it
+- **THEN** while in it the nav bar is not shown and the Sankey diagram area fills the window; after leaving, the nav bar is restored immediately, and its active link, theme switch and status indicator all keep the state they had before entering
 
-- **WHEN** 使用者於 Graph 視圖開啟 node detail 面板與 pinned card 後切換主題
-- **THEN** 導覽列、canvas、detail 面板與 pinned card 皆同時改為新主題
+### Requirement: Theme switching and persistence
 
-#### Scenario: 切換主題保留視圖狀態
+The nav bar's theme switching control SHALL offer three options: `dark` / `light` / `system`. The order of precedence for the effective theme MUST be: the user's choice saved in browser local storage (if any) → the configuration document's `theme` → `system`. Once the user chooses, that choice MUST be saved in browser local storage, carried across refreshes and new tabs, and take precedence over the configuration document's `theme`. `system` MUST follow the operating system's dark / light preference, and when the preference changes it MUST be applied immediately, without a refresh.
 
-- **WHEN** 使用者於 Graph 視圖選取一個節點、收合一個容器並輸入搜尋字串後切換主題
-- **THEN** 選取、collapse 狀態、搜尋字串與 viewport 位置皆不變,且未發出任何資料請求
+The effective theme MUST be applied to the whole application: the nav bar, the Graph view (including canvas styles), the Sankey view, all overlays (hover tooltip, pinned card, node detail panel, search result list, legend, menus), the not-found page screen, the loading screen and the configuration error screen. When the loading screen and the configuration error screen appear, configuration is not yet available, so the theme MUST be decided by "the user's choice saved in browser local storage → `system`".
 
-### Requirement: 檢視時間範圍(view time range)
+Switching the theme MUST NOT reload data, MUST NOT reset any view state (selection, collapse, viewport, filters, search), and MUST NOT rebuild the Graph view's canvas; existing elements MUST be recolored in place.
 
-導覽列 SHALL 提供一個**檢視時間範圍**控制,選項為相對區間 `1h` / `6h` / `24h` / `7d` 與一個自訂的絕對區間(起訖各為一個時刻)。預設 MUST 為 `24h`。使用者的選擇 MUST 保存於瀏覽器本機、跨重新整理與新分頁沿用;它 MUST NOT 被寫入 URL,亦 MUST NOT 被寫入 runtime config。相對區間 MUST 於每次被讀取時就地換算為當下的絕對起訖(`from` = 現在減去該長度,`to` = 現在),而非於選取當下凍結。
+#### Scenario: User choice persists and takes precedence over configuration
 
-檢視時間範圍是 shell 唯一**跨視圖共用**的輸入,有三個消費端:
+- **WHEN** the configuration document's `theme` is `"light"`, and the user selects `dark` in the nav bar and then refreshes the page
+- **THEN** after the refresh the application is presented in the dark theme (including the loading screen)
 
-1. `GET /v1/graph` 的 `start` / `end`(Graph 視圖);
-2. `GET /v1/storage-graph` 的 `start` / `end`(Sankey 視圖);
-3. node detail 的 Dashboard 查詢的 `from_time` / `to_time`(Unix 秒,詳見 `node-detail`)。
+#### Scenario: Configuration value is used when there is no user choice
 
-前兩者是**必要參數**——後端對缺值以 400 `missing_start` / `missing_end` 拒絕,兩個端點都沒有相對時間的形式,故視窗由前端於**每次請求送出當下**解析(見 `graph-data-source` 的請求組裝需求)。change history 查詢不帶時間參數,MUST NOT 因此重新取數。
+- **WHEN** the browser has no saved theme choice, and the configuration document's `theme` is `"light"`
+- **THEN** the application is presented in the light theme, and the theme switching control shows the current option as `light`
 
-變更檢視時間範圍 MUST 使**已載入的**資料來源重新取數(Graph 視圖已載入則重取 graph;Sankey 視圖已載入則重取 storage-graph;未曾開啟的視圖 MUST NOT 因此產生請求),且 MUST NOT 重置任何視圖狀態(選取、collapse、viewport、篩選、搜尋、Sankey 的模式與選擇器)。該控制 MUST 可經鍵盤到達與啟動,並具有可存取名稱。
+#### Scenario: system follows the operating system preference
 
-#### Scenario: 預設為 24h 且選擇跨重新整理沿用
+- **WHEN** the effective theme is `system`, and the operating system switches from light to dark
+- **THEN** the application immediately switches to the dark theme, without a refresh
 
-- **WHEN** 使用者首次開啟應用
-- **THEN** 檢視時間範圍控制顯示 `24h`
-- **AND** 使用者改選 `6h` 並重新整理頁面後,控制仍顯示 `6h`
+#### Scenario: Theme applies to overlays
 
-#### Scenario: 相對區間於讀取時換算為當下
+- **WHEN** the user opens the node detail panel and a pinned card on the Graph view, then switches the theme
+- **THEN** the nav bar, canvas, detail panel and pinned card all change to the new theme at the same time
 
-- **WHEN** 檢視時間範圍為 `1h`,使用者選取某節點並觸發其 Dashboard 查詢
-- **THEN** 該查詢的 `from_time` / `to_time` 為「查詢當下減一小時」至「查詢當下」的 Unix 秒,而非選取該區間當時所凍結的值
+#### Scenario: Switching the theme preserves view state
 
-#### Scenario: 變更時間範圍重取已載入的來源
+- **WHEN** the user, on the Graph view, selects a node, collapses a container and enters a search string, then switches the theme
+- **THEN** the selection, collapse state, search string and viewport position are all unchanged, and no data request is issued
 
-- **WHEN** 使用者已載入 Graph 視圖但從未開啟 Sankey 視圖,此時將檢視時間範圍自 `24h` 改為 `1h`
-- **THEN** 應用對 `endpoints.graph` 重新發出一次帶新 `start` / `end` 的請求,對 `endpoints.storageGraph` 的請求數仍為 0
-- **AND** 不對 `endpoints.codeChanges` / `endpoints.configChanges` 發出任何請求
-- **AND** 目前的選取、collapse、viewport、篩選與搜尋狀態皆不變
+### Requirement: View time range
 
-#### Scenario: 兩個視圖都已載入時兩者皆重取
+The nav bar SHALL provide a **view time range** control, whose options are the relative windows `1h` / `6h` / `24h` / `7d` and one custom absolute window (a start and an end, each a point in time). The default MUST be `24h`. The user's choice MUST be saved both in browser local storage (carried across refreshes and new tabs) **and written to the current route's query** (`from` / `to`): a relative window is written as `from=now-<window>&to=now` (`<window>` limited to `1h` / `6h` / `24h` / `7d`), an absolute window as two Unix seconds. The order of precedence MUST be: the URL's `from` / `to` (if valid) → the browser local storage value → `24h`; after the page mounts it MUST immediately write the result back to the query with replace, so that the URLs of `/graph` and `/sankey` **always carry** `from` / `to` — the time range has a local fallback, so "not written in the URL" is ambiguous, unlike scope parameters where "not written = default". An invalid combination in the URL (unparseable, `from` ≥ `to`, an unknown relative form) MUST be ignored as a whole and fall back to the next layer; it MUST NOT take just one half. It MUST NOT be written to the runtime config. A relative window MUST be converted in place to the current absolute start and end on every read (`from` = now minus that length, `to` = now), rather than frozen at the moment of selection.
 
-- **WHEN** 使用者已依序開啟過 Graph 與 Sankey 兩視圖(且 Sankey 的 `az` / `env` 已選定),此時變更檢視時間範圍
-- **THEN** 兩個端點各重新發出一次請求,兩者的 `start` / `end` 相同
+The view time range is the shell's only **cross-view shared** input, with three consumers:
 
-#### Scenario: 不寫入 URL 或 runtime config
+1. the `start` / `end` of `GET /v1/graph` (Graph view);
+2. the `start` / `end` of `GET /v1/storage-graph` (Sankey view);
+3. the `from_time` / `to_time` of the node detail's Dashboard queries (Unix seconds, see `node-detail`).
 
-- **WHEN** 使用者改選 `7d`
-- **THEN** 瀏覽器網址列不出現任何時間範圍相關參數,且應用不寫入 runtime config
+The first two are **required parameters** — the backend rejects a missing value with 400 `missing_start` / `missing_end`, and neither endpoint has a relative-time form, so the window is resolved by the frontend **at the moment each request is sent** (see the request assembly requirement in `graph-data-source`). Change history queries carry no time parameters, and MUST NOT refetch because of it.
 
-### Requirement: 兩個獨立的資料生命週期
+Changing the view time range MUST cause the **current page's** data source to refetch; the other page is not mounted and MUST NOT produce a request because of it, and on its next mount it reads the new range from the URL or the local storage value. The change MUST NOT reset any view state of the current page (selection, collapse, viewport, filters, search, the Sankey's mode and selectors). The control MUST be reachable and activatable by keyboard, and have an accessible name.
 
-shell SHALL 持有**兩個獨立的資料來源**,各服務一個視圖(取數與正規化行為見 `graph-data-source`):
+#### Scenario: Default is 24h and the choice carries across refreshes
 
-| 來源          | 端點                     | 服務的視圖 | 首次取數時機                                     |
-| ------------- | ------------------------ | ---------- | ------------------------------------------------ |
-| graph         | `endpoints.graph`        | Graph      | 設定載入完成後立即一次                           |
-| storage-graph | `endpoints.storageGraph` | Sankey     | **首次進入 Sankey 視圖且 `az` / `env` 已選定時** |
+- **WHEN** the user opens the application for the first time
+- **THEN** the view time range control shows `24h`
+- **AND** after the user changes it to `6h` and refreshes the page, the control still shows `6h`
 
-兩者的 in-flight 請求、`status`、錯誤訊息、最後一次成功載入時間與重試 MUST 完全獨立:一方失敗或載入中 MUST NOT 影響另一方已渲染的資料。shell MUST NOT 把任一來源的資料交給另一個視圖。
+#### Scenario: Relative window is converted to the current moment on read
 
-storage-graph 來源 MUST 為 **lazy**:使用者未曾進入 Sankey 視圖前,shell MUST NOT 發出任何 storage-graph 請求(包含自動刷新與時間範圍變更所觸發者)。這不只是省一次請求——`/v1/storage-graph` 要求 `az` / `env` 皆為單值,在使用者做出選擇前根本沒有可送出的合法請求。
+- **WHEN** the view time range is `1h`, and the user selects a node and triggers its Dashboard query
+- **THEN** that query's `from_time` / `to_time` are the Unix seconds from "the moment of the query minus one hour" to "the moment of the query", rather than values frozen when that window was selected
 
-視圖切換本身 MUST NOT 觸發任何重新取數、MUST NOT 重新正規化:已載入的視圖 MUST 立即以其來源既有的資料渲染。
+#### Scenario: Changing the time range refetches the loaded source
 
-任一來源重新載入(手動或自動)期間,MUST 持續顯示該來源先前成功載入的資料,不得清空視圖;重新載入失敗時 MUST 保留先前資料並於狀態指示器顯示錯誤,MUST NOT 以錯誤畫面取代既有視圖。首次載入失敗時無先前資料,視圖依其錯誤狀態呈現。
+- **WHEN** the user, after `/graph` has finished loading, changes the view time range from `24h` to `1h`
+- **THEN** the application issues one new request to `endpoints.graph` with the new `start` / `end`, and the request count to `endpoints.storageGraph` remains 0 (the Sankey page is not mounted)
+- **AND** no request is issued to `endpoints.codeChanges` / `endpoints.configChanges`
+- **AND** the current selection, collapse, viewport, filter and search state are all unchanged
 
-#### Scenario: 視圖切換不重新取數
+#### Scenario: Written to the URL, and the URL takes precedence
 
-- **WHEN** 兩個來源皆已載入,使用者於 Graph 與 Sankey 視圖間來回切換三次
-- **THEN** 整個過程不發出任何請求,兩視圖各以其來源的資料渲染,且不出現載入中狀態
+- **WHEN** the browser local storage value is `6h`, and the user opens `/graph?from=now-1h&to=now`
+- **THEN** the control shows `1h`, and the graph request's `start` / `end` are now minus one hour to now; after the user changes it to `7d`, the address bar becomes `from=now-7d&to=now` (replace), the local storage value is updated to `7d`, and the application does not write to the runtime config
 
-#### Scenario: Sankey 未開啟前不取數
+#### Scenario: Bare path gets the time range filled in
 
-- **WHEN** 應用啟動後使用者只停留在 Graph 視圖,期間發生多次自動刷新
-- **THEN** 對 `endpoints.storageGraph` 的請求數為 0
+- **WHEN** the local storage value is `6h`, and the user opens `/sankey`
+- **THEN** the address bar immediately (replace) becomes `/sankey?from=now-6h&to=now`, and the browser history length is unchanged
 
-#### Scenario: 首次進入 Sankey 才取數
+#### Scenario: Invalid from / to is ignored as a whole
 
-- **WHEN** 使用者首次切換至 Sankey 視圖,且 `az` / `env` 皆已選定
-- **THEN** shell 對 `endpoints.storageGraph` 發出恰好一次請求;再切回 Graph 視圖後又切回 Sankey,不再發出新請求
+- **WHEN** the user opens `/graph?from=1700000000&to=1600000000` (`from` ≥ `to`)
+- **THEN** both are ignored, the control is presented with the local storage value (or `24h`), and the address bar is replaced with that value's `from` / `to`
 
-#### Scenario: 重新載入期間保留舊資料
+### Requirement: Page-owned data lifecycle
 
-- **WHEN** 某來源的資料已載入,使用者觸發重新載入且新請求進行中
-- **THEN** 對應視圖持續顯示既有資料,狀態指示器顯示載入中
+Each page SHALL hold **its own** data source (fetching and normalization behavior in `graph-data-source`):
 
-#### Scenario: 一方失敗不影響另一方
+| Page      | Endpoint                 | When first fetched                                                                                       |
+| --------- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `/graph`  | `endpoints.graph`        | once, immediately after the page mounts                                                                  |
+| `/sankey` | `endpoints.storageGraph` | when the page is mounted and `az` / `env` are selected (from the URL, auto-preselected or user-selected) |
 
-- **WHEN** storage-graph 的重新載入回應 HTTP 500
-- **THEN** Sankey 仍顯示其先前成功載入的資料並於狀態指示器呈現錯誤;切換至 Graph 視圖時其資料與狀態完全不受影響,不顯示設定錯誤畫面
+The source's in-flight request, `status`, error message, last successful load time, retry and auto-refresh timers all live and die with the page: unmounting the page MUST abort the in-flight request and discard its result, and stop the timers; remounting MUST refetch from the scope carried by the URL, and MUST NOT reuse the data of the previous mount — "view switching does not refetch" is no longer a requirement; switch = reset. The shell MUST NOT hold the data of any source, and MUST NOT hand one page's data to another page.
 
-### Requirement: 重新載入動作與狀態指示器
+A page that has never been mounted MUST NOT produce any request (including those triggered by auto-refresh and time range changes) — this is the natural consequence of `/v1/storage-graph` requiring single values for `az` / `env`: with no page there is no valid request that could be sent.
 
-導覽列的「重新載入資料」動作 SHALL 立即觸發**當前視圖之資料來源**的一次重新取得——於 Graph 視圖為 graph 來源,於 Sankey 視圖為 storage-graph 來源;請求進行中時該動作 MUST 呈現進行中狀態並 MUST NOT 發出第二個並行請求。該動作 MUST NOT 刷新非當前視圖的來源。Sankey 視圖的 `az` / `env` 尚未選齊、或 `endpoints.storageGraph` 未設定時,該動作 MUST 呈現為不可用(而非發出一個必定被 400 拒絕的請求)。`demoMode` 為 `true` 時,此動作 MUST 以對應的 fixture 重新產生資料而不發出網路請求。
+During a reload within the same page (manual or automatic), the source's previously successfully loaded data MUST remain shown, and the view must not be cleared; when a reload fails, the previous data MUST be kept and the error shown in the status indicator, and the existing view MUST NOT be replaced by an error screen. When the first load fails there is no previous data, and the page is presented according to its error state.
 
-當設定的 `refreshIntervalSeconds` 大於 `0` 時,shell SHALL 每隔該秒數自動觸發一次重新載入,同樣**只作用於當前視圖的來源**;若該來源前一次請求仍在進行中,該次 tick MUST 略過;手動重新載入 MUST 重新計時。切換視圖 MUST 使計時器改為服務新的當前來源。`refreshIntervalSeconds` 為 `0` 時 MUST NOT 自動刷新。
+#### Scenario: Switching routes refetches
 
-狀態指示器 MUST 反映**當前視圖之來源**的狀態:載入中時的載入指示;就緒時該來源最後一次成功載入的時間(以使用者本地時間呈現);錯誤時的錯誤狀態,且錯誤訊息 MUST 可經由指示器讀取(例如展開或 tooltip);自動刷新啟用時 MUST 標示其間隔。切換視圖時指示器 MUST 立即改為顯示新視圖來源的狀態,MUST NOT 沿用前一個來源的時間或錯誤。
+- **WHEN** the user, after `/graph` has finished loading, switches to `/sankey` and then back to `/graph`
+- **THEN** on the second entry to `/graph` the Graph page remounts, issues a new request to `endpoints.graph` and shows the loading state; during this, requests to `endpoints.storageGraph` are issued only while `/sankey` is mounted and `az` / `env` are both present
 
-#### Scenario: 手動重新載入
+#### Scenario: Leaving a page aborts the in-flight request
 
-- **WHEN** 使用者於 Graph 視圖點擊「重新載入資料」
-- **THEN** 應用對 `endpoints.graph` 發出恰好一次請求、對 `endpoints.storageGraph` 發出零次;成功後狀態指示器更新為新的最後載入時間
+- **WHEN** a request for `/graph` is in flight, and the user switches to `/sankey`
+- **THEN** that request is aborted (or its result discarded), updates no state, and triggers no error indication
 
-#### Scenario: 於 Sankey 視圖重新載入只重取 storage-graph
+#### Scenario: An unmounted page does not fetch
 
-- **WHEN** 兩個來源皆已載入,使用者於 Sankey 視圖點擊「重新載入資料」
-- **THEN** 應用只對 `endpoints.storageGraph` 發出一次請求;切回 Graph 視圖時其資料與最後載入時間維持不變
+- **WHEN** after the application starts the user stays only on `/graph`, and several auto-refreshes occur during that time
+- **THEN** the request count to `endpoints.storageGraph` is 0
 
-#### Scenario: az / env 未選齊時重新載入不可用
+#### Scenario: Old data is kept during a reload
 
-- **WHEN** 使用者於 Sankey 視圖且 `env` 尚未選定
-- **THEN** 「重新載入資料」呈現為不可用,點擊不發出任何請求
+- **WHEN** the current page's data is loaded, and the user triggers a reload while the new request is in flight
+- **THEN** the page keeps showing the existing data, and the status indicator shows loading
 
-#### Scenario: 進行中不重複發送
+#### Scenario: One side failing does not affect the other
 
-- **WHEN** 重新載入請求進行中,使用者再次點擊「重新載入資料」
-- **THEN** 不發出額外請求,動作維持進行中狀態直到現有請求完成
+- **WHEN** the reload of `/sankey` responds with HTTP 500
+- **THEN** Sankey still shows its previously successfully loaded data and presents the error in the status indicator; on switching to `/graph`, that page reloads with its own state and does not show the configuration error screen
 
-#### Scenario: 自動刷新
+### Requirement: Reload action and status indicator
 
-- **WHEN** `refreshIntervalSeconds` 為 `30`,使用者停留於 Graph 視圖
-- **THEN** 應用約每 30 秒對 `endpoints.graph` 發出一次請求,狀態指示器標示自動刷新為 30s;手動重新載入後下一次自動刷新自該時間點起算 30 秒
-- **AND** 切換至 Sankey 視圖後,自動刷新改為每 30 秒對 `endpoints.storageGraph` 發出一次,`endpoints.graph` 不再被自動刷新
+The nav bar's "Reload data" action SHALL immediately trigger one refetch of **the current view's data source** — the graph source on the Graph view, the storage-graph source on the Sankey view; while the request is in flight the action MUST present an in-progress state and MUST NOT issue a second concurrent request. The action MUST NOT refresh the source of a non-current view. When the Sankey view's `az` / `env` are not both selected, or `endpoints.storageGraph` is not configured, the action MUST be presented as unavailable (rather than issuing a request that is certain to be rejected with 400). When `demoMode` is `true`, this action MUST regenerate the data from the corresponding fixture without issuing a network request.
 
-#### Scenario: 自動刷新關閉
+When the configured `refreshIntervalSeconds` is greater than `0`, the shell SHALL automatically trigger a reload every that many seconds, likewise **acting only on the current view's source**; if that source's previous request is still in flight, that tick MUST be skipped; a manual reload MUST restart the timer. The timer lives and dies with the page: unmounting stops it, and after a new page mounts it counts from that page's first load. When `refreshIntervalSeconds` is `0` there MUST NOT be auto-refresh.
 
-- **WHEN** `refreshIntervalSeconds` 為 `0`
-- **THEN** 應用僅於啟動與手動重新載入時取數,狀態指示器不標示自動刷新
+The status indicator MUST reflect the state of **the current view's source**: a loading indication while loading; when ready, the time of that source's last successful load (presented in the user's local time); an error state on error, and the error message MUST be readable via the indicator (for example by expanding or a tooltip); when auto-refresh is enabled its interval MUST be indicated. When a new page mounts the indicator MUST be presented with that page's source's initial state (loading), and MUST NOT carry over the previous page's time or error.
 
-#### Scenario: demo 模式重新載入
+#### Scenario: Manual reload
 
-- **WHEN** `demoMode` 為 `true`,使用者於任一視圖點擊「重新載入資料」
-- **THEN** 不發出任何網路請求,該視圖的資料以其對應的 fixture 重新產生,狀態指示器更新最後載入時間
+- **WHEN** the user clicks "Reload data" on the Graph view
+- **THEN** the application issues exactly one request to `endpoints.graph` and zero to `endpoints.storageGraph`; on success the status indicator updates to the new last load time
 
-### Requirement: 視圖區填滿剩餘視窗高度並響應尺寸
+#### Scenario: Reloading on the Sankey view refetches only storage-graph
 
-導覽列之下的視圖區 MUST 填滿視窗扣除導覽列後的全部剩餘高度與全部寬度;頁面本身 MUST NOT 出現整頁捲軸。Graph 與 Sankey 視圖 MUST 依視圖區尺寸繪製;視窗尺寸改變時視圖區 MUST 隨之改變,且視圖 MUST 重新適配(Graph 視圖的 canvas 重新調整並 fit;Sankey 視圖以 `viewBox` 等比重新適配,**不重新佈局** —— 見 `storage-flow-sankey` 的「尺寸與容器 resize」),內容不得被裁切至視圖區之外。**唯一例外**:Sankey 使用者已建立的圖內縮放平移視角 MUST 被保留,即使該視角使部分內容落於可視範圍外 —— 視窗縮放 MUST NOT 重置使用者的圖內視角。**由 app 內部配置改變(而非視窗尺寸改變)所導致的視圖區尺寸變化 —— 如視圖自隱藏切回可見 —— MUST 只使 Graph 視圖重算 canvas 尺寸,MUST NOT 重新 fit:該視圖切走前的 zoom 與 pan MUST 被保留(見 `graph-view` 的「容器尺寸響應」需求)。**
+- **WHEN** the user clicks "Reload data" on the Sankey view
+- **THEN** the application issues only one request to `endpoints.storageGraph`; on switching back to `/graph`, the Graph page remounts and fetches, and its last load time is new
 
-#### Scenario: 視圖區高度等於視窗扣除導覽列
+#### Scenario: Reload is unavailable when az / env are not both selected
 
-- **WHEN** 視窗高度為 900px,導覽列高度為 48px
-- **THEN** 視圖區高度為 852px、寬度等於視窗寬度,且頁面無整頁捲軸
+- **WHEN** the user is on the Sankey view and `env` is not yet selected
+- **THEN** "Reload data" is presented as unavailable, and clicking it issues no request
 
-#### Scenario: 縮放視窗後視圖重新適配
+#### Scenario: No duplicate sending while in flight
 
-- **WHEN** 使用者將視窗由 1600×900 縮至 1000×700
-- **THEN** 視圖區隨之縮小,目前視圖以新尺寸重繪且全部內容仍在可視範圍內;若 Sankey 存在使用者自訂的圖內縮放平移視角,則維持該視角而不強制全圖可見
+- **WHEN** a reload request is in flight, and the user clicks "Reload data" again
+- **THEN** no additional request is issued, and the action stays in the in-progress state until the existing request completes
 
-### Requirement: 跨視圖保留各視圖的暫時狀態
+#### Scenario: Auto-refresh
 
-各視圖的暫時狀態 SHALL 在同一 session 內於視圖切換時保留:Graph 視圖的選取、collapse 集合、篩選(kind / edge type / ingress 可見性)、pod-parent mode、搜尋字串、legend 收合狀態,以及 filter bar 的 `cluster` / `az` / `env` / `namespace` / `edge_type` 與 Projection 選擇;Sankey 視圖的模式、其 `az` / `env` / root / `cluster` / `namespace` 選擇,以及縮放平移視角(Sankey MUST NOT 持有持久的選取狀態,見 `storage-flow-sankey`;專注模式則於切走視圖時解除)。使用者離開再返回某視圖時,MUST 見到離開時的狀態。
+- **WHEN** `refreshIntervalSeconds` is `30`, and the user stays on the Graph view
+- **THEN** the application issues one request to `endpoints.graph` roughly every 30 seconds, and the status indicator indicates auto-refresh as 30s; after a manual reload, the next auto-refresh counts 30 seconds from that point in time
+- **AND** after switching to `/sankey`, the Graph page's timer stops as it unmounts, and auto-refresh instead issues one request to `endpoints.storageGraph` every 30 seconds
 
-上述狀態 MUST NOT 持久化至瀏覽器本機儲存,MUST NOT 寫入 URL(路由路徑 MUST 維持精確的 `/graph` / `/sankey`,無 query string、無 hash);完整重新整理後 MUST 全部回到初始值(其中 Graph 視圖的佈局演算法初始值來自設定的 `defaultLayout`)。資料重新載入 MUST NOT 主動清除這些狀態;資料改變後個別狀態如何對應(例如被選取的節點已不存在)由各視圖規範。
+#### Scenario: Auto-refresh off
 
-#### Scenario: Graph 視圖狀態跨切換保留
+- **WHEN** `refreshIntervalSeconds` is `0`
+- **THEN** the application fetches only on startup and manual reload, and the status indicator does not indicate auto-refresh
 
-- **WHEN** 使用者於 Graph 視圖選取節點 `pod-a`、收合容器 `deploy-x`、切換至 `node` pod-parent mode、收合 legend,然後切至 Sankey 視圖再返回 Graph 視圖
-- **THEN** `pod-a` 仍為選取、`deploy-x` 仍收合、pod-parent mode 仍為 `node`、legend 仍收合
+#### Scenario: Demo mode reload
 
-#### Scenario: Sankey 視圖狀態跨切換保留
+- **WHEN** `demoMode` is `true`, and the user clicks "Reload data" on either view
+- **THEN** no network request is issued, that view's data is regenerated from its corresponding fixture, and the status indicator updates the last load time
 
-- **WHEN** 使用者於 Sankey 視圖切換模式、加入一個 root 並改選 `env`,切至 Graph 視圖再返回
-- **THEN** Sankey 視圖的模式、root 與 `az` / `env` 選擇皆不變,且返回時 MUST NOT 因此重新取數(Sankey 自身沒有持久化的節點選取,見 `storage-flow-sankey`)
+### Requirement: View area fills the remaining window height and responds to size
 
-#### Scenario: 狀態不寫入 URL 與本機儲存
+The view area below the nav bar MUST fill the entire remaining height of the window after the nav bar, and its entire width; the page itself MUST NOT show a whole-page scrollbar. The Graph and Sankey views MUST be drawn according to the view area's size; when the window size changes the view area MUST change with it, and the view MUST re-fit (the Graph view's canvas resizes and fits; the Sankey view re-fits proportionally via `viewBox`, **without re-layout** — see "Sizing and container resize" in `storage-flow-sankey`), and content must not be clipped outside the view area. **The sole exception**: an in-diagram zoom / pan viewport the Sankey user has established MUST be preserved, even if that viewport leaves part of the content outside the visible range — resizing the window MUST NOT reset the user's in-diagram viewport. How view area size changes caused by in-app layout changes (legend collapse, panel open / close) are handled is in the "Container size responsiveness" requirement of `graph-view`.
 
-- **WHEN** 使用者於 Graph 視圖進行任意選取、收合、篩選與搜尋
-- **THEN** 位址列始終為 `/graph`(無 query string、無 hash),且瀏覽器本機儲存中不存在任何視圖狀態
+#### Scenario: View area height equals the window minus the nav bar
 
-#### Scenario: 重新整理後回到初始狀態
+- **WHEN** the window height is 900px and the nav bar height is 48px
+- **THEN** the view area height is 852px, its width equals the window width, and the page has no whole-page scrollbar
 
-- **WHEN** 使用者於 Graph 視圖建立選取與 collapse 狀態後完整重新整理
-- **THEN** Graph 視圖以初始狀態呈現:無選取、預設 collapse、預設篩選、預設 pod-parent mode、空搜尋、legend 展開、filter bar 為空且 Projection 為預設,佈局演算法為設定的 `defaultLayout`
-- **AND** Sankey 視圖的模式回到 `Both`、root 清空、`az` / `env` 依「單一候選值自動預選」規則重新決定
+#### Scenario: View re-fits after the window is resized
 
-### Requirement: Shell 不註冊全域鍵盤快捷鍵
+- **WHEN** the user shrinks the window from 1600×900 to 1000×700
+- **THEN** the view area shrinks with it, the current view is redrawn at the new size and all content is still within the visible range; if the Sankey has a user-customized in-diagram zoom / pan viewport, that viewport is kept rather than forcing the whole diagram to be visible
 
-shell MUST NOT 於 `document` / `window` 層級註冊任何鍵盤快捷鍵;導覽列的所有控制 MUST 僅以標準的焦點導覽(Tab / Shift+Tab)與啟動鍵(Enter / Space)操作。視圖內部元件的鍵盤行為由各視圖規範,且 shell MUST NOT 攔截或改寫傳往視圖與其輸入欄位的按鍵事件。
+### Requirement: Page transient state lives and dies with the route
 
-#### Scenario: 無焦點時按鍵無效果
+Each page's transient state — the Graph page's selection, collapse set, kind / edge type / ingress visibility, pod-parent mode, search string, legend collapse; the Sankey page's zoom / pan viewport, hover, focus mode — SHALL be created when the page mounts and discarded when it unmounts. On leaving and returning to a page, the user MUST see that page's initial state (the Graph's initial layout algorithm value comes from the configured `defaultLayout`; pod-parent mode is `controller`). The only things that survive across unmount are **the scope, mode and time range carried by the URL query** — they are not transient state but the page's inputs.
 
-- **WHEN** 焦點位於頁面本體(無任何控制取得焦點),使用者按下任意字母鍵或功能鍵
-- **THEN** 應用不切換視圖、不切換主題、不重新載入資料,亦無其他 shell 層級反應
+The transient state above MUST NOT be persisted to browser local storage and MUST NOT be written to the URL; after a full refresh it MUST all return to initial values, while scope / mode / time range are restored from the URL. A data reload MUST NOT actively clear this state; how individual state maps after the data changes (for example a selected node that no longer exists) is specified by each view.
 
-#### Scenario: 輸入欄位按鍵不被攔截
+#### Scenario: Returning to a page gives the initial state
 
-- **WHEN** 焦點位於 Graph 視圖的搜尋輸入欄,使用者輸入任意字元
-- **THEN** 字元正常進入輸入欄,shell 不消耗該事件
+- **WHEN** the user, on `/graph`, selects node `pod-a`, collapses container `deploy-x`, switches to the `node` pod-parent mode and collapses the legend, then switches to `/sankey` and presses "Back"
+- **THEN** the Graph page remounts: no selection, default collapse, pod-parent mode `controller`, legend expanded; the filters and time range carried by the URL are restored
 
-### Requirement: 無障礙基礎
+#### Scenario: Transient state does not enter the URL or local storage
 
-導覽列 MUST 為具有可存取名稱的 navigation landmark;視圖區 MUST 為 main landmark。目前視圖的連結 MUST 以標準方式標示為目前頁面。所有導覽列控制 MUST 可經鍵盤到達與啟動;以鍵盤取得焦點時 MUST 顯示清晰可見的焦點框,且在 dark 與 light 主題下皆與背景有足夠對比。僅含圖示的控制(主題切換、重新載入)MUST 具有可存取名稱;主題切換控制 MUST 揭露目前選項;狀態指示器與 demo 標記的內容 MUST 為可被輔助科技讀取的文字。
+- **WHEN** the user, on `/graph?namespace=shop`, performs arbitrary selection, collapse, kind filtering and search
+- **THEN** the address bar's query always contains only `namespace` and `from` / `to`, and no view state exists in browser local storage
 
-#### Scenario: Landmark 存在
+#### Scenario: After a refresh the scope is restored and transient state reset
 
-- **WHEN** 輔助科技列舉頁面 landmark
-- **THEN** 找到一個具名的 navigation landmark(導覽列)與一個 main landmark(視圖區)
+- **WHEN** the user, on `/sankey?az=zone-a&env=prod&mode=write`, zooms / pans and enters focus mode, then does a full refresh
+- **THEN** the Sankey fetches and draws with `az=zone-a` / `env=prod` / `mode=write`; the viewport is initial and focus mode is not active
 
-#### Scenario: 鍵盤焦點可見
+### Requirement: Shell registers no global keyboard shortcuts
 
-- **WHEN** 使用者以 Tab 鍵依序移動焦點至導覽列各控制
-- **THEN** 每個取得焦點的控制皆顯示可見的焦點框,且在 dark 與 light 主題下皆清楚可辨
+The shell MUST NOT register any keyboard shortcut at the `document` / `window` level; all nav bar controls MUST be operated only by standard focus navigation (Tab / Shift+Tab) and activation keys (Enter / Space). The keyboard behavior of components inside views is specified by each view, and the shell MUST NOT intercept or rewrite key events bound for the views and their input fields.
 
-#### Scenario: 圖示控制具名稱
+#### Scenario: Keys have no effect without focus
 
-- **WHEN** 輔助科技讀取主題切換與重新載入控制
-- **THEN** 兩者皆有描述其功能的可存取名稱,主題切換並揭露目前為 `dark` / `light` / `system` 之一
+- **WHEN** focus is on the page body (no control has focus), and the user presses any letter key or function key
+- **THEN** the application does not switch views, does not switch theme, does not reload data, and has no other shell-level reaction
+
+#### Scenario: Input field keys are not intercepted
+
+- **WHEN** focus is on the Graph view's search input field, and the user types any character
+- **THEN** the character enters the input field normally, and the shell does not consume the event
+
+### Requirement: Accessibility basics
+
+The nav bar MUST be a navigation landmark with an accessible name; the view area MUST be a main landmark. The current view's link MUST be marked as the current page in the standard way. All nav bar controls MUST be reachable and activatable by keyboard; when focused by keyboard they MUST show a clearly visible focus ring, with sufficient contrast against the background in both the dark and light themes. Icon-only controls (theme switch, reload) MUST have an accessible name; the theme switching control MUST expose the current option; the content of the status indicator and the demo badge MUST be text readable by assistive technology.
+
+#### Scenario: Landmarks exist
+
+- **WHEN** assistive technology enumerates the page landmarks
+- **THEN** it finds one named navigation landmark (the nav bar) and one main landmark (the view area)
+
+#### Scenario: Keyboard focus is visible
+
+- **WHEN** the user moves focus through the nav bar controls in order with the Tab key
+- **THEN** every control that receives focus shows a visible focus ring, clearly discernible in both the dark and light themes
+
+#### Scenario: Icon controls have names
+
+- **WHEN** assistive technology reads the theme switching and reload controls
+- **THEN** both have an accessible name describing their function, and the theme switch also exposes the current option as one of `dark` / `light` / `system`

@@ -1,512 +1,512 @@
 ## Purpose
 
-定義 Graph view 中 node detail panel 的行為契約:面板如何相對於選取(selection)開啟與關閉、header 與各資料閘控 section(Application / Containers / Alerts)的內容,以及自 runtime config 端點(`endpoints.configChanges`、`endpoints.codeChanges`、`endpoints.dashboard`)預取 change history 與 Dashboard 連結的請求、參數組裝、回應解析與可用性判定。
+Defines the behavioral contract of the node detail panel in the Graph view: how the panel opens and closes relative to the selection, the contents of the header and of each data-gated section (Application / Containers / Alerts), and the requests, parameter assembly, response parsing and availability determination for prefetching change history and Dashboard links from the runtime config endpoints (`endpoints.configChanges`, `endpoints.codeChanges`, `endpoints.dashboard`).
 
 ## ADDED Requirements
 
 ### Requirement: Node detail panel
 
-當使用者於 Graph view **左鍵**點擊一個 detail-eligible 節點時,app SHALL 於 canvas 底部以 overlay 開啟 detail panel(不改變 graph 的尺寸),其 header 顯示節點名稱、kind badge、status badge 與關閉按鈕。
+When the user **left-clicks** a detail-eligible node in the Graph view, the app SHALL open the detail panel as an overlay at the bottom of the canvas (without changing the size of the graph), whose header shows the node name, the kind badge, the status badge and a close button.
 
-**選取(selection)與 detail open MUST 為兩個獨立的狀態。** 選取的建立、單一選取高亮、focus fade、pinned card 與取消選取的三條路徑(點擊背景、點擊 edge、點擊不可選取的 `cluster` 群組)由 `graph-view` capability 定義;本 capability 只規範面板相對於選取的開啟 / 關閉。關閉面板有**兩種語意不同**的方式:(1) 點擊背景或 edge(= 取消選取)關閉面板並一併清除選取;(2) 按下**關閉按鈕** MUST **僅關閉面板**(detail open → false)——選取與其衍生的一切(單一選取高亮、focus fade、右上角 pinned card)MUST 全部保留。切換到另一節點時面板切換至該節點。選取高亮 MUST 追蹤**選取**,而非面板的開啟狀態。關閉後,**再次點擊該已選取節點** MUST 重新開啟面板,並沿用選取當下擷取的查詢時間戳(MUST NOT 重發 change history 查詢——關閉與重開是 UI 動作而非資料動作;查詢時間戳的生命週期綁定於選取,只有在選取**不同**節點時才取新的時間戳)。
+**Selection and detail open MUST be two independent states.** Establishing the selection, the single-selection highlight, the focus fade, the pinned card and the three deselection paths (clicking the background, clicking an edge, clicking the non-selectable `cluster` group) are defined by the `graph-view` capability; this capability only governs the panel's opening / closing relative to the selection. There are **two semantically different** ways to close the panel: (1) clicking the background or an edge (= deselect) closes the panel and clears the selection with it; (2) pressing the **close button** MUST **only close the panel** (detail open → false) — the selection and everything derived from it (single-selection highlight, focus fade, the pinned card in the top-right corner) MUST all be retained. When switching to another node the panel switches to that node. The selection highlight MUST track the **selection**, not the panel's open state. After closing, **clicking the already-selected node again** MUST reopen the panel, reusing the query timestamp captured at selection time (it MUST NOT re-issue the change history queries — closing and reopening are UI actions, not data actions; the query timestamp's lifetime is bound to the selection, and a new timestamp is taken only when a **different** node is selected).
 
-**Detail-eligible 節點**為:leaf 節點(含 `netapp-aggr`)、k8s `node` 容器、`netapp-node` 容器、controller 容器,以及 ArgoCD **`application` 群組**(無 kind,以合成的 `kind: application` 呈現於 header badge)。裝飾性的 **`cluster` / `storage-cluster` / `namespace`** 群組 MUST NOT 開啟面板,亦 MUST NOT pin card(`cluster` / `storage-cluster` 不可選取,`namespace` 可選取但不開啟面板——見 `graph-view`)。選取 `application` 群組 MUST 開啟面板並渲染該 ArgoCD application 的 Application section(見「Node-detail Application and Containers sections」),同時 pin card。`graph-search` 的 **locate** MUST 建立選取並為 detail-eligible 節點開啟面板(detail open → true,等同於 canvas 左鍵)。
+**Detail-eligible nodes** are: leaf nodes (including `netapp-aggr`), k8s `node` containers, `netapp-node` containers, controller containers, and the ArgoCD **`application` group** (no kind; presented in the header badge with a synthesized `kind: application`). The decorative **`cluster` / `storage-cluster` / `namespace`** groups MUST NOT open the panel, and MUST NOT pin a card (`cluster` / `storage-cluster` are not selectable; `namespace` is selectable but does not open the panel — see `graph-view`). Selecting an `application` group MUST open the panel and render the Application section for that ArgoCD application (see "Node-detail Application and Containers sections"), and pin the card at the same time. **Locate** in `graph-search` MUST establish the selection and open the panel for a detail-eligible node (detail open → true, equivalent to a canvas left-click).
 
-除名稱 / kind / status 外,當該節點(任何 detail-eligible 節點——**leaf 含 `netapp-aggr`、k8s-node、`netapp-node`、controller**;**僅裝飾性 cluster / storage-cluster / namespace / application 排除**)的 `/dashboard` 查詢回傳可用的 URL 時,header MUST 於名稱旁顯示 **Dashboard 按鈕**;查詢的時機、參數組裝、200 閘控的可用性判定與新分頁開啟行為由本 capability 的 Dashboard 相關需求定義。
+Besides name / kind / status, when the `/dashboard` query for that node (any detail-eligible node — **leaf including `netapp-aggr`, k8s-node, `netapp-node`, controller**; **only the decorative cluster / storage-cluster / namespace / application are excluded**) returns a usable URL, the header MUST show a **Dashboard button** beside the name; the timing of the query, parameter assembly, the 200-gated availability determination and the open-in-new-tab behavior are defined by this capability's Dashboard-related requirements.
 
-面板 body 一律依**資料是否存在**閘控,順序為:(1) **Application change-report section**,任何帶 `data.application` 的節點(**含 `service` / `pvc`**)顯示;**Containers change-report section**,僅 workload kind 帶 `data.containers` 時顯示(兩者見「Node-detail Application and Containers sections」);(2) **Alerts section**,節點帶非空 `data.alerts` 時渲染 alert 表格,**無 alerts 時完全不渲染**。**面板沒有常駐的 Properties section**——節點的 promoted attributes(合成 kind、`namespace`、`application`、`ipAddress`、`storageclass`、`health`、格式化的 `usage` 等)由 **pinned card** 呈現(與 hover tooltip 共用同一來源,見 `graph-view`),不在面板中重複。
+The panel body is always gated by **whether data is present**, in this order: (1) the **Application change-report section**, shown for any node carrying `data.application` (**including `service` / `pvc`**); the **Containers change-report section**, shown only when a workload kind carries `data.containers` (both are covered in "Node-detail Application and Containers sections"); (2) the **Alerts section**, which renders the alert table when the node carries a non-empty `data.alerts`, and **is not rendered at all when there are no alerts**. **The panel has no permanent Properties section** — the node's promoted attributes (synthesized kind, `namespace`, `application`, `ipAddress`, `storageclass`, `health`, formatted `usage`, etc.) are presented by the **pinned card** (sharing the same source as the hover tooltip, see `graph-view`) and are not repeated in the panel.
 
-**面板 ALWAYS 渲染**:只要 detail-eligible 節點被左鍵選取**且面板未被關閉按鈕關閉**(即存在選取且 detail open 為 true),**header**(節點名稱 + kind / status badge + 關閉按鈕,以及 `/dashboard` 查詢 ready 且 `urls` 非空時的 Dashboard 按鈕)即為最小渲染,每個 body section(Application / Containers / Alerts)各自依其資料閘控。完全沒有 body 內容的節點(如 `netapp-aggr` / `netapp-node`,或無 `application` 的 `service` / `pvc`)左鍵選取時**仍渲染 header-only 面板**;其 promoted attributes 由 pinned card 承載、不在面板重複。pinned card 本身 MUST NOT 帶 Dashboard 按鈕,header 是唯一的 dashboard 入口——由於 header 永遠渲染,該入口永遠可達。
+**The panel ALWAYS renders**: as long as a detail-eligible node is left-click selected **and the panel has not been closed with the close button** (i.e. a selection exists and detail open is true), the **header** (node name + kind / status badges + close button, plus the Dashboard button when the `/dashboard` query is ready and `urls` is non-empty) is the minimum rendering, and each body section (Application / Containers / Alerts) is gated by its own data. A node with no body content at all (such as `netapp-aggr` / `netapp-node`, or a `service` / `pvc` without `application`) **still renders a header-only panel** when left-click selected; its promoted attributes are carried by the pinned card and not repeated in the panel. The pinned card itself MUST NOT carry a Dashboard button; the header is the only dashboard entry point — and since the header always renders, that entry point is always reachable.
 
-面板高度 MUST 隨內容增長,僅在超過 canvas 高度 **50%** 的上限後才捲動(header 固定);低於上限的內容 MUST NOT 捲動。**捲動 MUST 集中於單一容器(面板 body)**:body 是唯一的捲動權威,每個 section 皆為內容高度,任何 section MUST NOT 擁有內部捲動。面板可同時堆疊多個 section(Application + Containers + Alerts);若任一 section 自帶內部捲動,受限高度下多個 section 會互相重疊且皆無法捲動,故單一 body 捲動是唯一可組合的模型。
+The panel height MUST grow with content, and scroll only after exceeding the cap of **50%** of the canvas height (header fixed); content below the cap MUST NOT scroll. **Scrolling MUST be concentrated in a single container (the panel body)**: the body is the sole scrolling authority, every section is content-height, and no section MUST own internal scrolling. The panel can stack several sections at once (Application + Containers + Alerts); if any section carried its own internal scrolling, under a constrained height several sections would overlap each other and none could scroll, so a single body scroll is the only composable model.
 
-Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `data.alerts`;缺漏或空陣列 → 該 section 不渲染)。每筆 alert 以**選用**的 `timeRecords: number[]`(Unix 秒,升冪)表示重複發生;產生者已將同一 alert 聚合為**單一**筆,故表格**一列一 alert**。**Count** 欄 MUST 顯示 `timeRecords.length`,並 MUST 以 hover 提示列出每一個發生時間(以瀏覽器本地時區格式化)。**Last occurred** 欄 MUST 顯示 `max(timeRecords)`(格式化);當 app 提供可變更的**檢視時間範圍**(view time range)時,該欄 MUST 可點擊,點擊將檢視時間範圍設為以 `t = max(timeRecords)`(Unix 秒)為中心、固定 ±5 分鐘(300 秒)的視窗 `[t-300, t+300]`;app 未提供檢視時間範圍時,該欄以純文字呈現。
+Alert data comes from the optional `alerts` field of the upstream graph JSON node (normalized to `data.alerts`; missing or empty array → the section is not rendered). Each alert expresses repeated occurrences with an **optional** `timeRecords: number[]` (Unix seconds, ascending); the producer has already aggregated the same alert into a **single** entry, so the table is **one row per alert**. The **Count** column MUST show `timeRecords.length`, and MUST list every occurrence time (formatted in the browser's local time zone) in a hover hint. The **Last occurred** column MUST show `max(timeRecords)` (formatted); when the app provides a changeable **view time range**, that column MUST be clickable, and clicking sets the view time range to the window `[t-300, t+300]` centered on `t = max(timeRecords)` (Unix seconds) with a fixed ±5 minutes (300 seconds); when the app provides no view time range, the column is presented as plain text.
 
-**Alert 列上唯一保證存在的欄位是 Alert(`name`)。** 其餘每一欄都對應一個選用的上游欄位,任一缺漏時該儲存格各自降級為統一的「n/a」,列本身永遠渲染——只帶 `name` 的 alert 呈現為一列五個 n/a。
+**The only field guaranteed to exist on an alert row is Alert (`name`).** Every other column corresponds to an optional upstream field, and when any is missing that cell degrades on its own to the uniform "n/a"; the row itself always renders — an alert carrying only `name` is presented as one row with five n/a.
 
-**Count 與 Last occurred 皆為 `timeRecords` 的衍生欄,而該欄是選用的**(kube-state-graph 的 alert overlay 不帶任何發生時間——見 `graph-data-source`)。`timeRecords` 缺漏時,這兩格 MUST 各自降級為統一的 missing-value placeholder「n/a」,且 Last occurred MUST NOT 可點擊——沒有時刻可供回捲。兩格 MUST NOT 以 `0` 與 epoch 起點日期代替:那是捏造的讀數,與「該 alert 發生過一次、時間為 1970-01-01」無法區分。`severity` 為**選用**的自由字串:`info` / `warning` / `critical` 取各自的語意色;其他任何自訂標籤 MUST 原樣保留並以 critical 色作為 fallback 上色。**`severity` 缺漏時該儲存格 MUST 顯示 muted 的「n/a」而非 badge**——缺漏與「無法辨識的標籤」不同:後者仍是產生者給出的等級,前者無人評級,以 fallback 色渲染一個 badge 等於宣稱一個沒人指定的嚴重度。**alert 表格中缺漏的 Pod / Service 儲存格 MUST 顯示 muted 的「n/a」**(全面板統一的 missing-value placeholder——見「Node-detail Application and Containers sections」)。
+**Count and Last occurred are both derived columns of `timeRecords`, and that field is optional** (the alert overlay of kube-state-graph carries no occurrence time at all — see `graph-data-source`). When `timeRecords` is missing, these two cells MUST each degrade to the uniform missing-value placeholder "n/a", and Last occurred MUST NOT be clickable — there is no moment to rewind to. The two cells MUST NOT substitute `0` and the epoch start date: that is a fabricated reading, indistinguishable from "this alert occurred once, at 1970-01-01". `severity` is an **optional** free-form string: `info` / `warning` / `critical` take their respective semantic colors; any other custom label MUST be preserved as-is and colored with the critical color as fallback. **When `severity` is missing, that cell MUST show a muted "n/a" rather than a badge** — missing differs from "an unrecognized label": the latter is still a level the producer gave, the former was rated by nobody, and rendering a badge in the fallback color amounts to asserting a severity nobody assigned. **Missing Pod / Service cells in the alert table MUST show a muted "n/a"** (the panel-wide uniform missing-value placeholder — see "Node-detail Application and Containers sections").
 
-#### Scenario: 左鍵點擊任一 detail-eligible 節點開啟面板
+#### Scenario: Left-clicking any detail-eligible node opens the panel
 
-- **WHEN** 使用者**左鍵**點擊任一非裝飾性的 detail-eligible 節點
-- **THEN** 底部 overlay 於 graph 上方渲染 header(節點 label、kind badge、status badge、關閉按鈕),graph 尺寸不變,且任何帶資料的 body section 一併出現
-- **AND** 該節點的選取高亮追蹤選取,其屬性同時 pin 於右上角 pinned card
+- **WHEN** the user **left-clicks** any non-decorative detail-eligible node
+- **THEN** the bottom overlay renders the header (node label, kind badge, status badge, close button) above the graph, the graph size is unchanged, and any body section that has data appears along with it
+- **AND** the node's selection highlight tracks the selection, and its attributes are pinned in the top-right pinned card at the same time
 
-#### Scenario: 點擊外部或按下關閉
+#### Scenario: Clicking outside or pressing close
 
-- **WHEN** 使用者點擊 graph 背景或 edge
-- **THEN** detail panel 關閉且選取清除(選取高亮、focus fade 與 pinned card 全部消失)
-- **WHEN** 面板開啟中,使用者按下關閉按鈕
-- **THEN** detail panel 關閉但選取保留——選取高亮、focus fade 與 pinned card 維持可見
+- **WHEN** the user clicks the graph background or an edge
+- **THEN** the detail panel closes and the selection is cleared (selection highlight, focus fade and pinned card all disappear)
+- **WHEN** with the panel open, the user presses the close button
+- **THEN** the detail panel closes but the selection is retained — the selection highlight, focus fade and pinned card remain visible
 
-#### Scenario: 關閉後重開不重發查詢
+#### Scenario: Reopening after close does not re-issue queries
 
-- **WHEN** 使用者以關閉按鈕關閉面板,隨後再次左鍵點擊該(仍被選取的)節點
-- **THEN** 面板以關閉前相同的內容重新開啟,change history 查詢沿用原本的選取時間戳且 MUST NOT 重發
+- **WHEN** the user closes the panel with the close button, then left-clicks that (still selected) node again
+- **THEN** the panel reopens with the same content as before closing; the change history queries reuse the original selection timestamp and MUST NOT be re-issued
 
-#### Scenario: 切換節點
+#### Scenario: Switching nodes
 
-- **WHEN** 面板開啟中,使用者點擊另一節點
-- **THEN** 面板切換至新點擊的節點(pinned card 隨之切換),查詢以該新選取當下擷取的時間戳發出
+- **WHEN** with the panel open, the user clicks another node
+- **THEN** the panel switches to the newly clicked node (the pinned card switches with it), and the queries are issued with the timestamp captured at that new selection
 
-#### Scenario: Locate 開啟面板
+#### Scenario: Locate opens the panel
 
-- **WHEN** 使用者透過 graph-search 的 locate 啟用一個 detail-eligible 節點的搜尋結果
-- **THEN** 該節點成為選取、detail panel 開啟(等同於 canvas 左鍵),pinned card 如常出現於搜尋列下方
+- **WHEN** the user activates a search result for a detail-eligible node through graph-search's locate
+- **THEN** that node becomes the selection, the detail panel opens (equivalent to a canvas left-click), and the pinned card appears below the search bar as usual
 
-#### Scenario: 選取 namespace 群組不開啟面板,選取 application 群組開啟其 app detail
+#### Scenario: Selecting a namespace group does not open the panel; selecting an application group opens its app detail
 
-- **WHEN** 使用者選取裝飾性的 `namespace` 群組
-- **THEN** detail panel MUST NOT 開啟,亦不 pin card(只有 `graph-view` 定義的選取環與 collapse cue)
-- **WHEN** 使用者選取 ArgoCD `application` 群組
-- **THEN** detail panel 開啟,header badge 顯示合成的 `application` kind,渲染 Application section(預取該 application 的 `config_changes`),且 pinned card 一併出現
+- **WHEN** the user selects a decorative `namespace` group
+- **THEN** the detail panel MUST NOT open, and no card is pinned (only the selection ring and collapse cue defined by `graph-view`)
+- **WHEN** the user selects an ArgoCD `application` group
+- **THEN** the detail panel opens, the header badge shows the synthesized `application` kind, the Application section renders (prefetching that application's `config_changes`), and the pinned card appears along with it
 
-#### Scenario: 裸節點仍渲染 header-only 面板
+#### Scenario: A bare node still renders a header-only panel
 
-- **WHEN** 使用者左鍵選取一個沒有 application、containers、alerts,且無 ready dashboard URL 的 detail-eligible 節點(如 `netapp-aggr` / `netapp-node`,或無 `application` 的 `service` / `pvc`)
-- **THEN** detail panel **仍渲染**,僅含 header(節點名稱 + kind / status badge + 關閉按鈕),沒有任何 body section
-- **AND** 該節點的 promoted attributes 由 pinned card 承載,不在面板中重複
+- **WHEN** the user left-click selects a detail-eligible node with no application, containers, alerts, and no ready dashboard URL (such as `netapp-aggr` / `netapp-node`, or a `service` / `pvc` without `application`)
+- **THEN** the detail panel **still renders**, containing only the header (node name + kind / status badges + close button), with no body section
+- **AND** that node's promoted attributes are carried by the pinned card and are not repeated in the panel
 
-#### Scenario: 後端提供 URL 時 header 顯示 Dashboard 按鈕
+#### Scenario: Header shows the Dashboard button when the backend provides a URL
 
-- **WHEN** 左鍵選取節點的 `/dashboard` 查詢回傳 ready 且 `urls` 非空(無論是否有任何 body 內容)
-- **THEN** header 於節點名稱旁顯示 Dashboard 按鈕;完全沒有 body 內容時這是一個 header-only 面板
-- **AND** Dashboard 按鈕可達(它只存在於 header,從不出現在 pinned card)
+- **WHEN** the left-click selected node's `/dashboard` query returns ready with a non-empty `urls` (regardless of whether there is any body content)
+- **THEN** the header shows the Dashboard button beside the node name; with no body content at all this is a header-only panel
+- **AND** the Dashboard button is reachable (it exists only in the header, and never appears in the pinned card)
 
-#### Scenario: Dashboard 按鈕出現在名稱旁
+#### Scenario: Dashboard button appears beside the name
 
-- **WHEN** 某 detail-eligible 節點的面板開啟(因其帶 change history / alerts 資料,或僅因有 ready dashboard 而 header-only),且其 `/dashboard` 查詢回 200 與非空 url
-- **THEN** header 於節點名稱旁顯示 Dashboard 按鈕
-- **AND** 裝飾性的 cluster / storage-cluster / namespace / application 群組沒有此按鈕(它們不適用 Dashboard 查詢);帶 dashboard URL 的 detail-eligible leaf(如 `netapp-aggr`)在 header-only 面板中顯示該按鈕
+- **WHEN** the panel of some detail-eligible node is open (because it carries change history / alerts data, or header-only merely because a ready dashboard exists), and its `/dashboard` query returns 200 with a non-empty url
+- **THEN** the header shows the Dashboard button beside the node name
+- **AND** the decorative cluster / storage-cluster / namespace / application groups do not have this button (the Dashboard query does not apply to them); a detail-eligible leaf carrying a dashboard URL (such as `netapp-aggr`) shows the button in its header-only panel
 
-#### Scenario: alert 表格聚合渲染,一列一 alert
+#### Scenario: Alert table renders aggregated, one row per alert
 
-- **WHEN** 選取節點帶非空 `data.alerts`(一筆或多筆)
-- **THEN** Alerts section 以帶欄位標題的表格逐列顯示 alerts,**一列一 alert**,欄位為 Pod / Service / Alert / Severity / Count / Last occurred
+- **WHEN** the selected node carries a non-empty `data.alerts` (one or more entries)
+- **THEN** the Alerts section shows the alerts row by row in a table with column headers, **one row per alert**, with the columns Pod / Service / Alert / Severity / Count / Last occurred
 
-#### Scenario: 缺漏的 alert Pod / Service 顯示 n/a
+#### Scenario: Missing alert Pod / Service shows n/a
 
-- **WHEN** 某 alert 列的 Pod 或 Service 缺漏
-- **THEN** 該儲存格顯示 muted 的「n/a」(統一的 missing-value placeholder)
+- **WHEN** an alert row's Pod or Service is missing
+- **THEN** that cell shows a muted "n/a" (the uniform missing-value placeholder)
 
-#### Scenario: Count badge 與其發生時間提示
+#### Scenario: Count badge and its occurrence-time hint
 
-- **WHEN** 某 alert 的 `timeRecords` 含 N 個發生時間
-- **THEN** 該列的 Count 欄顯示 `N`(= `timeRecords.length`)
-- **AND** hover Count 時以提示列出全部 N 個發生時間(以瀏覽器本地時區格式化)
+- **WHEN** an alert's `timeRecords` contains N occurrence times
+- **THEN** that row's Count column shows `N` (= `timeRecords.length`)
+- **AND** hovering Count lists all N occurrence times in a hint (formatted in the browser's local time zone)
 
-#### Scenario: 無發生時間的 alert 仍成列,兩個衍生欄降級為 n/a
+#### Scenario: An alert without occurrence times still forms a row, with its two derived columns degraded to n/a
 
-- **WHEN** 某 alert 沒有 `timeRecords` 欄(如 kube-state-graph overlay 送出的 `{ name, severity }`)
-- **THEN** 該 alert 仍 MUST 渲染為一列,Alert 與 Severity 欄如常呈現
-- **AND** Count 與 Last occurred 兩欄 MUST 各顯示 muted 的「n/a」,MUST NOT 顯示 `0` 或 epoch 起點日期
-- **AND** Last occurred 欄 MUST NOT 可點擊(無 Count hover 提示)
-- **AND** 同表格中帶 `timeRecords` 的其他列 MUST 不受影響,照常顯示 Count 與可點擊的 Last occurred
+- **WHEN** an alert has no `timeRecords` field (such as the `{ name, severity }` sent by the kube-state-graph overlay)
+- **THEN** that alert MUST still render as one row, with the Alert and Severity columns presented as usual
+- **AND** the Count and Last occurred columns MUST each show a muted "n/a", and MUST NOT show `0` or the epoch start date
+- **AND** the Last occurred column MUST NOT be clickable (no Count hover hint)
+- **AND** other rows in the same table that carry `timeRecords` MUST be unaffected, showing Count and a clickable Last occurred as usual
 
-#### Scenario: Severity 上色(自由字串加語意色)
+#### Scenario: Severity coloring (free-form string plus semantic color)
 
-- **WHEN** 某 alert 的 `severity` 為 `info` / `warning` / `critical`
-- **THEN** 該列的 Severity 以對應語意色的 badge 呈現
-- **WHEN** `severity` 不在已知集合中(如自訂標籤 `fatal`)
-- **THEN** 以 critical 色作為 fallback 上色,badge 原樣保留該標籤文字,且不發生錯誤
+- **WHEN** an alert's `severity` is `info` / `warning` / `critical`
+- **THEN** that row's Severity is presented as a badge in the corresponding semantic color
+- **WHEN** `severity` is not in the known set (such as the custom label `fatal`)
+- **THEN** it is colored with the critical color as fallback, the badge preserves the label text as-is, and no error occurs
 
-#### Scenario: 無 severity 的 alert 顯示 n/a 而非 badge
+#### Scenario: An alert without severity shows n/a rather than a badge
 
-- **WHEN** 某 alert 沒有 `severity` 欄(產生者的規則未宣告 severity label)
-- **THEN** 該列仍 MUST 渲染,Alert 欄與其發生時間相關欄位如常
-- **AND** Severity 欄 MUST 顯示 muted 的「n/a」,MUST NOT 渲染任何 badge(含 fallback 色的)
+- **WHEN** an alert has no `severity` field (the producer's rule declared no severity label)
+- **THEN** that row MUST still render, with the Alert column and its occurrence-time-related columns as usual
+- **AND** the Severity column MUST show a muted "n/a", and MUST NOT render any badge (including one in the fallback color)
 
-#### Scenario: 只帶 name 的 alert 仍成列
+#### Scenario: An alert carrying only name still forms a row
 
-- **WHEN** 某 alert 僅帶 `name`(無 pod / service / severity / timeRecords)
-- **THEN** 該列渲染,Alert 欄顯示名稱,其餘五欄皆為 muted 的「n/a」,且 Last occurred 不可點擊
+- **WHEN** an alert carries only `name` (no pod / service / severity / timeRecords)
+- **THEN** that row renders, the Alert column shows the name, the remaining five columns are all a muted "n/a", and Last occurred is not clickable
 
-#### Scenario: 點擊 Last occurred 調整檢視時間範圍
+#### Scenario: Clicking Last occurred adjusts the view time range
 
-- **WHEN** app 提供可變更的檢視時間範圍,使用者點擊某列的 Last occurred 欄,且該 alert 最大的 `timeRecords` 值為 `t`(Unix 秒)
-- **THEN** app 將檢視時間範圍設為 `[t-300, t+300]`(±5 分鐘),以最後一次發生為中心
-- **WHEN** app 未提供檢視時間範圍,或該 alert 無 `timeRecords`
-- **THEN** Last occurred 欄以純文字呈現,不可點擊
+- **WHEN** the app provides a changeable view time range, the user clicks a row's Last occurred column, and that alert's largest `timeRecords` value is `t` (Unix seconds)
+- **THEN** the app sets the view time range to `[t-300, t+300]` (±5 minutes), centered on the last occurrence
+- **WHEN** the app provides no view time range, or that alert has no `timeRecords`
+- **THEN** the Last occurred column is presented as plain text and is not clickable
 
-#### Scenario: 多個 section 共用單一 body 捲動且永不重疊
+#### Scenario: Multiple sections share a single body scroll and never overlap
 
-- **WHEN** 面板同時渲染多個高的 section(例如帶 application、許多 containers 與許多 alerts 的 pod,Containers 與 Alerts 皆超過上限)
-- **THEN** 面板 body 是唯一的捲動容器,每個 section 為內容高度,其表格區 MUST NOT 自帶垂直捲動
-- **AND** 各 section 垂直堆疊且 MUST NOT 重疊;超過上限時 body 捲動整個堆疊(header 固定),低於上限時無任何捲動
+- **WHEN** the panel renders several tall sections at once (for example a pod with an application, many containers and many alerts, where both Containers and Alerts exceed the cap)
+- **THEN** the panel body is the only scrolling container, every section is content-height, and their table areas MUST NOT carry their own vertical scrolling
+- **AND** the sections stack vertically and MUST NOT overlap; above the cap the body scrolls the whole stack (header fixed), below the cap there is no scrolling at all
 
-#### Scenario: 無 alerts 時 Alerts section 不渲染
+#### Scenario: Alerts section is not rendered when there are no alerts
 
-- **WHEN** 選取節點沒有 `alerts` 欄,或其為空陣列
-- **THEN** Alerts section MUST NOT 渲染(沒有表格,也沒有「No alerts」訊息);其他帶資料的 section 如常渲染,沒有其他 body section 時面板仍以 header-only 渲染
+- **WHEN** the selected node has no `alerts` field, or it is an empty array
+- **THEN** the Alerts section MUST NOT render (no table, and no "No alerts" message); other sections with data render as usual, and when there is no other body section the panel still renders header-only
 
 ### Requirement: Node-detail Application and Containers sections
 
-app SHALL 於 node detail panel 提供由 change history 查詢支撐的 **Application section** 與 **Containers section**,沿用與 Alerts section 相同的 section 版面。**Application section** 對**任何帶 `data.application` 的節點**顯示——pod 或 workload controller(`kind ∈ { pod, deployment, statefulset, daemonset, job, cronjob }`)、隸屬某 ArgoCD application 的 `service` / `pvc` leaf,**以及 ArgoCD `application` 群組節點本身**(無 kind,以合成的 `kind: application` 解析)——其 `config_changes`(Deployment Changes)查詢以該節點自身的身分發出(`service` / `pvc` 使用自己的 kind / name;`application` 群組使用 `{ kind: 'application', name: <app> }`)。**Containers section** MUST **僅對帶 `data.containers` 的 pod 或 workload controller** 顯示;`service` / `pvc` / `application` 群組 / `node` / `external` 等沒有 containers,Containers section 永不為其渲染。service 或 PVC 的 application 名稱**同時**以 promoted attr 出現在 pinned card(見 `graph-view`);兩者互補——pinned card 顯示名稱,Application section 提供 config_changes 連結。
+The app SHALL provide in the node detail panel an **Application section** and a **Containers section** backed by change history queries, reusing the same section layout as the Alerts section. The **Application section** is shown for **any node carrying `data.application`** — a pod or workload controller (`kind ∈ { pod, deployment, statefulset, daemonset, job, cronjob }`), a `service` / `pvc` leaf belonging to some ArgoCD application, **and the ArgoCD `application` group node itself** (no kind; resolved with a synthesized `kind: application`) — and its `config_changes` (Deployment Changes) query is issued with the node's own identity (`service` / `pvc` use their own kind / name; the `application` group uses `{ kind: 'application', name: <app> }`). The **Containers section** MUST be shown **only for a pod or workload controller carrying `data.containers`**; `service` / `pvc` / `application` groups / `node` / `external` etc. have no containers, and the Containers section is never rendered for them. A service's or PVC's application name **also** appears as a promoted attr in the pinned card (see `graph-view`); the two complement each other — the pinned card shows the name, the Application section provides the config_changes link.
 
-面板 body 純粹依**每個 section 的資料是否存在**閘控:**Application section** 依 `data.application` 的存在(任何帶 application 的節點,含 `service` / `pvc`);**Containers section** 依 **workload kind 加上非空的 `data.containers`**。兩者與(資料閘控的)Alerts section 共存於同一個**左鍵**面板。面板**沒有常駐的 Properties section**(promoted attributes 由 pinned card 承載——見「Node detail panel」),且 header **永遠渲染**(面板 ALWAYS 渲染——見「Node detail panel」)。
+The panel body is gated purely by **whether each section's data is present**: the **Application section** by the presence of `data.application` (any node with an application, including `service` / `pvc`); the **Containers section** by **a workload kind plus a non-empty `data.containers`**. Both coexist with the (data-gated) Alerts section in the same **left-click** panel. The panel **has no permanent Properties section** (promoted attributes are carried by the pinned card — see "Node detail panel"), and the header **always renders** (the panel ALWAYS renders — see "Node detail panel").
 
-**資料來源。** application 名稱來自節點的 `data.application`(後端於 pod 節點上發出;controller 的 application 由正規化時自其子 pod 聚合);containers 來自節點的 `data.containers`(`Array<{ name, image }>`)。沒有 `data.application` 時 Application section MUST NOT 渲染;沒有 `data.containers`(或空陣列)時 Containers section MUST NOT 渲染;兩者互不影響。
+**Data source.** The application name comes from the node's `data.application` (emitted by the backend on pod nodes; a controller's application is aggregated from its child pods during normalization); containers come from the node's `data.containers` (`Array<{ name, image }>`). Without `data.application` the Application section MUST NOT render; without `data.containers` (or with an empty array) the Containers section MUST NOT render; the two do not affect each other.
 
-**觸發。** 對 pod / controller 節點的**左鍵**點擊 MUST (a) 選取該節點(沿用單一選取狀態,與選取高亮及面板開啟狀態同步,面板隨之開啟),並 (b) **建立**該節點兩個 URL 查詢所需的輸入(application-detail 與 image-detail):application 名稱、controller kind、controller 名稱與時間——時間為左鍵選取當下的時刻,Unix 秒——並自該輸入**同時 eager-prefetch 兩個查詢**。`config_changes`(application)與 `code_changes`(containers)MUST 在面板因 workload 節點的左鍵選取而開啟的當下,**不需任何進一步點擊**即發出(亦即只要輸入建立且對應端點已設定)。**右鍵不開啟 detail panel、不建立查詢輸入、不發出任何查詢**。**隸屬 ArgoCD application 的 `service` / `pvc`**(帶 `data.application`)左鍵選取時亦建立查詢輸入——`kind` / `name` 取自**該節點本身**——並預取 `config_changes`(驅動其 Application section);共用的預取亦會發出其 `code_changes`,但 service / PVC 沒有 containers,結果不被使用(Containers section 不渲染)。**沒有 `data.application` 的非 workload 節點(因此沒有 query target)**左鍵選取時 MUST NOT 建立查詢輸入,MUST NOT 發出任何查詢(其屬性由 pinned card 承載,有資料時顯示 Alerts)。
+**Trigger.** A **left-click** on a pod / controller node MUST (a) select that node (reusing the single selection state, in sync with the selection highlight and the panel open state, with the panel opening accordingly), and (b) **build** the input needed by the node's two URL queries (application-detail and image-detail): application name, controller kind, controller name and time — the time being the moment of the left-click selection, in Unix seconds — and from that input **eager-prefetch both queries simultaneously**. `config_changes` (application) and `code_changes` (containers) MUST be issued at the moment the panel opens due to the left-click selection of a workload node, **without any further click** (that is, as long as the input is built and the corresponding endpoint is configured). **A right-click does not open the detail panel, does not build query input, and does not issue any query**. **A `service` / `pvc` belonging to an ArgoCD application** (carrying `data.application`) also builds query input when left-click selected — `kind` / `name` are taken from **the node itself** — and prefetches `config_changes` (driving its Application section); the shared prefetch also issues its `code_changes`, but a service / PVC has no containers, so the result is not used (the Containers section is not rendered). **A non-workload node without `data.application` (and therefore without a query target)** MUST NOT build query input and MUST NOT issue any query when left-click selected (its attributes are carried by the pinned card, and Alerts are shown when data is present).
 
-**查詢契約。** 兩個查詢 MUST 共用同一組輸入,以 query 參數送出:`application`(ArgoCD application 名稱)、`kind`(pod-controller kind)、`name`(pod-controller 名稱)、`time`(Unix 秒)。pod 節點的 controller kind / name 來自其 owner(`data.owner`);controller 節點使用自身的 kind / name;無 owner 的獨立 pod 送出自身的 kind(`pod`)與名稱。回應為:
+**Query contract.** Both queries MUST share the same set of inputs, sent as query parameters: `application` (ArgoCD application name), `kind` (pod-controller kind), `name` (pod-controller name), `time` (Unix seconds). A pod node's controller kind / name come from its owner (`data.owner`); a controller node uses its own kind / name; a standalone pod with no owner sends its own kind (`pod`) and name. The responses are:
 
-- **application-detail 查詢**(`GET <endpoints.configChanges>?application=…&kind=…&name=…&time=…`)回傳 `{ "url": string, "current_time": string, "previous_time": string }`——`url` 為該 ArgoCD application 的外部 detail 頁面,`current_time` / `previous_time` 為該次部署 diff 的兩個時間戳。
-- **image-detail 查詢**(`GET <endpoints.codeChanges>?application=…&kind=…&name=…&time=…`)回傳 `{ [containerName]: { "url": string, "current_time": string, "previous_time": string, "result_type": string } }`——container 名稱到 entry 的 map。輸入 MUST NOT 帶 image 參數;一次呼叫涵蓋該節點的所有 containers。
-- **時間戳契約**:`current_time` / `previous_time` MUST 為 **RFC 3339 / ISO 8601(UTC)**字串。兩者皆為 **best-effort**:任一缺漏、非字串或解析失敗時,其時間欄 MUST 顯示 muted 的「n/a」(統一的 missing-value placeholder),且 MUST NOT 影響該列的 `url` anchor、其他欄位或任何其他列。
-- **變更類型契約(`result_type`,僅 `code_changes`)**:每個 container entry MAY 帶 `result_type` 字串,已知 enum 值為 **`UNCHANGED` / `UPDATED` / `REPLACED` / `ADDED` / `REMOVED` / `RENAMED`**(大寫)。`result_type` 為 **best-effort**:缺漏、非字串或空字串時,該列的 Change Type 欄 MUST 顯示 muted 的「n/a」;**未知值**(六者之外)MUST 以中性灰的 fallback 色原樣渲染(預設可見)。`config_changes`(application)**不**帶 `result_type`,Application section MUST NOT 有 Change Type 欄。
+- The **application-detail query** (`GET <endpoints.configChanges>?application=…&kind=…&name=…&time=…`) returns `{ "url": string, "current_time": string, "previous_time": string }` — `url` is the external detail page of that ArgoCD application, and `current_time` / `previous_time` are the two timestamps of that deployment diff.
+- The **image-detail query** (`GET <endpoints.codeChanges>?application=…&kind=…&name=…&time=…`) returns `{ [containerName]: { "url": string, "current_time": string, "previous_time": string, "result_type": string } }` — a map from container name to entry. The input MUST NOT carry an image parameter; a single call covers all of the node's containers.
+- **Timestamp contract**: `current_time` / `previous_time` MUST be **RFC 3339 / ISO 8601 (UTC)** strings. Both are **best-effort**: when either is missing, not a string, or fails to parse, its time column MUST show a muted "n/a" (the uniform missing-value placeholder), and MUST NOT affect that row's `url` anchor, its other columns, or any other row.
+- **Change type contract (`result_type`, `code_changes` only)**: each container entry MAY carry a `result_type` string, whose known enum values are **`UNCHANGED` / `UPDATED` / `REPLACED` / `ADDED` / `REMOVED` / `RENAMED`** (uppercase). `result_type` is **best-effort**: when missing, not a string, or an empty string, that row's Change Type column MUST show a muted "n/a"; an **unknown value** (outside the six) MUST be rendered as-is in a neutral gray fallback color (visible by default). `config_changes` (application) does **not** carry `result_type`, and the Application section MUST NOT have a Change Type column.
 
-**單一來源的 missing-value placeholder。** 面板中所有「列存在、儲存格缺漏」的 placeholder(change time、Change Type、alert 的 Pod / Service)MUST 來自同一個常數值「n/a」,以 muted 樣式渲染。
+**Single-source missing-value placeholder.** Every "row exists, cell missing" placeholder in the panel (change time, Change Type, an alert's Pod / Service) MUST come from the same constant value "n/a", rendered in the muted style.
 
-**呼叫快取。** 面板開啟期間,`code_changes` 與 `config_changes` MUST 各**至多呼叫一次**——eager prefetch 於面板開啟時各發一次,`code_changes` 回傳的整個 map 由所有 container 列**共用**。僅**成功**回應被快取;失敗 MUST NOT 被快取。**切換節點或關閉面板(unmount / 清除選取)MUST 清除快取**(並中止 in-flight 請求)。
+**Call caching.** While the panel is open, `code_changes` and `config_changes` MUST each be called **at most once** — the eager prefetch issues each once when the panel opens, and the entire map returned by `code_changes` is **shared** by all container rows. Only **successful** responses are cached; failures MUST NOT be cached. **Switching nodes or closing the panel (unmount / clearing the selection) MUST clear the cache** (and abort in-flight requests).
 
-**端點設定與傳輸。** 兩個查詢的 URL 來自 runtime config:Application section 使用 `endpoints.configChanges`,Containers section 使用 `endpoints.codeChanges`;每個 URL 為絕對 URL 或 root-relative URL,app MUST 原樣使用該 URL 並附加 query 參數,MUST NOT 自行推導或拼接其他路徑。查詢以瀏覽器 `fetch` 直接發往該 URL。**`endpoints.configChanges` 未設定時,Application section MUST 隱藏且 MUST NOT 發出 `config_changes`;`endpoints.codeChanges` 未設定時,Containers section MUST 隱藏且 MUST NOT 發出 `code_changes`**;兩者互不影響,未設定不視為錯誤(MUST NOT 顯示任何錯誤訊息)。預取查詢 MUST 可中止,且 MUST NOT 於 unmount 後更新狀態。
+**Endpoint configuration and transport.** The URLs of both queries come from the runtime config: the Application section uses `endpoints.configChanges`, the Containers section uses `endpoints.codeChanges`; each URL is an absolute URL or a root-relative URL, and the app MUST use that URL as-is with the query parameters appended, and MUST NOT derive or concatenate other paths on its own. Queries are sent with the browser `fetch` directly to that URL. **When `endpoints.configChanges` is not configured, the Application section MUST be hidden and `config_changes` MUST NOT be issued; when `endpoints.codeChanges` is not configured, the Containers section MUST be hidden and `code_changes` MUST NOT be issued**; the two do not affect each other, and not configured is not treated as an error (no error message MUST be shown). Prefetch queries MUST be abortable, and MUST NOT update state after unmount.
 
-**呈現**(每個連結欄目標各自持有獨立狀態,三者之一:**loading / ready / unavailable**):
+**Presentation** (each link column target holds its own independent state, one of three: **loading / ready / unavailable**):
 
-- **loading**:查詢於面板開啟當下同時發出;回傳前,每個未解析目標的列在其連結欄 MUST 顯示載入指示加提示文字,該處不得出現 anchor。
-- **ready**:`config_changes` / `code_changes` 回 200 且帶有效 `url` 時,連結欄 MUST 渲染真實的 anchor `<a href={url} target="_blank" rel="noopener noreferrer">`(預先解析的 URL——絕不使用 `window.open`)。
-- **unavailable**:失敗、無結果或無 URL 時,連結欄 MUST 以次要(muted)文字顯示「Not found」提示(過長時截斷,完整失敗訊息置於 `title`)。
-- **失敗隔離**:一個 unavailable 目標 MUST NOT 影響 header、另一個 section 或同 section 的任何其他列。
-- **時間欄(Current / Previous)**:兩個 section 皆有 **Current Change Time** 與 **Previous Change Time** 欄,將原始 RFC 3339 字串以瀏覽器本地時區格式化為在地化的絕對時間,完整 ISO 字串置於 `title`。無值或日期無效時儲存格顯示 muted 的「n/a」,MUST NOT 設定 `title`,MUST NOT 顯示「Invalid date」。
-- **Change Type 欄(僅 Containers)**:Containers section 的 **Change Type** 欄以單一來源的顏色對應將 `result_type` 呈現為彩色文字——`ADDED`=綠 / `REMOVED`=紅 / `UPDATED`=藍 / `REPLACED`=橘 / `RENAMED`=紫 / `UNCHANGED`=灰。未知值以中性灰原樣渲染;缺漏、非字串或空字串顯示 muted 的「n/a」。顏色查找不分大小寫,顯示一律大寫。Application section MUST NOT 有此欄。
-- **對齊**:連結欄內容 MUST 貼齊該欄右緣,使兩個 section 的連結欄垂直對齊、不隨內容水平漂移。
-- **表格版面**:兩個 section MUST 以帶欄位標題的表格渲染——Application 的欄位順序為 **Name / Current Change Time / Previous Change Time / Deployment Changes**,Containers 的為 **Name / Image / Change Type / Current Change Time / Previous Change Time / Code Changes**。連結欄固定在最右側且不伸展,`Change Type` / `Current` / `Previous` 亦不伸展,Name / Image 填滿剩餘寬度。
+- **loading**: the queries are issued simultaneously at the moment the panel opens; until they return, each unresolved target's row MUST show a loading indicator plus hint text in its link column, and no anchor may appear there.
+- **ready**: when `config_changes` / `code_changes` returns 200 with a valid `url`, the link column MUST render a real anchor `<a href={url} target="_blank" rel="noopener noreferrer">` (a pre-resolved URL — never use `window.open`).
+- **unavailable**: on failure, no result, or no URL, the link column MUST show a "Not found" hint in secondary (muted) text (truncated when too long, with the full failure message placed in `title`).
+- **Failure isolation**: an unavailable target MUST NOT affect the header, the other section, or any other row in the same section.
+- **Time columns (Current / Previous)**: both sections have **Current Change Time** and **Previous Change Time** columns, formatting the raw RFC 3339 string into a localized absolute time in the browser's local time zone, with the full ISO string placed in `title`. When there is no value or the date is invalid the cell shows a muted "n/a", MUST NOT set `title`, and MUST NOT show "Invalid date".
+- **Change Type column (Containers only)**: the Containers section's **Change Type** column presents `result_type` as colored text with a single-source color mapping — `ADDED`=green / `REMOVED`=red / `UPDATED`=blue / `REPLACED`=orange / `RENAMED`=purple / `UNCHANGED`=gray. Unknown values are rendered as-is in neutral gray; missing, non-string or empty string shows a muted "n/a". The color lookup is case-insensitive, and the display is always uppercase. The Application section MUST NOT have this column.
+- **Alignment**: link column content MUST be flush with the column's right edge, so that the link columns of both sections align vertically and do not drift horizontally with content.
+- **Table layout**: both sections MUST render as tables with column headers — the Application column order is **Name / Current Change Time / Previous Change Time / Deployment Changes**, and the Containers order is **Name / Image / Change Type / Current Change Time / Previous Change Time / Code Changes**. The link column is fixed at the far right and does not stretch, `Change Type` / `Current` / `Previous` do not stretch either, and Name / Image fill the remaining width.
 
-#### Scenario: 左鍵點擊 pod / controller 選取並立即同時預取兩個查詢
+#### Scenario: Left-clicking a pod / controller selects it and immediately prefetches both queries simultaneously
 
-- **WHEN** 使用者**左鍵**點擊一個帶 `data.application` 的 pod(或 controller)節點,且 `endpoints.configChanges` 與 `endpoints.codeChanges` 皆已設定
-- **THEN** 該節點被選取(選取高亮與面板開啟同步),系統建立兩個查詢所需的輸入(application 名稱、controller kind、controller 名稱、時間)
-- **AND** 系統 MUST **同時**發出 application-detail(`config_changes`)與 image-detail(`code_changes`)查詢,**不需進一步點擊**
+- **WHEN** the user **left-clicks** a pod (or controller) node carrying `data.application`, and both `endpoints.configChanges` and `endpoints.codeChanges` are configured
+- **THEN** that node is selected (selection highlight in sync with the panel opening), and the system builds the input needed by the two queries (application name, controller kind, controller name, time)
+- **AND** the system MUST issue the application-detail (`config_changes`) and image-detail (`code_changes`) queries **simultaneously**, **without any further click**
 
-#### Scenario: 右鍵不開啟 detail panel 亦不查詢
+#### Scenario: Right-click neither opens the detail panel nor queries
 
-- **WHEN** 使用者**右鍵**點擊 pod / controller 節點
-- **THEN** 系統 MUST NOT 開啟 detail panel、MUST NOT 建立查詢輸入、MUST NOT 發出任何 change history 查詢
+- **WHEN** the user **right-clicks** a pod / controller node
+- **THEN** the system MUST NOT open the detail panel, MUST NOT build query input, and MUST NOT issue any change history query
 
-#### Scenario: pod 的 controller kind / name 來自其 owner
+#### Scenario: A pod's controller kind / name come from its owner
 
-- **WHEN** 左鍵點擊的節點是 pod,其 `data.owner` 為 `{ kind: "deployment", name: "gateway" }`
-- **THEN** 該節點預取輸入中的 controller kind / name 為 `deployment` / `gateway`
+- **WHEN** the left-clicked node is a pod whose `data.owner` is `{ kind: "deployment", name: "gateway" }`
+- **THEN** the controller kind / name in that node's prefetch input are `deployment` / `gateway`
 
-#### Scenario: controller 節點以自身的 kind / name 查詢
+#### Scenario: A controller node queries with its own kind / name
 
-- **WHEN** 左鍵點擊的節點是 controller(如 `statefulset` `mongo`)
-- **THEN** 該節點預取輸入中的 controller kind / name 為 `statefulset` / `mongo`
+- **WHEN** the left-clicked node is a controller (such as `statefulset` `mongo`)
+- **THEN** the controller kind / name in that node's prefetch input are `statefulset` / `mongo`
 
-#### Scenario: 兩個 section 僅對 pod 與 controller 顯示
+#### Scenario: Both sections are shown only for pods and controllers
 
-- **WHEN** 使用者**左鍵**選取的節點 `kind` 為 `pod` 或 controller kind,且帶對應資料(`data.application` / 非空的 `data.containers`)
-- **THEN** 面板渲染 change history 的 Application section 與 Containers section
+- **WHEN** the node the user **left-click** selects has `kind` `pod` or a controller kind, and carries the corresponding data (`data.application` / non-empty `data.containers`)
+- **THEN** the panel renders the change history Application section and Containers section
 
-#### Scenario: Containers 僅限 workload;帶 application 的 service / pvc 顯示 Application
+#### Scenario: Containers is limited to workloads; a service / pvc with an application shows Application
 
-- **WHEN** 選取節點的 `kind` 為 `service` / `pvc` 且帶 `data.application`
-- **THEN** **Application section** 渲染並預取 `config_changes`(以該節點自身的 kind / name),**Containers section** MUST NOT 渲染(service 或 PVC 沒有 containers,即使資料恰好帶 `containers`)
-- **WHEN** 選取節點的 `kind` 為 `node` / `external` / `switch` / `cluster` / `netapp-aggr` / `netapp-node`,或為無 `data.application` 的 `service` / `pvc`
-- **THEN** Application 與 Containers section 皆不得渲染
+- **WHEN** the selected node's `kind` is `service` / `pvc` and it carries `data.application`
+- **THEN** the **Application section** renders and prefetches `config_changes` (with the node's own kind / name), and the **Containers section** MUST NOT render (a service or PVC has no containers, even if the data happens to carry `containers`)
+- **WHEN** the selected node's `kind` is `node` / `external` / `switch` / `cluster` / `netapp-aggr` / `netapp-node`, or it is a `service` / `pvc` without `data.application`
+- **THEN** neither the Application nor the Containers section may render
 
-#### Scenario: 無 application 時僅 Application section 隱藏
+#### Scenario: Without an application only the Application section is hidden
 
-- **WHEN** **左鍵**選取的 pod / controller 節點沒有 `data.application` 但帶非空的 `data.containers`
-- **THEN** Application section MUST NOT 渲染,Containers section 如常渲染並預取 `code_changes`
+- **WHEN** the **left-click** selected pod / controller node has no `data.application` but carries a non-empty `data.containers`
+- **THEN** the Application section MUST NOT render, and the Containers section renders as usual and prefetches `code_changes`
 
-#### Scenario: 無 containers 時僅 Containers section 隱藏
+#### Scenario: Without containers only the Containers section is hidden
 
-- **WHEN** **左鍵**選取的 pod / controller 節點帶 `data.application` 但沒有 `data.containers`(或空陣列)
-- **THEN** Containers section MUST NOT 渲染,Application section 如常渲染並預取 `config_changes`
+- **WHEN** the **left-click** selected pod / controller node carries `data.application` but has no `data.containers` (or an empty array)
+- **THEN** the Containers section MUST NOT render, and the Application section renders as usual and prefetches `config_changes`
 
-#### Scenario: in-flight 預取顯示載入指示
+#### Scenario: In-flight prefetch shows a loading indicator
 
-- **WHEN** 左鍵開啟面板、對應端點已設定,且預取查詢尚未回傳
-- **THEN** Application 與 Containers section 每一列的連結欄顯示載入指示加提示文字,該處沒有 anchor
+- **WHEN** the panel is opened by left-click, the corresponding endpoints are configured, and the prefetch queries have not yet returned
+- **THEN** the link column of every row in the Application and Containers sections shows a loading indicator plus hint text, with no anchor there
 
-#### Scenario: Application 預取成功渲染 anchor
+#### Scenario: Successful Application prefetch renders an anchor
 
-- **WHEN** application-detail(`config_changes`)查詢回傳有效 URL `u`
-- **THEN** Application section 的連結欄(標題「Deployment Changes」)渲染 `<a href="u" target="_blank" rel="noopener noreferrer">`,在一般使用者手勢下於新分頁開啟 `u`(絕不使用 `window.open`)
+- **WHEN** the application-detail (`config_changes`) query returns a valid URL `u`
+- **THEN** the Application section's link column (header "Deployment Changes") renders `<a href="u" target="_blank" rel="noopener noreferrer">`, opening `u` in a new tab under an ordinary user gesture (never using `window.open`)
 
-#### Scenario: Container 預取成功為每個有 URL 的列渲染 anchor
+#### Scenario: Successful Container prefetch renders an anchor for every row with a URL
 
-- **WHEN** 節點的 `data.containers` 含 `{ name: "app", image: "repo/app:1.2" }`,且 image-detail(`code_changes`)回傳 `{ "app": { "url": "https://x/app" } }`
-- **THEN** `app` 列的連結欄(標題「Code Changes」)渲染 `<a href="https://x/app" target="_blank" rel="noopener noreferrer">`
+- **WHEN** the node's `data.containers` contains `{ name: "app", image: "repo/app:1.2" }`, and image-detail (`code_changes`) returns `{ "app": { "url": "https://x/app" } }`
+- **THEN** the `app` row's link column (header "Code Changes") renders `<a href="https://x/app" target="_blank" rel="noopener noreferrer">`
 
-#### Scenario: Application section 以帶標題的表格渲染
+#### Scenario: Application section renders as a table with headers
 
-- **WHEN** 左鍵開啟的面板渲染 Application section(節點帶 `data.application`)
-- **THEN** 該 section 以表格呈現欄位標題 **Name** / **Current Change Time** / **Previous Change Time** / **Deployment Changes**,順序如上
+- **WHEN** the left-click opened panel renders the Application section (the node carries `data.application`)
+- **THEN** that section presents the column headers **Name** / **Current Change Time** / **Previous Change Time** / **Deployment Changes** as a table, in that order
 
-#### Scenario: Containers section 以帶標題的表格渲染且欄位對齊
+#### Scenario: Containers section renders as a table with headers and aligned columns
 
-- **WHEN** 左鍵開啟的面板渲染 Containers section(節點帶兩個以上、名稱長度不一的 containers)
-- **THEN** 該 section 以表格呈現欄位標題 **Name** / **Image** / **Change Type** / **Current Change Time** / **Previous Change Time** / **Code Changes**,順序如上,欄位對齊(欄界不隨名稱長度漂移)
+- **WHEN** the left-click opened panel renders the Containers section (the node carries two or more containers with names of differing length)
+- **THEN** that section presents the column headers **Name** / **Image** / **Change Type** / **Current Change Time** / **Previous Change Time** / **Code Changes** as a table, in that order, with columns aligned (column boundaries do not drift with name length)
 
-#### Scenario: 連結欄標題命名正確
+#### Scenario: Link column headers are named correctly
 
-- **WHEN** 面板同時渲染 Application 與 Containers section
-- **THEN** Application section 的連結欄標題為「Deployment Changes」,Containers section 的為「Code Changes」(兩者皆不得顯示「Change Report」)
+- **WHEN** the panel renders both the Application and Containers sections
+- **THEN** the Application section's link column header is "Deployment Changes", and the Containers section's is "Code Changes" (neither may show "Change Report")
 
-#### Scenario: 帶兩個時間戳時 Application 顯示在地化絕對時間
+#### Scenario: With both timestamps Application shows localized absolute times
 
-- **WHEN** application-detail(`config_changes`)查詢回傳 `{ "url": "u", "current_time": "2026-06-16T10:30:00Z", "previous_time": "2026-06-10T08:00:00Z" }`
-- **THEN** Application 列的 Current / Previous 欄顯示以瀏覽器本地時區格式化的在地化絕對時間,各自的 `title` 為完整 ISO 字串,且該列的連結欄仍渲染 `u` 的 anchor
+- **WHEN** the application-detail (`config_changes`) query returns `{ "url": "u", "current_time": "2026-06-16T10:30:00Z", "previous_time": "2026-06-10T08:00:00Z" }`
+- **THEN** the Application row's Current / Previous columns show localized absolute times formatted in the browser's local time zone, each with the full ISO string as its `title`, and that row's link column still renders the anchor for `u`
 
-#### Scenario: 帶兩個時間戳的 code_changes container entry 顯示於其列
+#### Scenario: A code_changes container entry with both timestamps shows them on its row
 
-- **WHEN** image-detail(`code_changes`)回傳 `{ "app": { "url": "https://x/app", "current_time": "2026-06-16T10:30:00Z", "previous_time": "2026-06-10T08:00:00Z" } }`,且節點的 `data.containers` 含 `{ name: "app", image: "repo/app:1.2" }`
-- **THEN** `app` 列的 Current / Previous 欄以在地化絕對時間顯示這兩個時間戳,各自的 `title` 為完整 ISO 字串,且該列的連結欄渲染 `https://x/app` 的 anchor
+- **WHEN** image-detail (`code_changes`) returns `{ "app": { "url": "https://x/app", "current_time": "2026-06-16T10:30:00Z", "previous_time": "2026-06-10T08:00:00Z" } }`, and the node's `data.containers` contains `{ name: "app", image: "repo/app:1.2" }`
+- **THEN** the `app` row's Current / Previous columns show these two timestamps as localized absolute times, each with the full ISO string as its `title`, and that row's link column renders the anchor for `https://x/app`
 
-#### Scenario: 帶 result_type 的 code_changes entry 顯示彩色的變更類型
+#### Scenario: A code_changes entry with result_type shows a colored change type
 
-- **WHEN** image-detail(`code_changes`)回傳 `{ "app": { "url": "https://x/app", "result_type": "UPDATED" } }`,且節點的 `data.containers` 含 `{ name: "app", image: "repo/app:1.2" }`
-- **THEN** `app` 列的 Change Type 欄以該已知 enum 值的語意色(藍)顯示 `UPDATED`,且該列的連結欄仍渲染其 anchor
+- **WHEN** image-detail (`code_changes`) returns `{ "app": { "url": "https://x/app", "result_type": "UPDATED" } }`, and the node's `data.containers` contains `{ name: "app", image: "repo/app:1.2" }`
+- **THEN** the `app` row's Change Type column shows `UPDATED` in that known enum value's semantic color (blue), and that row's link column still renders its anchor
 
-#### Scenario: 未知的 result_type 以中性灰原樣渲染
+#### Scenario: An unknown result_type is rendered as-is in neutral gray
 
-- **WHEN** 某 container 的 `code_changes` entry 帶 enum 之外的 `result_type`(如 `"MIGRATED"`)
-- **THEN** 該列的 Change Type 欄原樣顯示 `MIGRATED`(MUST NOT 被靜默丟棄),以中性灰的 fallback 色渲染
+- **WHEN** a container's `code_changes` entry carries a `result_type` outside the enum (such as `"MIGRATED"`)
+- **THEN** that row's Change Type column shows `MIGRATED` as-is (it MUST NOT be silently discarded), rendered in the neutral gray fallback color
 
-#### Scenario: 缺漏 / 非字串 / 空的 result_type 使 Change Type 降級為 muted 的 n/a
+#### Scenario: A missing / non-string / empty result_type degrades Change Type to a muted n/a
 
-- **WHEN** 某 container 的 `code_changes` entry 回傳有效 `url`,但其 `result_type` 缺漏、非字串或為空字串
-- **THEN** 該列的 Change Type 欄顯示 muted 的「n/a」,且該列的 url anchor、時間欄、其他欄位與所有其他列 MUST NOT 受影響
+- **WHEN** a container's `code_changes` entry returns a valid `url`, but its `result_type` is missing, not a string, or an empty string
+- **THEN** that row's Change Type column shows a muted "n/a", and that row's url anchor, time columns, other columns and all other rows MUST NOT be affected
 
-#### Scenario: Application section 沒有 Change Type 欄
+#### Scenario: Application section has no Change Type column
 
-- **WHEN** 面板渲染 Application section
-- **THEN** Application section 的欄位依序為 Name / Current Change Time / Previous Change Time / Deployment Changes,且 MUST NOT 含 Change Type 欄
+- **WHEN** the panel renders the Application section
+- **THEN** the Application section's columns are, in order, Name / Current Change Time / Previous Change Time / Deployment Changes, and MUST NOT include a Change Type column
 
-#### Scenario: 缺漏或非 RFC 3339 的時間戳使其欄位降級為 muted 的 n/a
+#### Scenario: A missing or non-RFC 3339 timestamp degrades its column to a muted n/a
 
-- **WHEN** `config_changes`(或某 container 的 `code_changes` entry)回傳有效 `url`,但其 `current_time` 缺漏、非字串或非 RFC 3339 字串(如 `"not-a-date"`),而 `previous_time` 正常
-- **THEN** 該目標的 Current 欄顯示 muted 的「n/a」且無 `title`,其 Previous 欄如常顯示在地化絕對時間,該列的 url anchor、其他欄位與所有其他列 MUST NOT 受影響(MUST NOT 出現「Invalid date」)
+- **WHEN** `config_changes` (or a container's `code_changes` entry) returns a valid `url`, but its `current_time` is missing, not a string, or not an RFC 3339 string (such as `"not-a-date"`), while `previous_time` is normal
+- **THEN** that target's Current column shows a muted "n/a" with no `title`, its Previous column shows a localized absolute time as usual, and that row's url anchor, other columns and all other rows MUST NOT be affected ("Invalid date" MUST NOT appear)
 
-#### Scenario: 開啟期間 code_changes 只呼叫一次,所有 container 共用結果
+#### Scenario: code_changes is called only once while open, and all containers share the result
 
-- **WHEN** 面板開啟、`code_changes` 預取已完成,且有多個 container 列
-- **THEN** 系統對 `code_changes` 只發出**一次**呼叫,每個 container 列自該一次回傳的 map 取值
-- **AND** 關閉面板或切換節點 MUST 清除快取,下次開啟時再呼叫一次
+- **WHEN** the panel is open, the `code_changes` prefetch has completed, and there are multiple container rows
+- **THEN** the system issues **one** call to `code_changes`, and each container row takes its value from the map returned by that single call
+- **AND** closing the panel or switching nodes MUST clear the cache, calling once more on the next open
 
-#### Scenario: 失敗的查詢不被快取(remount 時重新取得)
+#### Scenario: A failed query is not cached (refetched on remount)
 
-- **WHEN** 某次 `code_changes`(或 `config_changes`)呼叫失敗,面板之後為同一節點 remount
-- **THEN** 系統再次發出該查詢(失敗未被快取)
+- **WHEN** a `code_changes` (or `config_changes`) call fails, and the panel later remounts for the same node
+- **THEN** the system issues that query again (the failure was not cached)
 
-#### Scenario: 連結欄跨 section、跨狀態對齊
+#### Scenario: Link columns align across sections and across states
 
-- **WHEN** 面板同時顯示 Application 與 Containers section,部分目標 loading、部分 ready、部分 unavailable(混合狀態)
-- **THEN** 兩個 section 每一列的連結欄內容皆貼齊該欄右緣並垂直對齊
+- **WHEN** the panel shows both the Application and Containers sections, with some targets loading, some ready and some unavailable (mixed states)
+- **THEN** the link column content of every row in both sections is flush with the column's right edge and vertically aligned
 
-#### Scenario: map 中缺漏的 container key 顯示「Not found」
+#### Scenario: A container key missing from the map shows "Not found"
 
-- **WHEN** `code_changes` 成功但某 container 名稱不在回傳的 map 中(或該名稱沒有有效 URL)
-- **THEN** 該列的連結欄顯示「Not found」提示(無 anchor),其名稱與 image 仍如常顯示
+- **WHEN** `code_changes` succeeds but some container name is not in the returned map (or that name has no valid URL)
+- **THEN** that row's link column shows the "Not found" hint (no anchor), while its name and image still show as usual
 
-#### Scenario: 失敗的查詢顯示「Not found」且不影響其餘部分
+#### Scenario: A failed query shows "Not found" and does not affect the rest
 
-- **WHEN** `config_changes`(或 `code_changes`)查詢失敗
-- **THEN** 對應目標的連結欄以次要色顯示「Not found」提示(無 anchor;過長時截斷,完整失敗訊息置於 `title`)
-- **AND** 面板 header 與另一個 section / 其他列仍正常顯示
+- **WHEN** the `config_changes` (or `code_changes`) query fails
+- **THEN** the corresponding target's link column shows the "Not found" hint in secondary color (no anchor; truncated when too long, with the full failure message placed in `title`)
+- **AND** the panel header and the other section / other rows still display normally
 
-#### Scenario: 查詢發往 runtime config 設定的端點 URL
+#### Scenario: Queries are sent to the endpoint URLs set in runtime config
 
-- **WHEN** runtime config 的 `endpoints.configChanges` 為 `https://ksg.example/v1/graph/config_changes`、`endpoints.codeChanges` 為 `/api/v1/graph/code_changes`,且使用者左鍵開啟某 workload 節點的面板
-- **THEN** 預取查詢分別以 `GET https://ksg.example/v1/graph/config_changes?application=…&kind=…&name=…&time=…` 與 `GET /api/v1/graph/code_changes?application=…&kind=…&name=…&time=…`(root-relative,同源)發出,app 不自行推導或改寫任一路徑
+- **WHEN** the runtime config's `endpoints.configChanges` is `https://ksg.example/v1/graph/config_changes` and `endpoints.codeChanges` is `/api/v1/graph/code_changes`, and the user left-click opens some workload node's panel
+- **THEN** the prefetch queries are issued as `GET https://ksg.example/v1/graph/config_changes?application=…&kind=…&name=…&time=…` and `GET /api/v1/graph/code_changes?application=…&kind=…&name=…&time=…` (root-relative, same-origin) respectively, and the app neither derives nor rewrites either path on its own
 
-#### Scenario: 端點未設定時該 section 隱藏且不查詢
+#### Scenario: When an endpoint is not configured that section is hidden and does not query
 
-- **WHEN** runtime config 未設定 `endpoints.configChanges`,而使用者左鍵開啟一個帶 `data.application` 與 `data.containers` 的 workload 節點面板(`endpoints.codeChanges` 已設定)
-- **THEN** Application section MUST NOT 渲染且 MUST NOT 發出 `config_changes`;Containers section 如常渲染並預取 `code_changes`;不顯示任何錯誤訊息
-- **WHEN** runtime config 未設定 `endpoints.codeChanges`
-- **THEN** Containers section MUST NOT 渲染且 MUST NOT 發出 `code_changes`;Application section 依 `endpoints.configChanges` 的設定如常運作
+- **WHEN** the runtime config does not set `endpoints.configChanges`, and the user left-click opens the panel of a workload node carrying `data.application` and `data.containers` (`endpoints.codeChanges` is configured)
+- **THEN** the Application section MUST NOT render and `config_changes` MUST NOT be issued; the Containers section renders as usual and prefetches `code_changes`; no error message is shown
+- **WHEN** the runtime config does not set `endpoints.codeChanges`
+- **THEN** the Containers section MUST NOT render and `code_changes` MUST NOT be issued; the Application section operates as usual according to the `endpoints.configChanges` setting
 
-#### Scenario: 左鍵選取帶 application 的 service / pvc 預取 config_changes
+#### Scenario: Left-click selecting a service / pvc with an application prefetches config_changes
 
-- **WHEN** 使用者左鍵選取一個帶 `data.application` 的 `service` 或 `pvc`,且 `endpoints.configChanges` 已設定
-- **THEN** 系統以**該節點自身的 kind / name**加上 application 建立查詢輸入並預取 `config_changes`(驅動 Application section 的 Deployment Changes 連結)
-- **AND** Containers section 不渲染(沒有 containers;`code_changes` 結果不被使用)
+- **WHEN** the user left-click selects a `service` or `pvc` carrying `data.application`, and `endpoints.configChanges` is configured
+- **THEN** the system builds query input from **the node's own kind / name** plus the application and prefetches `config_changes` (driving the Application section's Deployment Changes link)
+- **AND** the Containers section does not render (no containers; the `code_changes` result is not used)
 
-#### Scenario: 選取 application 群組預取其 config_changes
+#### Scenario: Selecting an application group prefetches its config_changes
 
-- **WHEN** 使用者左鍵選取 ArgoCD `application` 群組節點(無 kind,帶 `application`),且 `endpoints.configChanges` 已設定
-- **THEN** 系統建立查詢輸入 `{ application: <app>, kind: 'application', name: <app>, time }` 並預取 `config_changes`;Application section 渲染該 application 的 Deployment Changes 連結(header badge 顯示合成的 `application` kind)
-- **AND** Containers section 不渲染(application 群組沒有 containers)
+- **WHEN** the user left-click selects an ArgoCD `application` group node (no kind, carrying `application`), and `endpoints.configChanges` is configured
+- **THEN** the system builds the query input `{ application: <app>, kind: 'application', name: <app>, time }` and prefetches `config_changes`; the Application section renders that application's Deployment Changes link (the header badge shows the synthesized `application` kind)
+- **AND** the Containers section does not render (an application group has no containers)
 
-#### Scenario: 左鍵選取無 application 的非 workload 節點不觸發查詢
+#### Scenario: Left-click selecting a non-workload node without an application triggers no query
 
-- **WHEN** 使用者左鍵點擊一個**沒有 `data.application`** 的非 workload 節點(如 `node` / `external`,或無 application 的 `service` / `pvc`;即沒有 query target)
-- **THEN** 面板仍渲染(header-only,或帶 Alerts),節點屬性由 pinned card 承載,但系統 MUST NOT 建立查詢輸入、MUST NOT 發出 application-detail / image-detail 查詢
+- **WHEN** the user left-clicks a non-workload node **without `data.application`** (such as `node` / `external`, or a `service` / `pvc` without an application; that is, no query target)
+- **THEN** the panel still renders (header-only, or with Alerts), the node attributes are carried by the pinned card, but the system MUST NOT build query input and MUST NOT issue application-detail / image-detail queries
 
-#### Scenario: 切換節點或關閉面板清除狀態與快取並中止 in-flight 請求
+#### Scenario: Switching nodes or closing the panel clears state and cache and aborts in-flight requests
 
-- **WHEN** 面板開啟且預取進行中,使用者切換至另一節點或關閉面板(unmount / 清除選取)
-- **THEN** 系統中止 in-flight 查詢,清除兩個端點的快取與每個目標的狀態,且 MUST NOT 在中止後為舊節點更新狀態
+- **WHEN** the panel is open with a prefetch in flight, and the user switches to another node or closes the panel (unmount / clearing the selection)
+- **THEN** the system aborts the in-flight queries, clears the cache of both endpoints and the state of every target, and MUST NOT update state for the old node after the abort
 
-### Requirement: Dashboard 按鈕的節點適用性
+### Requirement: Node applicability of the Dashboard button
 
-app SHALL 僅對 **node detail panel 會為其開啟且具備 per-node dashboard** 的節點請求 `/dashboard` 並渲染 Dashboard 按鈕——即 **leaf 節點**(含後端的實體儲存 leaf **`netapp-aggr`**,其帶 `health` / `usage`)、**k8s-node**(`kind: node`)容器、**`netapp-node`** 容器(後端契約中唯一由真實節點擔任 compound parent 之處,帶 `health`),以及 **controller** 容器(後端提供並帶真實 `kind`)。**cluster / storage-cluster / namespace / application** 群組 MUST NOT 觸發任何 `/dashboard` 查詢,MUST NOT 渲染 Dashboard 按鈕(`application` 群組雖會開啟 detail panel,但沒有 per-node dashboard)。適用性由參數組裝對不適用節點回傳「無參數」來閘控——不適用節點不發出查詢——且 MUST 與 detail panel 開啟判定共用同一個排除集合(`isCluster` / `isStorageCluster` / `isNamespace` / `isApplication`),而非維護一份可能漂移的平行清單。
+The app SHALL request `/dashboard` and render the Dashboard button only for nodes **for which the node detail panel opens and which have a per-node dashboard** — namely **leaf nodes** (including the backend's physical storage leaf **`netapp-aggr`**, which carries `health` / `usage`), **k8s-node** (`kind: node`) containers, **`netapp-node`** containers (the only place in the backend contract where a real node serves as compound parent, carrying `health`), and **controller** containers (provided by the backend and carrying a real `kind`). The **cluster / storage-cluster / namespace / application** groups MUST NOT trigger any `/dashboard` query and MUST NOT render the Dashboard button (the `application` group does open the detail panel, but has no per-node dashboard). Applicability is gated by the parameter assembly returning "no parameters" for non-applicable nodes — non-applicable nodes issue no query — and MUST share the same exclusion set (`isCluster` / `isStorageCluster` / `isNamespace` / `isApplication`) as the detail panel open determination, rather than maintaining a parallel list that could drift.
 
-`netapp-aggr` / `netapp-node` 與其他適用節點一樣開啟 detail panel 並預取 `/dashboard`,但其 `kind` **不在 workload kind 集合中**,故 MUST NOT 為其指派 change history 的 query target:其 `health` / `usage`(及 `netapp-aggr` 的 `ontap_cluster` / `node` labels)透過右上角 **pinned card** 呈現(見 `graph-view`),detail panel 本身為 header-only。
+`netapp-aggr` / `netapp-node` open the detail panel and prefetch `/dashboard` like every other applicable node, but their `kind` is **not in the workload kind set**, so a change history query target MUST NOT be assigned to them: their `health` / `usage` (and `netapp-aggr`'s `ontap_cluster` / `node` labels) are presented through the top-right **pinned card** (see `graph-view`), and the detail panel itself is header-only.
 
-#### Scenario: leaf / k8s-node / controller 為適用節點
+#### Scenario: leaf / k8s-node / controller are applicable nodes
 
-- **WHEN** node detail panel 為 leaf 節點(含 `netapp-aggr` leaf)、k8s-node 容器、`netapp-node` 容器或後端提供的 controller 容器開啟
-- **THEN** 系統為該節點發出一次 `/dashboard` 查詢(時機見「Dashboard URL 預取與可用性判定」),並在可用時渲染 Dashboard 按鈕
+- **WHEN** the node detail panel opens for a leaf node (including the `netapp-aggr` leaf), a k8s-node container, a `netapp-node` container, or a backend-provided controller container
+- **THEN** the system issues one `/dashboard` query for that node (timing per "Dashboard URL prefetch and availability determination"), and renders the Dashboard button when available
 
-#### Scenario: NetApp leaf 開啟 detail 但沒有 change history 的 query target
+#### Scenario: A NetApp leaf opens detail but has no change history query target
 
-- **WHEN** 選取節點為 `netapp-aggr` leaf 或 `netapp-node` 容器(帶 `health` / `usage`)
-- **THEN** detail panel 以 header-only 開啟,其 `health` / `usage` 釘選於右上角 pinned card,且由於其 `kind` 不在 workload kind 集合中,MUST NOT 為其指派 change history 的 query target——它仍與其他適用節點一樣預取 `/dashboard`,並在可用時渲染 Dashboard 按鈕
+- **WHEN** the selected node is a `netapp-aggr` leaf or a `netapp-node` container (carrying `health` / `usage`)
+- **THEN** the detail panel opens header-only, its `health` / `usage` are pinned in the top-right pinned card, and since its `kind` is not in the workload kind set, a change history query target MUST NOT be assigned to it — it still prefetches `/dashboard` like other applicable nodes, and renders the Dashboard button when available
 
-#### Scenario: cluster / namespace / application 不適用
+#### Scenario: cluster / namespace / application are not applicable
 
-- **WHEN** 選取節點為 `cluster` / `storage-cluster` / `namespace` / `application` 群組
-- **THEN** 系統 MUST NOT 發出 `/dashboard` 查詢,MUST NOT 渲染 Dashboard 按鈕(`cluster` / `storage-cluster` / `namespace` 本就不開啟 detail panel;`application` 群組開啟面板但沒有 per-node dashboard)
+- **WHEN** the selected node is a `cluster` / `storage-cluster` / `namespace` / `application` group
+- **THEN** the system MUST NOT issue a `/dashboard` query and MUST NOT render the Dashboard button (`cluster` / `storage-cluster` / `namespace` do not open the detail panel in the first place; the `application` group opens the panel but has no per-node dashboard)
 
-### Requirement: Dashboard URL 預取與可用性判定
+### Requirement: Dashboard URL prefetch and availability determination
 
-當 node detail panel 為適用節點**開啟**(左鍵選取,或 graph-search 的 locate)時,app SHALL **eager-prefetch** 一次 `GET <endpoints.dashboard>?<params>`,**每個被開啟節點最多一次**(at-most-once per opened node;同值的 graph 資料刷新——含 `refreshIntervalSeconds` 觸發的自動刷新——MUST NOT 重發)。查詢以瀏覽器 `fetch` 直接發往 runtime config 的 `endpoints.dashboard`(絕對 URL 或 root-relative URL,原樣使用、不自行拼接路徑)。此預取與 `config_changes` / `code_changes`(application-detail / image-detail)查詢**互相獨立**:Dashboard 預取的觸發條件為**面板開啟**,而不以節點帶有 `application` 或 `containers` 為前提。
+When the node detail panel **opens** for an applicable node (left-click selection, or graph-search's locate), the app SHALL **eager-prefetch** one `GET <endpoints.dashboard>?<params>`, **at most once per opened node** (at-most-once per opened node; a same-value graph data refresh — including the auto-refresh triggered by `refreshIntervalSeconds` — MUST NOT re-issue it). The query is sent with the browser `fetch` directly to the runtime config's `endpoints.dashboard` (an absolute URL or root-relative URL, used as-is, with no path concatenated on the app's own). This prefetch is **independent** of the `config_changes` / `code_changes` (application-detail / image-detail) queries: the trigger condition for the Dashboard prefetch is **the panel opening**, and it is not predicated on the node carrying `application` or `containers`.
 
-「最多一次」的保證僅在**固定的檢視時間範圍內**成立:當 app 提供檢視時間範圍時,param map 含 `from_time` / `to_time`(見「Dashboard 請求參數組裝」需求),時間範圍變動使參數改變、請求 key 隨之更新 → app SHALL 對同一被開啟節點以新時間範圍**重新預取**(time-windowed 的 URL 應隨檢視時間更新)。
+The "at most once" guarantee holds only within **a fixed view time range**: when the app provides a view time range, the param map includes `from_time` / `to_time` (see the "Dashboard request parameter assembly" requirement), and a change of the time range changes the parameters and thereby updates the request key → the app SHALL **re-prefetch** for the same opened node with the new time range (a time-windowed URL should follow the view time).
 
-**可用性的前提為 `endpoints.dashboard` 已設定。** 未設定時,app MUST 閒置:不發任何查詢、按鈕不渲染、不顯示任何錯誤或提示(未設定不是錯誤,而是功能停用)。
+**Availability is predicated on `endpoints.dashboard` being configured.** When it is not configured, the app MUST stay idle: issue no query, render no button, and show no error or notice (not configured is not an error but a disabled feature).
 
-in-flight 查詢 MUST 於切換節點 / 關閉面板(unmount)時中止,且 MUST NOT 於中止或 unmount 後更新狀態。
+An in-flight query MUST be aborted on node switch / panel close (unmount), and MUST NOT update state after the abort or unmount.
 
-可用性 MUST 嚴格以 **HTTP 200 + 至少一筆非空連結** 判定:回傳 body 解析後得到**一筆或以上** `{ label, url }`(`url` 皆非空且可解析為 http(s) URL,相對 URL 以 app origin 解析)→ **available**(渲染入口);非 200、解析結果為空、回應格式錯誤或網路錯誤 → **unavailable**(按鈕**不渲染**,且 MUST NOT 對使用者顯示任何錯誤訊息)。可用性語意與 `config_changes` / `code_changes` 一致。
+Availability MUST be determined strictly by **HTTP 200 + at least one non-empty link**: when parsing the returned body yields **one or more** `{ label, url }` (every `url` non-empty and parseable as an http(s) URL; relative URLs resolved against the app origin) → **available** (render the entry point); non-200, an empty parse result, a malformed response, or a network error → **unavailable** (the button is **not rendered**, and no error message MUST be shown to the user). The availability semantics are consistent with `config_changes` / `code_changes`.
 
-回應格式:
+Response formats:
 
-- **新格式**:`{ "urls": [{ "label"?: string, "url": string }, …] }`——略過無效項目(`url` 缺漏、為空或非 http(s));`label` 缺省時由 app 補 fallback 標籤(取 URL 最後一個路徑段,無法取得時為「Dashboard」;重複標籤加序號區分)。
-- **舊格式(向後相容)**:`{ "url": string }`——視為單一連結 `[{ label: "Dashboard", url }]`。
-- 當 `urls` 為非空陣列時 MUST **優先**採用 `urls`;僅在 `urls` 缺漏或過濾後為空時才 fallback 至 `url`。
+- **New format**: `{ "urls": [{ "label"?: string, "url": string }, …] }` — invalid entries (`url` missing, empty, or not http(s)) are skipped; when `label` is absent the app fills in a fallback label (the last path segment of the URL, or "Dashboard" when none can be obtained; duplicate labels are distinguished with a sequence number).
+- **Legacy format (backward compatible)**: `{ "url": string }` — treated as the single link `[{ label: "Dashboard", url }]`.
+- When `urls` is a non-empty array, `urls` MUST take **precedence**; fall back to `url` only when `urls` is missing or empty after filtering.
 
-#### Scenario: 面板開啟即預取(左鍵與 locate 皆然)
+#### Scenario: Prefetch on panel open (both left-click and locate)
 
-- **WHEN** 使用者以左鍵點擊或 graph-search 的 locate 開啟某適用節點的 detail panel,且 `endpoints.dashboard` 已設定
-- **THEN** 系統發出一次 `GET <endpoints.dashboard>?<params>`,參數為該節點組裝出的 param map(見「Dashboard 請求參數組裝」需求)
+- **WHEN** the user opens some applicable node's detail panel by left-click or by graph-search's locate, and `endpoints.dashboard` is configured
+- **THEN** the system issues one `GET <endpoints.dashboard>?<params>`, with the parameters being the param map assembled for that node (see the "Dashboard request parameter assembly" requirement)
 
-#### Scenario: 200 + urls 陣列視為可用
+#### Scenario: 200 + urls array is treated as available
 
-- **WHEN** `/dashboard` 回傳 HTTP 200 且 body 為 `{ "urls": [{ "label": "Metrics", "url": "https://a" }, { "label": "Logs", "url": "https://b" }] }`
-- **THEN** 該查詢狀態為 available,解析出兩筆連結,Dashboard 入口渲染
+- **WHEN** `/dashboard` returns HTTP 200 with the body `{ "urls": [{ "label": "Metrics", "url": "https://a" }, { "label": "Logs", "url": "https://b" }] }`
+- **THEN** that query's state is available, two links are parsed, and the Dashboard entry point renders
 
-#### Scenario: 200 + 非空 url(舊格式)視為可用
+#### Scenario: 200 + non-empty url (legacy format) is treated as available
 
-- **WHEN** `/dashboard` 回傳 HTTP 200 且 body 為 `{ "url": "https://…" }`(`url` 非空)
-- **THEN** 該查詢狀態為 available,連結為單元素陣列 `[{ label: "Dashboard", url }]`,Dashboard 按鈕渲染
+- **WHEN** `/dashboard` returns HTTP 200 with the body `{ "url": "https://…" }` (`url` non-empty)
+- **THEN** that query's state is available, the links are the single-element array `[{ label: "Dashboard", url }]`, and the Dashboard button renders
 
-#### Scenario: 非 200 / 空 urls / 空 url / 格式錯誤視為不可用且不報錯
+#### Scenario: Non-200 / empty urls / empty url / malformed is treated as unavailable without an error
 
-- **WHEN** `/dashboard` 回非 200、或回 `{ "urls": [] }`、或回 `{ "url": "" }`、或回應非物件 / 無 `url` 欄、或網路失敗
-- **THEN** 該查詢狀態為 unavailable,Dashboard 按鈕 MUST NOT 渲染,且 MUST NOT 顯示任何錯誤訊息或殘留的載入指示
+- **WHEN** `/dashboard` returns non-200, or returns `{ "urls": [] }`, or returns `{ "url": "" }`, or the response is not an object / has no `url` field, or the network fails
+- **THEN** that query's state is unavailable, the Dashboard button MUST NOT render, and no error message or lingering loading indicator MUST be shown
 
-#### Scenario: endpoints.dashboard 未設定時不發查詢
+#### Scenario: No query is issued when endpoints.dashboard is not configured
 
-- **WHEN** runtime config 未設定 `endpoints.dashboard`,使用者開啟某適用節點的 detail panel
-- **THEN** 系統 MUST NOT 發出 `/dashboard` 查詢,Dashboard 按鈕不渲染,且不顯示任何錯誤或提示
+- **WHEN** the runtime config does not set `endpoints.dashboard`, and the user opens some applicable node's detail panel
+- **THEN** the system MUST NOT issue a `/dashboard` query, the Dashboard button does not render, and no error or notice is shown
 
-#### Scenario: 換節點中止前一查詢並重新預取
+#### Scenario: Switching nodes aborts the previous query and re-prefetches
 
-- **WHEN** 面板為某節點開啟(`/dashboard` 查詢進行中)時,使用者改開另一個適用節點
-- **THEN** 前一個 in-flight 查詢被中止(不更新狀態),系統為新節點發出新的一次 `/dashboard` 查詢
+- **WHEN** with the panel open for some node (`/dashboard` query in flight), the user opens another applicable node instead
+- **THEN** the previous in-flight query is aborted (no state update), and the system issues a new single `/dashboard` query for the new node
 
-#### Scenario: 檢視時間範圍變動時重新預取
+#### Scenario: Re-prefetch when the view time range changes
 
-- **WHEN** app 提供檢視時間範圍,面板對某適用節點開啟後使用者改變檢視時間範圍
-- **THEN** `from_time` / `to_time` 參數改變使請求 key 更新,系統為同一節點以新時間範圍**重新預取**一次 `/dashboard`(同節點、同其餘屬性、同時間範圍的純資料刷新 MUST NOT 重發)
+- **WHEN** the app provides a view time range, and after the panel opens for some applicable node the user changes the view time range
+- **THEN** the changed `from_time` / `to_time` parameters update the request key, and the system **re-prefetches** `/dashboard` once for the same node with the new time range (a pure data refresh with the same node, the same remaining attributes and the same time range MUST NOT re-issue it)
 
-### Requirement: Dashboard 請求參數組裝
+### Requirement: Dashboard request parameter assembly
 
-`/dashboard` 查詢的 query 參數 MUST 由被開啟節點的 `data` 屬性(及 app 的檢視時間範圍,若有)以純函式組裝(可單測),參數值型別為 `string | string[]`(`string[]` 序列化為重複的 query 參數,如 `ipaddress`),規則如下:
+The query parameters of the `/dashboard` query MUST be assembled by a pure function (unit-testable) from the opened node's `data` attributes (and the app's view time range, if any), with parameter value type `string | string[]` (`string[]` serializes as repeated query parameters, such as `ipaddress`), by the following rules:
 
-- **排除集合**:`labels` 與所有 app 內部 rendering-only / 結構欄位 MUST NOT 送出——accent 顏色(`clusterColor` / `namespaceColor` / `applicationColor` / `storageClusterColor`)、`parent`、`worstStatus`、`is*` compound 旗標(`isCluster` / `isStorageCluster` / `isController` / `isNamespace` / `isApplication`)、供 pinned card 呈現的儲存事實欄(`storageclass`、`health`、`usage` 及衍生的 `usageRatio`;屬節點資訊而非 query 參數)、易變的 `status`(會使刷新時的請求 key 無謂變動),以及結構性的 `id`(controller 的 `id` 為後端 path 值,如 `<c>/namespace/<ns>/application/<app>/controller/<Kind>/<name>`,屬結構識別而非可查詢屬性;節點身分以 kind + name 表示)。
-- **僅送 scalar(`ipaddress` 例外)**:非 scalar 值(陣列 / 物件,如 `alerts` / `containers` / `owner`)MUST NOT 作為 query 參數送出。**例外**:`ipAddress`(`string[]`,pod 節點上)SHALL 以重複的 `ipaddress=` 參數送出;陣列為空時 MUST 省略。
-- **欄名對應**:節點顯示名存於 `data.label`(正規化時自上游 `name` 對應而來、未保留 `name`),組裝時 MUST 以 `name` 為參數名送出該值;`kind` 原樣送出。
-- **Leaf 節點**:送出其(經上述排除後的)scalar 屬性。
-- **Compound 節點(僅 k8s-node / netapp-node / controller)**:送出該容器**自身**的 scalar 屬性,**外加**在其**所有直接子節點**(`data.parent === 容器 id`)上**值皆相同**的屬性;值在子節點間**相異**的屬性 MUST **略過**;與自身屬性**衝突時自身值優先**(own-wins);子節點屬性同樣套用上述排除集合與 scalar-only 規則;容器無直接子節點時僅送自身屬性。
-- **`cluster` 參數**:雖然 `cluster` 對適用節點**非** first-class data 欄(`labels` 又在排除集合中),app SHALL 仍解析並送出 `cluster`:**權威來源**為該節點**最近的 `isCluster` 祖先**(沿 `data.parent` 上溯,穿過 namespace 群組等中間 compound)之 `data.cluster`——這是唯一能涵蓋 **controller** 的來源(controller 既無 `data.cluster` 亦無 `labels`)。找不到 `isCluster` 祖先時 MUST **退回**該節點自身的 `labels.cluster`;兩者皆無時 MUST **省略** `cluster`(如無所屬 cluster 的頂層 external 節點)。祖先解析 MUST **優先於** labels 退回(祖先為權威),且 MUST **不覆寫**節點自身已帶的 `cluster`(own-wins)。
-- **`controller` 參數**(與 `cluster` 對稱):app SHALL 解析並送出 `controller`:**權威來源**為該節點**最近的 `isController` 祖先**(沿 `data.parent` 上溯)之名稱(`data.label`)——controller mode 下一個 pod 的直接 parent 即其 controller 容器。找不到 `isController` 祖先時(如 node mode,pod 巢狀於 node 容器下、無 controller 節點)MUST **退回**該 pod 自身的 `data.owner.name`(與 change history 解析 pod controller 的同一來源);兩者皆無時 MUST **省略** `controller`(controller 容器自身無 parent controller;裸 service / pvc / external 無 owner)。祖先解析 MUST **優先於** owner 退回,且 MUST **不覆寫**節點自身已帶的 `controller`(own-wins)。`controller` 與既有的 `application`(ArgoCD application 名稱)正交,兩者可並存。
-- **`from_time` / `to_time` 參數**:當 app 提供檢視時間範圍時,app SHALL 送出 `from_time` = 範圍起點之 **Unix 秒**、`to_time` = 範圍終點之 **Unix 秒**(與 backend graph query 的 `start` / `end` 同採 Unix 秒;backend 亦接受 RFC 3339,此處採秒)。時間界由組裝純函式自時間範圍參數注入,僅於適用(非「無參數」)分支加入,與其餘參數共用同一 param map / 請求 key。app 未提供檢視時間範圍時 MUST 省略 `from_time` / `to_time`。
+- **Exclusion set**: `labels` and all app-internal rendering-only / structural fields MUST NOT be sent — accent colors (`clusterColor` / `namespaceColor` / `applicationColor` / `storageClusterColor`), `parent`, `worstStatus`, the `is*` compound flags (`isCluster` / `isStorageCluster` / `isController` / `isNamespace` / `isApplication`), the storage fact fields presented by the pinned card (`storageclass`, `health`, `usage` and the derived `usageRatio`; they are node information, not query parameters), the volatile `status` (which would needlessly change the request key on refresh), and the structural `id` (a controller's `id` is a backend path value, such as `<c>/namespace/<ns>/application/<app>/controller/<Kind>/<name>`, a structural identifier rather than a queryable attribute; node identity is expressed by kind + name).
+- **Scalars only (`ipaddress` excepted)**: non-scalar values (arrays / objects, such as `alerts` / `containers` / `owner`) MUST NOT be sent as query parameters. **Exception**: `ipAddress` (`string[]`, on pod nodes) SHALL be sent as repeated `ipaddress=` parameters; when the array is empty it MUST be omitted.
+- **Field name mapping**: the node display name is stored in `data.label` (mapped from the upstream `name` during normalization; `name` is not retained), and assembly MUST send that value under the parameter name `name`; `kind` is sent as-is.
+- **Leaf nodes**: send their scalar attributes (after the exclusions above).
+- **Compound nodes (k8s-node / netapp-node / controller only)**: send the container's **own** scalar attributes, **plus** the attributes whose **values are identical** across **all of its direct children** (`data.parent === container id`); attributes whose values **differ** between children MUST be **skipped**; on **conflict with own attributes the own value wins** (own-wins); child attributes are likewise subject to the exclusion set and scalar-only rule above; when the container has no direct children only its own attributes are sent.
+- **`cluster` parameter**: although `cluster` is **not** a first-class data field on applicable nodes (and `labels` is in the exclusion set), the app SHALL still resolve and send `cluster`: the **authoritative source** is the `data.cluster` of the node's **nearest `isCluster` ancestor** (walking up `data.parent`, through intermediate compounds such as namespace groups) — this is the only source that covers **controllers** (a controller has neither `data.cluster` nor `labels`). When no `isCluster` ancestor is found it MUST **fall back** to the node's own `labels.cluster`; when neither exists it MUST **omit** `cluster` (such as a top-level external node belonging to no cluster). Ancestor resolution MUST take **precedence** over the labels fallback (the ancestor is authoritative), and MUST **not overwrite** a `cluster` the node already carries (own-wins).
+- **`controller` parameter** (symmetric with `cluster`): the app SHALL resolve and send `controller`: the **authoritative source** is the name (`data.label`) of the node's **nearest `isController` ancestor** (walking up `data.parent`) — in controller mode a pod's direct parent is its controller container. When no `isController` ancestor is found (such as node mode, where pods are nested under node containers with no controller node) it MUST **fall back** to the pod's own `data.owner.name` (the same source change history uses to resolve a pod's controller); when neither exists it MUST **omit** `controller` (a controller container itself has no parent controller; a bare service / pvc / external has no owner). Ancestor resolution MUST take **precedence** over the owner fallback, and MUST **not overwrite** a `controller` the node already carries (own-wins). `controller` is orthogonal to the existing `application` (ArgoCD application name); the two can coexist.
+- **`from_time` / `to_time` parameters**: when the app provides a view time range, the app SHALL send `from_time` = the range start in **Unix seconds** and `to_time` = the range end in **Unix seconds** (the same Unix seconds as the backend graph query's `start` / `end`; the backend also accepts RFC 3339, seconds are used here). The time bounds are injected by the assembly pure function from the time range parameter, added only on the applicable (non-"no parameters") branch, and share the same param map / request key as the remaining parameters. When the app provides no view time range, `from_time` / `to_time` MUST be omitted.
 
-#### Scenario: leaf 參數排除 labels 與 rendering 欄、label 以 name 送出
+#### Scenario: Leaf parameters exclude labels and rendering fields; label is sent as name
 
-- **WHEN** 對一個帶 `kind` / `label` / `namespace` / `labels` / `parent` 的 pod leaf 組裝參數
-- **THEN** 送出 `kind` 與 `name`(值為 `data.label`)、以及 `namespace`;MUST NOT 送出 `labels`、`parent`,或任何 `is*` / `*Color` / `worstStatus` / `status` / `id` 欄
+- **WHEN** parameters are assembled for a pod leaf carrying `kind` / `label` / `namespace` / `labels` / `parent`
+- **THEN** `kind` and `name` (with the value of `data.label`) and `namespace` are sent; `labels`, `parent`, or any `is*` / `*Color` / `worstStatus` / `status` / `id` field MUST NOT be sent
 
-#### Scenario: 儲存事實欄 storageclass / health / usage 不送出
+#### Scenario: Storage fact fields storageclass / health / usage are not sent
 
-- **WHEN** 對一個帶 `kind: 'pvc'` / `label` / `storageclass` 的 pvc leaf,或帶 `kind: 'netapp-aggr'` / `label` / `health` / `usage` 的 `netapp-aggr` leaf 組裝參數
-- **THEN** 送出 `kind` 與 `name`(值為 `data.label`);MUST NOT 送出 `storageclass`、`health`、`usage`、`usageRatio`(pinned card 用的儲存事實欄),亦 MUST NOT 送出任何 `is*` / `*Color` / `parent` / `id` 欄
+- **WHEN** parameters are assembled for a pvc leaf carrying `kind: 'pvc'` / `label` / `storageclass`, or a `netapp-aggr` leaf carrying `kind: 'netapp-aggr'` / `label` / `health` / `usage`
+- **THEN** `kind` and `name` (with the value of `data.label`) are sent; `storageclass`, `health`, `usage`, `usageRatio` (the storage fact fields used by the pinned card) MUST NOT be sent, and any `is*` / `*Color` / `parent` / `id` field MUST NOT be sent either
 
-#### Scenario: compound 合併子節點一致屬性、略過相異屬性
+#### Scenario: Compound merges consistent child attributes and skips differing ones
 
-- **WHEN** 對一個 controller 容器組裝參數,其所有子 pod 的某屬性(如 `namespace`)值皆相同、另一屬性(如 `name`)值各異
-- **THEN** 該一致屬性併入參數(若自身未帶該欄),相異屬性略過;自身已帶的欄以自身值為準(own-wins)
+- **WHEN** parameters are assembled for a controller container where some attribute (such as `namespace`) has the same value across all its child pods, and another attribute (such as `name`) differs
+- **THEN** the consistent attribute is merged into the parameters (if the container does not carry that field itself), the differing attribute is skipped; fields the container carries itself take their own value (own-wins)
 
-#### Scenario: 非 scalar 與合成 id 不送出(`ipAddress` 除外)
+#### Scenario: Non-scalars and the synthesized id are not sent (`ipAddress` excepted)
 
-- **WHEN** 被組裝的節點帶 `alerts` / `containers` / `owner` 等非 scalar 欄,且(若為 controller)帶合成 `id`
-- **THEN** 這些欄 MUST NOT 出現在 `/dashboard` 的 query 參數中(`ipAddress` 為例外,見下「ipaddress」scenario)
+- **WHEN** the assembled node carries non-scalar fields such as `alerts` / `containers` / `owner`, and (if a controller) a synthesized `id`
+- **THEN** these fields MUST NOT appear in the `/dashboard` query parameters (`ipAddress` is the exception, see the "ipaddress" scenario below)
 
-#### Scenario: ipAddress 以重複 ipaddress 參數送出
+#### Scenario: ipAddress is sent as repeated ipaddress parameters
 
-- **WHEN** 對一個帶 `ipAddress: ['10.0.0.1', '10.0.0.2']` 的 pod leaf 組裝參數
-- **THEN** `/dashboard` 帶重複的 `ipaddress=10.0.0.1&ipaddress=10.0.0.2`
-- **WHEN** pod 的 `ipAddress` 缺漏或為空陣列
-- **THEN** `ipaddress` 參數 MUST 省略
+- **WHEN** parameters are assembled for a pod leaf carrying `ipAddress: ['10.0.0.1', '10.0.0.2']`
+- **THEN** `/dashboard` carries the repeated `ipaddress=10.0.0.1&ipaddress=10.0.0.2`
+- **WHEN** the pod's `ipAddress` is missing or an empty array
+- **THEN** the `ipaddress` parameter MUST be omitted
 
-#### Scenario: controller 自最近 isController 祖先解析
+#### Scenario: controller resolves from the nearest isController ancestor
 
-- **WHEN** 某 pod leaf 於 controller mode 巢狀於某 `isController` 容器之下
-- **THEN** `/dashboard` 參數含 `controller`,值為該最近 `isController` 祖先的名稱(`data.label`)
+- **WHEN** some pod leaf is nested under some `isController` container in controller mode
+- **THEN** the `/dashboard` parameters include `controller`, with the value being the name (`data.label`) of that nearest `isController` ancestor
 
-#### Scenario: controller 退回 owner.name、皆無則省略
+#### Scenario: controller falls back to owner.name, omitted when neither exists
 
-- **WHEN** 某 pod 無任何 `isController` 祖先(如 node mode)但自身帶 `data.owner.name`
-- **THEN** `controller` 取自 `data.owner.name`
-- **WHEN** 節點既無 `isController` 祖先亦無 `data.owner`(如 controller 容器自身、或裸 service / pvc / external)
-- **THEN** `controller` 參數 MUST 省略
+- **WHEN** some pod has no `isController` ancestor (such as node mode) but carries `data.owner.name` itself
+- **THEN** `controller` is taken from `data.owner.name`
+- **WHEN** the node has neither an `isController` ancestor nor `data.owner` (such as a controller container itself, or a bare service / pvc / external)
+- **THEN** the `controller` parameter MUST be omitted
 
-#### Scenario: from_time / to_time 帶檢視時間範圍之 Unix 秒
+#### Scenario: from_time / to_time carry the view time range in Unix seconds
 
-- **WHEN** app 提供檢視時間範圍,對一個適用節點組裝參數,且該範圍的起點 / 終點對應 Unix 秒 `1700000000` / `1700003600`
-- **THEN** `/dashboard` 參數含 `from_time=1700000000` 與 `to_time=1700003600`
-- **WHEN** app 未提供檢視時間範圍
-- **THEN** `from_time` / `to_time` 參數 MUST 省略
+- **WHEN** the app provides a view time range, parameters are assembled for an applicable node, and the range's start / end correspond to Unix seconds `1700000000` / `1700003600`
+- **THEN** the `/dashboard` parameters include `from_time=1700000000` and `to_time=1700003600`
+- **WHEN** the app provides no view time range
+- **THEN** the `from_time` / `to_time` parameters MUST be omitted
 
-#### Scenario: cluster 自最近 isCluster 祖先解析(含 controller 經 namespace 群組上溯)
+#### Scenario: cluster resolves from the nearest isCluster ancestor (including a controller walking up through a namespace group)
 
-- **WHEN** 某適用節點(leaf / controller / k8s-node)巢狀於某 `isCluster` 容器之下(可能經 namespace 群組等中間 compound)
-- **THEN** `/dashboard` 參數含 `cluster`,值為該最近 `isCluster` 祖先的 `data.cluster`
+- **WHEN** some applicable node (leaf / controller / k8s-node) is nested under some `isCluster` container (possibly through intermediate compounds such as namespace groups)
+- **THEN** the `/dashboard` parameters include `cluster`, with the value being the `data.cluster` of that nearest `isCluster` ancestor
 
-#### Scenario: cluster 退回 labels.cluster、皆無則省略
+#### Scenario: cluster falls back to labels.cluster, omitted when neither exists
 
-- **WHEN** 節點無任何 `isCluster` 祖先但自身帶 `labels.cluster`
-- **THEN** `cluster` 取自 `labels.cluster`
-- **WHEN** 節點既無 `isCluster` 祖先亦無 `labels.cluster`(如頂層 external)
-- **THEN** `cluster` 參數 MUST 省略
+- **WHEN** the node has no `isCluster` ancestor but carries `labels.cluster` itself
+- **THEN** `cluster` is taken from `labels.cluster`
+- **WHEN** the node has neither an `isCluster` ancestor nor `labels.cluster` (such as a top-level external)
+- **THEN** the `cluster` parameter MUST be omitted
 
-### Requirement: Dashboard 按鈕呈現
+### Requirement: Dashboard button presentation
 
-當某節點的 `/dashboard` 查詢為 **available** 時,app SHALL 於 node detail panel **header 的節點名稱旁**渲染 Dashboard 入口;header 在面板的每一種內容組合(header-only、帶 Application / Containers / Alerts)下皆渲染,故單一放置即可。查詢為 **loading** 或 **unavailable** 時 MUST 不渲染任何按鈕(無載入指示、無錯誤、無 placeholder),避免閃爍。入口型態依連結數決定:
+When some node's `/dashboard` query is **available**, the app SHALL render the Dashboard entry point in the node detail panel **header beside the node name**; the header renders under every content combination of the panel (header-only, with Application / Containers / Alerts), so a single placement suffices. When the query is **loading** or **unavailable** no button MUST be rendered (no loading indicator, no error, no placeholder), to avoid flicker. The entry point's form is decided by the number of links:
 
-- **單一連結**(`urls.length === 1`):MUST 渲染一顆文案為 **Dashboard** 的連結按鈕,以新分頁開啟該 `url`(`target="_blank"`、`rel="noopener noreferrer"`)。
-- **多個連結**(`urls.length >= 2`):MUST 渲染一顆 **Dashboards** 觸發鈕與下拉選單,每個項目顯示對應 `label`,點擊以新分頁(`noopener,noreferrer`)開啟該 `url`。
+- **Single link** (`urls.length === 1`): MUST render one link button labeled **Dashboard**, opening that `url` in a new tab (`target="_blank"`, `rel="noopener noreferrer"`).
+- **Multiple links** (`urls.length >= 2`): MUST render one **Dashboards** trigger button with a dropdown menu, each item showing the corresponding `label`, and clicking opens that `url` in a new tab (`noopener,noreferrer`).
 
-按鈕 MUST 使用 app 自身的 dark / light 主題 token 呈現,並隨主題切換。
+The button MUST be presented with the app's own dark / light theme tokens, and follow theme switches.
 
-#### Scenario: 單一連結維持 Dashboard 按鈕
+#### Scenario: A single link keeps the Dashboard button
 
-- **WHEN** 某適用節點的 `/dashboard` 解析為一筆連結,且面板開啟
-- **THEN** header 於節點名稱旁渲染文案為 **Dashboard** 的連結按鈕,點擊以新分頁(`noopener,noreferrer`)開啟該 `url`
+- **WHEN** some applicable node's `/dashboard` resolves to one link, and the panel is open
+- **THEN** the header renders a link button labeled **Dashboard** beside the node name, and clicking opens that `url` in a new tab (`noopener,noreferrer`)
 
-#### Scenario: 多連結顯示 Dashboards 選單
+#### Scenario: Multiple links show the Dashboards menu
 
-- **WHEN** 某適用節點的 `/dashboard` 解析為兩筆或以上連結
-- **THEN** header 顯示 **Dashboards** 觸發鈕;展開後每個 `label` 可點擊並以新分頁開啟對應 `url`
+- **WHEN** some applicable node's `/dashboard` resolves to two or more links
+- **THEN** the header shows the **Dashboards** trigger button; once expanded, each `label` is clickable and opens the corresponding `url` in a new tab
 
-#### Scenario: loading / 不可用時不渲染按鈕
+#### Scenario: No button is rendered while loading / unavailable
 
-- **WHEN** `/dashboard` 查詢進行中(loading)、或為 unavailable
-- **THEN** header MUST 不渲染 Dashboard 按鈕,且不顯示載入指示或錯誤訊息
+- **WHEN** the `/dashboard` query is in flight (loading), or is unavailable
+- **THEN** the header MUST NOT render the Dashboard button, and shows no loading indicator or error message

@@ -1,151 +1,151 @@
 ## Purpose
 
-定義 Graph view 的 pod-parent mode:使用者在 `controller`(預設,原樣消費後端階層 `cluster > namespace > application > controller > pod`)與 `node`(基礎設施視圖 `cluster > node > pod`)兩種 compound 拓樸間切換的控制、純函式的拓樸轉換、各模式的可繪 edge 集合、模式切換後恰一次的重新佈局,以及 controller 模式預設全摺疊 controller 容器的行為。此模式為 ephemeral view state,不持久化。
+Defines the Graph view's pod-parent mode: the control by which the user switches between the two compound topologies `controller` (default, consuming the backend hierarchy `cluster > namespace > application > controller > pod` as-is) and `node` (the infrastructure view `cluster > node > pod`), the pure-function topology transform, the drawable edge set of each mode, the exactly-once re-layout after a mode switch, and the behaviour of collapsing all controller containers by default in controller mode. This mode is ephemeral view state and is not persisted.
 
 ## ADDED Requirements
 
-### Requirement: Pod-parent 模式切換控制
+### Requirement: Pod-parent mode switch control
 
-Graph view SHALL 在 legend **最上方**(早於 cluster 圖例等所有其他 legend section)提供一個 **layout 分段控制**(segmented control,兩選項 `Node` / `Controller`,標籤 `Layout`),用以在 `node` 與 `controller`(預設)兩種 pod compound 拓樸間切換,並高亮反映目前模式。此分段控制 MUST 為模式切換的唯一入口:edge-type legend section MUST NOT 渲染任何模式切換按鈕,只負責列邊。模式狀態 MUST 為 Graph view 自有的 ephemeral view state(比照 collapse 狀態),預設 `controller`,MUST NOT 持久化於 runtime config;切換 MUST 即時生效。此處「layout」指 compound 群組拓樸,與 fcose / dagre 的佈局演算法選擇(app 設定)為**不同概念**。**階層由後端擁有**:`controller` 模式(預設)直接原樣消費後端 `GET /v1/graph` payload——pod 維持巢狀於其後端 `controller` 群組,完整 parent 鏈為 `cluster > namespace > application > controller > pod`,`pod-to-node` 以 drawn edge 表示;`node` 模式(基礎設施視圖)則由 pod-parent 拓樸轉換將每個 pod 重新掛載至其 K8s `node`、卸除 workload 群組層(`namespace` / `application` / `controller`),呈現扁平視圖 `cluster > node > pod`(`pod-to-node` 改以巢狀表示)。
+The Graph view SHALL provide, at the **very top** of the legend (before the cluster legend and every other legend section), a **layout segmented control** (segmented control, two options `Node` / `Controller`, labelled `Layout`) for switching between the `node` and `controller` (default) pod compound topologies, highlighted to reflect the current mode. This segmented control MUST be the only entry point for switching modes: the edge-type legend section MUST NOT render any mode switch button and is responsible only for listing edges. The mode state MUST be ephemeral view state owned by the Graph view (like the collapse state), defaulting to `controller`, and MUST NOT be persisted in the runtime config; a switch MUST take effect immediately. "Layout" here means the compound group topology, which is a **different concept** from the fcose / dagre layout algorithm choice (an app setting). **The hierarchy is owned by the backend**: `controller` mode (default) consumes the backend `GET /v1/graph` payload directly as-is — pods stay nested in their backend `controller` group, the full parent chain is `cluster > namespace > application > controller > pod`, and `pod-to-node` is represented as a drawn edge; `node` mode (the infrastructure view) has the pod-parent topology transform re-parent every pod to its K8s `node` and strip the workload group tiers (`namespace` / `application` / `controller`), presenting the flat view `cluster > node > pod` (`pod-to-node` is represented by nesting instead).
 
-#### Scenario: 分段控制切換模式
+#### Scenario: the segmented control switches the mode
 
-- **WHEN** 使用者點擊 legend 最上方 layout 分段控制的 `Controller` 段
-- **THEN** Graph view 的 pod-parent mode 變為 `controller`,圖形即時重繪為後端階層 `cluster > namespace > application > controller > pod`
-- **AND** 再點 `Node` 段則切回 `node`(`cluster > node > pod`,無 workload 群組層),皆立即生效、不涉及任何設定持久化
+- **WHEN** the user clicks the `Controller` segment of the layout segmented control at the top of the legend
+- **THEN** the Graph view's pod-parent mode becomes `controller`, and the graph immediately redraws as the backend hierarchy `cluster > namespace > application > controller > pod`
+- **AND** clicking the `Node` segment switches back to `node` (`cluster > node > pod`, no workload group tiers), each taking effect immediately without any settings persistence
 
-#### Scenario: 控制置於 legend 最上方、edge legend 不含切換鈕
+#### Scenario: the control sits at the top of the legend and the edge legend carries no switch button
 
-- **WHEN** 渲染 legend
-- **THEN** layout 分段控制出現在所有 legend section 之上;edge-type legend section 不渲染任何模式切換按鈕(僅列邊)
+- **WHEN** the legend is rendered
+- **THEN** the layout segmented control appears above every legend section; the edge-type legend section renders no mode switch button (it only lists edges)
 
-#### Scenario: 預設為 controller 模式
+#### Scenario: controller mode is the default
 
-- **WHEN** Graph view 初次載入(使用者尚未切換)
-- **THEN** pod-parent mode 為 `controller`,layout 分段控制預設高亮 `Controller`;pod 巢狀於其後端 `controller` 群組(`cluster > namespace > application > controller > pod`,階層由後端 payload 提供)、`pod-to-node` 為 drawn edge;且圖中所有 controller 容器於初次載入即預設全摺疊(pod 聚合)
+- **WHEN** the Graph view loads for the first time (the user has not yet switched)
+- **THEN** the pod-parent mode is `controller` and the layout segmented control highlights `Controller` by default; pods are nested in their backend `controller` group (`cluster > namespace > application > controller > pod`, the hierarchy provided by the backend payload) and `pod-to-node` is a drawn edge; and every controller container in the graph is collapsed by default on first load (pods aggregated)
 
-### Requirement: 各模式的可繪 edge 集合與 legend / stylesheet 適配
+### Requirement: drawable edge set per mode and legend / stylesheet adaptation
 
-系統 SHALL 以**單一主要 edge 樣式來源**涵蓋全部 8 種 edge type(`pod-to-node` / `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pvc-to-netapp-aggr` / `switch-to-switch` / `node-to-switch`),並 SHALL 以純函式依模式推導**可繪 edge 集合**:`controller` 模式為 `['pod-mounts-pvc', 'pod-calls-pod', 'pod-calls-service', 'service-selects-pod', 'pod-to-node', 'pvc-to-netapp-aggr', 'switch-to-switch', 'node-to-switch']`;`node` 模式為同一集合**減去 `pod-to-node`**(即 `['pod-mounts-pvc', 'pod-calls-pod', 'pod-calls-service', 'service-selects-pod', 'pvc-to-netapp-aggr', 'switch-to-switch', 'node-to-switch']`)——`node` 模式下 `pod-to-node` 以巢狀表示,並由 pod-parent 拓樸轉換整批移除。已自契約移除的 `pvc-to-storageclass` MUST NOT 出現於主要樣式來源、任一模式的可繪集合或完整 edge-type 集合中。系統 MUST NOT 合成 `pod-runs-on-node` / `controller-owns-pod` 之類的階層邊(階層由後端擁有,app 不合成)。`pvc-to-netapp-aggr` 於兩模式皆繪製;`service-selects-pod` 與 `pod-calls-service` 於兩模式皆繪製(service 不是 compound parent);實體網路 fabric edge `switch-to-switch` / `node-to-switch` 亦**於兩模式皆繪製**。stylesheet 的 edge 配色 MUST 取自主要樣式來源且與模式無關——它能為任何存在的 edge 上色;當前模式不含的 type 只是閒置,不影響輸出。完整 edge-type 集合與 edge-type 過濾的預設可見集合 MUST 等於全部 8 種 edge type,使兩模式的 edge(含 fabric)預設皆可見——否則切至 controller 模式時 `pod-to-node` 會被預設過濾掉,或 fabric edge 被排除於預設可見集合之外。edge-type legend section 列出的 edge MUST 為「當前模式的可繪集合 ∩ 圖中實際存在的 edge type」,以既有 `<from> → <to>` 形式呈現(箭頭字形置中),且 MUST NOT 附加額外的巢狀說明文字。
+The system SHALL cover all 8 edge types (`pod-to-node` / `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pvc-to-netapp-aggr` / `switch-to-switch` / `node-to-switch`) with a **single primary edge style source**, and SHALL derive the **drawable edge set** per mode with a pure function: `controller` mode is `['pod-mounts-pvc', 'pod-calls-pod', 'pod-calls-service', 'service-selects-pod', 'pod-to-node', 'pvc-to-netapp-aggr', 'switch-to-switch', 'node-to-switch']`; `node` mode is the same set **minus `pod-to-node`** (that is, `['pod-mounts-pvc', 'pod-calls-pod', 'pod-calls-service', 'service-selects-pod', 'pvc-to-netapp-aggr', 'switch-to-switch', 'node-to-switch']`) — in `node` mode `pod-to-node` is represented by nesting and removed wholesale by the pod-parent topology transform. `pvc-to-storageclass`, already removed from the contract, MUST NOT appear in the primary style source, in either mode's drawable set, or in the full edge-type set. The system MUST NOT synthesize hierarchy edges such as `pod-runs-on-node` / `controller-owns-pod` (the hierarchy is owned by the backend; the app does not synthesize it). `pvc-to-netapp-aggr` is drawn in both modes; `service-selects-pod` and `pod-calls-service` are drawn in both modes (a service is not a compound parent); the physical network fabric edges `switch-to-switch` / `node-to-switch` are also **drawn in both modes**. The stylesheet's edge colors MUST be taken from the primary style source and be mode-independent — it can color any edge that exists; types not present in the current mode simply sit idle and do not affect the output. The full edge-type set and the default visible set of the edge-type filter MUST equal all 8 edge types, so that the edges of both modes (fabric included) are visible by default — otherwise `pod-to-node` would be filtered out by default when switching to controller mode, or the fabric edges would be excluded from the default visible set. The edges listed by the edge-type legend section MUST be "the current mode's drawable set ∩ the edge types actually present in the graph", presented in the existing `<from> → <to>` form (arrow glyph centered), and MUST NOT append any extra nesting explanation text.
 
-#### Scenario: node 模式的可繪 edge 集合
+#### Scenario: the drawable edge set of node mode
 
-- **WHEN** pod-parent mode 為 `node`
-- **THEN** 可繪 edge 集合含 `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pvc-to-netapp-aggr`,加上恆在的 `switch-to-switch` / `node-to-switch`;canvas 完全不繪製 `pod-to-node` edge(以巢狀表示,並由拓樸轉換移除)
+- **WHEN** the pod-parent mode is `node`
+- **THEN** the drawable edge set contains `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pvc-to-netapp-aggr`, plus the ever-present `switch-to-switch` / `node-to-switch`; the canvas draws no `pod-to-node` edge at all (represented by nesting and removed by the topology transform)
 
-#### Scenario: controller 模式的可繪 edge 集合
+#### Scenario: the drawable edge set of controller mode
 
-- **WHEN** pod-parent mode 為 `controller`
-- **THEN** 可繪 edge 集合含 `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pod-to-node` / `pvc-to-netapp-aggr`,加上恆在的 `switch-to-switch` / `node-to-switch`;`pod-to-node` edge 以主要樣式來源定義的顏色(`#3b82f6`)與線型繪製,`pvc-to-netapp-aggr` 以其自有顏色繪製,可與 `pod-mounts-pvc` 的紫色區分
+- **WHEN** the pod-parent mode is `controller`
+- **THEN** the drawable edge set contains `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pod-to-node` / `pvc-to-netapp-aggr`, plus the ever-present `switch-to-switch` / `node-to-switch`; `pod-to-node` edges are drawn with the color (`#3b82f6`) and line style defined by the primary style source, and `pvc-to-netapp-aggr` is drawn in its own color, distinguishable from the purple of `pod-mounts-pvc`
 
-#### Scenario: fabric edge 於兩模式皆存在
+#### Scenario: fabric edges exist in both modes
 
-- **WHEN** 圖中含 `switch-to-switch` 或 `node-to-switch` edge
-- **THEN** 兩種 pod-parent mode 皆繪製它(切換模式時不消失),且預設可見(edge-type 過濾的預設可見集合涵蓋它)
+- **WHEN** the graph contains `switch-to-switch` or `node-to-switch` edges
+- **THEN** both pod-parent modes draw them (they do not disappear when switching modes), and they are visible by default (the edge-type filter's default visible set covers them)
 
-#### Scenario: 未知 edge type 仍走 fallback
+#### Scenario: unknown edge types still take the fallback
 
-- **WHEN** 任一模式下某 edge 的 `data.edgeType` 不在主要樣式來源內
-- **THEN** 該 edge 以灰色實線 fallback 繪製且不拋錯(既有的向前相容行為)
+- **WHEN** in either mode an edge's `data.edgeType` is not in the primary style source
+- **THEN** the edge is drawn with the grey solid-line fallback without throwing (the existing forward-compatible behaviour)
 
-### Requirement: 模式切換觸發重新佈局
+### Requirement: a mode switch triggers a re-layout
 
-模式切換改變 compound 結構(`data.parent` 與邊集合),系統 MUST 在套用後觸發**恰一次**重新佈局。觸發重新佈局的機制 MUST 由 collapse 變更與 pod-parent mode 變更共用(同一個「需要重跑 layout」的訊號),其中任一變動即重跑 layout;visibility-only 的變更仍 MUST NOT 觸發重新佈局。
+A mode switch changes the compound structure (`data.parent` and the edge set), so the system MUST trigger a re-layout **exactly once** after applying it. The mechanism that triggers the re-layout MUST be shared by collapse changes and pod-parent mode changes (the same "layout needs re-running" signal), re-running the layout whenever either changes; visibility-only changes still MUST NOT trigger a re-layout.
 
-#### Scenario: 切換模式重跑 layout
+#### Scenario: switching modes re-runs the layout
 
-- **WHEN** 使用者切換 pod-parent mode
-- **THEN** 系統中止進行中的 layout 後,以當前佈局演算法重跑 layout 恰一次;cytoscape.js instance 不重建(同一 instance);collapse 狀態以既有的對帳規則(desired ∩ present,即仍存在於圖中的容器維持其 collapse 狀態)保留
+- **WHEN** the user switches the pod-parent mode
+- **THEN** the system aborts any in-flight layout, then re-runs the layout exactly once with the current layout algorithm; the cytoscape.js instance is not rebuilt (same instance); the collapse state is preserved by the existing reconcile rule (desired ∩ present, that is, containers still present in the graph keep their collapse state)
 
-#### Scenario: 模式未變不重跑 layout
+#### Scenario: an unchanged mode does not re-run the layout
 
-- **WHEN** 其他輸入變更,但 pod-parent mode 與 collapse 集合內容皆未變
-- **THEN** 不發出重新佈局訊號,layout 不重跑
+- **WHEN** other inputs change but neither the pod-parent mode nor the contents of the collapse set change
+- **THEN** no re-layout signal is emitted and the layout is not re-run
 
-#### Scenario: 切換與還原皆實際改變 compound 巢狀
+#### Scenario: switching and reverting both actually change the compound nesting
 
-- **WHEN** 使用者切到 `controller` 模式,之後再切回 `node` 模式
-- **THEN** pod 在 `controller` 模式 MUST 實際巢狀於其 owning controller 容器,切回 `node` 模式後 MUST 實際巢狀回其 K8s node 容器,雙向皆生效
-- **AND** 因為 cytoscape.js 只在加入元素時可靠地建立 compound 巢狀(動態改寫 parent 或搬移元素,在 batch 與 expand-collapse 擴充並用下不可靠),canvas 偵測到 pod-parent mode 改變時 MUST 以整批重建(移除全部元素後重新加入新階層的元素)套用新階層,而非 diff-patch;模式切換同時發出重新佈局訊號,重建後重新佈局
+- **WHEN** the user switches to `controller` mode and later switches back to `node` mode
+- **THEN** pods MUST actually be nested in their owning controller container in `controller` mode, and MUST actually be nested back in their K8s node container after switching back to `node` mode, taking effect in both directions
+- **AND** because cytoscape.js only reliably establishes compound nesting when elements are added (dynamically rewriting a parent or moving elements is unreliable when batching and the expand-collapse extension are used together), when the canvas detects a pod-parent mode change it MUST apply the new hierarchy with a wholesale rebuild (remove all elements, then re-add the elements of the new hierarchy) rather than a diff-patch; the mode switch also emits the re-layout signal, and the layout is re-run after the rebuild
 
-### Requirement: pod-parent mode 的純函式可單元測試
+### Requirement: the pure functions of pod-parent mode are unit-testable
 
-pod-parent 拓樸轉換(輸入 elements 與 mode,回傳新 elements)與各模式的可繪 edge 集合推導 MUST 為純函式,且 MUST 具單元測試覆蓋。
+The pod-parent topology transform (taking elements and a mode, returning new elements) and the per-mode drawable edge set derivation MUST be pure functions, and MUST have unit test coverage.
 
-#### Scenario: 純函式測試覆蓋
+#### Scenario: pure function test coverage
 
-- **WHEN** CI 執行專案的單元測試
-- **THEN** 拓樸轉換的測試涵蓋:controller 模式為 identity clone(pod 維持巢狀於後端 `controller` 群組、不合成任何 edge、`data.parent` 與邊集合不變、每個元素皆為新物件);node 模式將 pod 重新掛載至其 `labels.node`(指向既存的 `node` kind);node 模式卸除 `namespace` / `application` / `controller` 群組並將 `pvc` / `service` 重新掛載至 `cluster`;node 模式移除全部 `pod-to-node` edge;`labels.node` 缺失或無法解析時 pod 留在其 cluster 下的 fallback;`service-selects-pod` / `pod-calls-service` / `pvc-to-netapp-aggr` 於兩模式皆存活;**NetApp 儲存鏈於任一模式皆不被卸除亦不被重新掛載**;跨 cluster 的 `pod-calls-pod` 不受影響;兩模式皆回傳獨立新物件且不改動輸入
-- **AND** 可繪 edge 集合推導的測試涵蓋兩模式的集合(`node` 模式排除 `pod-to-node`,兩模式皆不含 `pvc-to-storageclass`);全部通過
+- **WHEN** CI runs the project's unit tests
+- **THEN** the topology transform tests cover: controller mode is an identity clone (pods stay nested in the backend `controller` group, no edge is synthesized, `data.parent` and the edge set are unchanged, every element is a new object); node mode re-parents pods to their `labels.node` (pointing at an existing `node` kind); node mode strips the `namespace` / `application` / `controller` groups and re-parents `pvc` / `service` to the `cluster`; node mode removes every `pod-to-node` edge; the fallback where a pod stays under its cluster when `labels.node` is missing or cannot be resolved; `service-selects-pod` / `pod-calls-service` / `pvc-to-netapp-aggr` survive in both modes; **the NetApp storage chain is neither stripped nor re-parented in either mode**; cross-cluster `pod-calls-pod` is unaffected; both modes return independent new objects without mutating the input
+- **AND** the drawable edge set derivation tests cover both modes' sets (`node` mode excludes `pod-to-node`, neither mode contains `pvc-to-storageclass`); all pass
 
-### Requirement: controller 模式維持後端階層、node 模式重新掛載 pod
+### Requirement: controller mode keeps the backend hierarchy, node mode re-parents pods
 
-系統 SHALL 提供純函式的 pod-parent 拓樸轉換(輸入 elements 與 mode,回傳新 elements),於 wire → 內部模型的正規化之後、元素進入 canvas 之前套用;正規化邊界本身 MUST 維持為純粹的 anti-corruption boundary,MUST NOT 接受 mode 參數。**階層由後端擁有**,故 `controller` 模式(預設)MUST 為 **identity clone**:MUST NOT 重新掛載任何 pod、MUST NOT 合成任何 edge——後端 payload 已將每個 pod 巢狀於其 `controller` 群組(完整 parent 鏈 `cluster > namespace > application > controller > pod`),且 `pod-to-node` 已是後端提供的 drawn edge。此模式僅逐元素複製以產生獨立新物件(`data` 至少淺複製),保留原本的 `data.parent` 與邊集合。`node` 模式 MUST 回傳乾淨的基礎設施視圖(`cluster > node > pod`):對每個 `pod`,將 `data.parent` 重設為其 `labels.node`(其 K8s node id),且僅當該 id 指向 elements 中**存在**的 `node` kind 元素時才重新掛載——`labels.node` 缺失或未指向任何此類 node 時,該 pod MUST 留在其 `cluster` 下(fallback)。此模式亦 MUST 卸除每個 `namespace` / `application` / `controller` 群組節點,並將其非 pod 成員(`pvc` / `service`)重新掛載至其 `cluster`,且 MUST 移除每一條 `pod-to-node` edge(該關係於 `node` 模式以巢狀表示)。
+The system SHALL provide a pure-function pod-parent topology transform (taking elements and a mode, returning new elements), applied after the wire → internal-model normalization and before the elements enter the canvas; the normalize boundary itself MUST remain a pure anti-corruption boundary and MUST NOT accept a mode parameter. **The hierarchy is owned by the backend**, so `controller` mode (default) MUST be an **identity clone**: it MUST NOT re-parent any pod and MUST NOT synthesize any edge — the backend payload already nests every pod in its `controller` group (full parent chain `cluster > namespace > application > controller > pod`), and `pod-to-node` is already a drawn edge provided by the backend. This mode only copies element by element to produce independent new objects (`data` at least shallow-copied), preserving the original `data.parent` and edge set. `node` mode MUST return a clean infrastructure view (`cluster > node > pod`): for every `pod`, reset `data.parent` to its `labels.node` (its K8s node id), re-parenting only when that id points at a `node` kind element that **exists** in the elements — when `labels.node` is missing or does not point at any such node, the pod MUST stay under its `cluster` (fallback). This mode MUST also strip every `namespace` / `application` / `controller` group node, re-parent their non-pod members (`pvc` / `service`) to their `cluster`, and MUST remove every `pod-to-node` edge (that relation is represented by nesting in `node` mode).
 
-**NetApp 儲存鏈於 `node` 模式維持原狀。** `storage-cluster` **不是**被卸除的 workload 群組(被卸除的集合恰為 `namespace` / `application` / `controller`),而 `netapp-node` / `netapp-aggr` 是真實節點而非群組,故整個 `storage-cluster > netapp-node > netapp-aggr` 巢狀 MUST 於**兩模式皆原樣保留**,拓樸轉換 MUST NOT 重新掛載或攤平其中任何部分。`node` 模式下 PVC 因其 `namespace` 群組被卸除而重新掛載至 cluster,但其 `pvc-to-netapp-aggr` edge 仍指向未移動的 aggregate——**一條自 K8s cluster 容器跨入 storage-cluster 容器的 edge 即為預期結果**,不得為了收拾畫面而改動任一端點的 parent。
+**The NetApp storage chain stays as-is in `node` mode.** `storage-cluster` is **not** a stripped workload group (the stripped set is exactly `namespace` / `application` / `controller`), and `netapp-node` / `netapp-aggr` are real nodes rather than groups, so the entire `storage-cluster > netapp-node > netapp-aggr` nesting MUST be **preserved as-is in both modes**, and the topology transform MUST NOT re-parent or flatten any part of it. In `node` mode a PVC is re-parented to the cluster because its `namespace` group is stripped, but its `pvc-to-netapp-aggr` edge still points at the unmoved aggregate — **an edge crossing from the K8s cluster container into the storage-cluster container is the expected result**, and neither endpoint's parent may be changed to tidy the picture.
 
-`service-selects-pod` / `pod-calls-service` / `pvc-to-netapp-aggr` edge MUST 於兩模式皆保留(`node` 模式在共通行為之上僅額外移除 `pod-to-node`)。`node` 模式移除 `pod-to-node` MUST NOT 使唯一連線為該 edge 的 pod(如 DaemonSet / Job / CronJob 的 pod)自畫布消失:`graph-view` 的 orphan 級聯以 **normalize boundary 輸出的基準線圖**判定 leaf 是否「本來就孤立」,而本轉換發生於該基準線之後,故這些 pod 屬「edge 被 UI 藏起來」而維持可見 —— 見 `graph-view` 的「Node Kind / Edge Type 過濾」需求。每一項節點 / edge 變更 MUST 以不可變方式產生新物件,MUST NOT 就地改動輸入。此外,兩模式下拓樸轉換回傳的**每一個**元素都 MUST 是全新的獨立物件(`data` 至少淺複製),而非僅變更過的元素——cytoscape.js 會直接引用交給它的 `data` 物件,且 expand-collapse 擴充會就地改寫 collapsed controller 相連 edge 的 `data.source` / `data.target`。若回傳值與正規化後的基底 elements 共享物件,該就地改寫會汙染正規化後的輸入,使用者切回另一模式時將出現錯誤的 edge,整個 workload 也會孤立或消失。
+`service-selects-pod` / `pod-calls-service` / `pvc-to-netapp-aggr` edges MUST be preserved in both modes (`node` mode only additionally removes `pod-to-node` on top of the shared behaviour). `node` mode removing `pod-to-node` MUST NOT make pods whose only connection is that edge (such as the pods of a DaemonSet / Job / CronJob) disappear from the canvas: `graph-view`'s orphan cascade decides whether a leaf is "orphaned to begin with" from the **baseline graph output by the normalize boundary**, and this transform happens after that baseline, so these pods count as "edge hidden by the UI" and stay visible — see the "Node Kind / Edge Type filtering" requirement of `graph-view`. Every node / edge change MUST produce new objects immutably and MUST NOT mutate the input in place. Furthermore, **every** element the topology transform returns in both modes MUST be a brand-new independent object (`data` at least shallow-copied), not only the changed elements — cytoscape.js references the `data` objects handed to it directly, and the expand-collapse extension rewrites the `data.source` / `data.target` of edges attached to a collapsed controller in place. If the return value shares objects with the normalized base elements, that in-place rewrite contaminates the normalized input, wrong edges appear when the user switches back to the other mode, and whole workloads become orphaned or disappear.
 
-#### Scenario: controller 模式為 identity clone
+#### Scenario: controller mode is an identity clone
 
-- **WHEN** mode 為 `controller`
-- **THEN** 拓樸轉換不重新掛載任何 pod、不合成任何 edge;pod 維持巢狀於其後端 `controller` 群組,`pod-to-node` 維持為 drawn edge;每個回傳元素皆為新物件(與輸入參照不同),其 `data.parent` 與邊集合內容與後端 payload 一致
+- **WHEN** the mode is `controller`
+- **THEN** the topology transform re-parents no pod and synthesizes no edge; pods stay nested in their backend `controller` group and `pod-to-node` remains a drawn edge; every returned element is a new object (a different reference from the input), with `data.parent` and the edge set contents matching the backend payload
 
-#### Scenario: node 模式將 pod 重新掛載至 K8s node 並卸除 workload 群組
+#### Scenario: node mode re-parents pods to K8s nodes and strips the workload groups
 
-- **WHEN** mode 為 `node`
-- **THEN** 每個 pod 的 `data.parent` 重設為其 `labels.node`(指向既存的 `node` kind);每個 `namespace` / `application` / `controller` 群組節點被卸除,其 `pvc` / `service` 成員重新掛載至其 `cluster`;每條 `pod-to-node` edge 被移除;結果為扁平的 `cluster > node > pod` 視圖,且每個回傳元素皆為新物件
+- **WHEN** the mode is `node`
+- **THEN** every pod's `data.parent` is reset to its `labels.node` (pointing at an existing `node` kind); every `namespace` / `application` / `controller` group node is stripped, with its `pvc` / `service` members re-parented to their `cluster`; every `pod-to-node` edge is removed; the result is the flat `cluster > node > pod` view, and every returned element is a new object
 
-#### Scenario: labels.node 缺失時 fallback 留在 cluster 下
+#### Scenario: the fallback keeps the pod under the cluster when labels.node is missing
 
-- **WHEN** mode 為 `node`,且某 pod 的 `labels.node` 缺失,或其值未指向任何既存的 `node` kind 元素
-- **THEN** 該 pod MUST 留在其 `cluster` 下(不會被掛載至不存在的 node id),其他 pod 不受影響
+- **WHEN** the mode is `node` and a pod's `labels.node` is missing, or its value does not point at any existing `node` kind element
+- **THEN** that pod MUST stay under its `cluster` (it is not parented to a non-existent node id), and the other pods are unaffected
 
-#### Scenario: service 與儲存 edge 於兩模式皆存活
+#### Scenario: service and storage edges survive in both modes
 
-- **WHEN** 圖中含 `service-selects-pod` / `pod-calls-service` / `pvc-to-netapp-aggr` edge(`pvc-to-storageclass` 已自契約移除,不在此列)
-- **THEN** 兩模式皆保留它們為 drawn edge;`node` 模式僅額外移除 `pod-to-node`,絕不移除這些
+- **WHEN** the graph contains `service-selects-pod` / `pod-calls-service` / `pvc-to-netapp-aggr` edges (`pvc-to-storageclass` has been removed from the contract and is not among them)
+- **THEN** both modes keep them as drawn edges; `node` mode only additionally removes `pod-to-node`, never these
 
-#### Scenario: NetApp 儲存鏈於 node 模式既不卸除也不重新掛載
+#### Scenario: the NetApp storage chain is neither stripped nor re-parented in node mode
 
-- **WHEN** mode 為 `node`,且圖中含 `storage-cluster > netapp-node > netapp-aggr` 巢狀與 `pvc-to-netapp-aggr` edge
-- **THEN** `storage-cluster` 群組節點 MUST NOT 被卸除,`netapp-node` / `netapp-aggr` MUST 原樣保留其 `data.parent`,且 `pvc-to-netapp-aggr` edge 仍存在——其 PVC 端因 namespace 群組被卸除而重新掛載至 cluster,其 aggregate 端不動
+- **WHEN** the mode is `node` and the graph contains the `storage-cluster > netapp-node > netapp-aggr` nesting and a `pvc-to-netapp-aggr` edge
+- **THEN** the `storage-cluster` group node MUST NOT be stripped, `netapp-node` / `netapp-aggr` MUST keep their `data.parent` as-is, and the `pvc-to-netapp-aggr` edge still exists — its PVC end is re-parented to the cluster because the namespace group is stripped, and its aggregate end does not move
 
-#### Scenario: 輸入永不被就地改動
+#### Scenario: the input is never mutated in place
 
-- **WHEN** 對同一份 elements 依序以 `controller` 與 `node` 模式各呼叫一次拓樸轉換
-- **THEN** 輸入的 elements 陣列及其節點 / edge 物件皆未被修改(以新參照產生新物件),且兩次呼叫的結果互不汙染
+- **WHEN** the topology transform is called on the same elements once with `controller` and once with `node` mode in sequence
+- **THEN** the input elements array and its node / edge objects are not modified (new objects are produced under new references), and the results of the two calls do not contaminate each other
 
-### Requirement: controller 模式預設聚合(摺疊)controller 容器
+### Requirement: controller mode aggregates (collapses) controller containers by default
 
-為使 `controller` 模式預設呈現「pod 已聚合進其控制器」的精簡視圖,**於初次載入(controller 為預設模式)以及每次切入 `controller` 模式時**,系統 MUST 在該模式下首次出現 controller 容器的那一次渲染,將圖中**所有 controller 容器**(後端提供並於正規化時標記 `data.isController === true` 的 controller 群組節點)加入 collapse 集合,使其預設為 collapsed;此預設摺疊 MUST 以一次性守衛保護,使其在同一段 controller 模式期間至多觸發一次——之後 graph 資料自後端 refresh 時 MUST NOT 重新摺疊(使用者已展開的 controller 維持展開),離開 controller 模式時重置守衛,使再次進入時重新全摺疊。使用者可再自行展開個別 controller 以檢視其 pod。切回 `node` 模式時 controller 群組被拓樸轉換卸除,其 id 經既有的 collapse 對帳規則(desired ∩ present)自然自 collapse 集合淘汰;**再次**切入 `controller` 模式時 MUST 重新將所有 controller 容器摺疊(即每次進入皆全摺疊,不保留上次的展開狀態)。此預設聚合 MUST 僅作用於 controller 容器,不影響使用者對 `cluster` / K8s `node` 容器既有的 collapse 選擇。
+So that `controller` mode presents by default a compact view in which "pods are aggregated into their controllers", **on first load (controller being the default mode) and every time the user switches into `controller` mode**, the system MUST, on the render in which controller containers first appear in that mode, add **every controller container** in the graph (the controller group nodes provided by the backend and marked `data.isController === true` during normalization) to the collapse set, so that they are collapsed by default; this default collapse MUST be guarded by a one-shot guard so that it fires at most once during the same stretch of controller mode — later graph data refreshes from the backend MUST NOT re-collapse (controllers the user has expanded stay expanded), and leaving controller mode resets the guard so that entering it again re-collapses everything. The user can then expand individual controllers to inspect their pods. When switching back to `node` mode the controller groups are stripped by the topology transform, and their ids drop out of the collapse set naturally through the existing collapse reconcile rule (desired ∩ present); switching into `controller` mode **again** MUST re-collapse every controller container (that is, every entry collapses everything and does not keep the previous expanded state). This default aggregation MUST act only on controller containers and not affect the user's existing collapse choices for `cluster` / K8s `node` containers.
 
-#### Scenario: 初次載入或切入 controller 模式預設全摺疊
+#### Scenario: first load or switching into controller mode collapses everything by default
 
-- **WHEN** Graph view 初次載入(controller 為預設模式),或使用者自 `node` 切到 `controller` 模式
-- **THEN** 該模式下 controller 容器首次出現時即全部預設為 collapsed(pod 聚合於其中),canvas 顯示 controller 圖示而非展開的 pod
+- **WHEN** the Graph view loads for the first time (controller being the default mode), or the user switches from `node` to `controller` mode
+- **THEN** every controller container is collapsed by default as soon as it first appears in that mode (pods aggregated inside), and the canvas shows the controller icon rather than expanded pods
 
-#### Scenario: controller 模式下資料 refresh 不重新摺疊
+#### Scenario: a data refresh in controller mode does not re-collapse
 
-- **WHEN** 使用者在 controller 模式展開某 controller,之後 graph 資料自後端 refresh(該 controller 仍存在)
-- **THEN** 該已展開的 controller MUST 維持展開(一次性守衛使預設摺疊在同一段 controller 模式期間不再重跑)
+- **WHEN** the user expands a controller in controller mode, and the graph data later refreshes from the backend (that controller still exists)
+- **THEN** that expanded controller MUST stay expanded (the one-shot guard keeps the default collapse from re-running during the same stretch of controller mode)
 
-#### Scenario: 展開後再進入仍全摺疊
+#### Scenario: re-entering after expanding still collapses everything
 
-- **WHEN** 使用者在 controller 模式展開某 controller、切回 `node`、再切回 `controller`
-- **THEN** 所有 controller 容器再次預設全摺疊(不保留上次的展開)
+- **WHEN** the user expands a controller in controller mode, switches back to `node`, then switches back to `controller`
+- **THEN** every controller container is collapsed by default again (the previous expanded state is not kept)
 
-#### Scenario: 不影響 cluster / node 的 collapse 選擇
+#### Scenario: cluster / node collapse choices are unaffected
 
-- **WHEN** 使用者已摺疊某 `cluster` 容器,然後切入 `controller` 模式
-- **THEN** 該 `cluster` 維持其 collapse 狀態;controller 容器另外被全摺疊
+- **WHEN** the user has collapsed a `cluster` container and then switches into `controller` mode
+- **THEN** that `cluster` keeps its collapse state; the controller containers are additionally all collapsed
 
-#### Scenario: 單一 pod 的 controller 也預設摺疊
+#### Scenario: a single-pod controller is also collapsed by default
 
-- **WHEN** 切入 `controller` 模式且某 controller 僅擁有一個 pod
-- **THEN** 該單 pod controller 同樣被預設摺疊(預設聚合作用於**每個** controller 容器,不論子 pod 數量,無 `>1` 例外)
+- **WHEN** the user switches into `controller` mode and a controller owns only one pod
+- **THEN** that single-pod controller is collapsed by default as well (the default aggregation acts on **every** controller container regardless of its pod count, with no `>1` exception)
 
-#### Scenario: 預設摺疊的 controller 不被 orphan 級聯隱藏
+#### Scenario: default-collapsed controllers are not hidden by the orphan cascade
 
-- **WHEN** 切入 `controller` 模式、所有 controller 預設摺疊,且某 controller 自身無 incident drawn edge(pod 巢狀於其中,`pod-to-node` 由 pod 指向 K8s node、不經 controller)
-- **THEN** 該 controller MUST NOT 被 orphan 級聯隱藏——其子 pod 經可見性計算後仍在可見節點集合中(collapse 為 canvas 層的視覺操作,不自可見集合移除),故依 `graph-view` 的 orphan 規則「有可見子節點的容器保留」,collapsed controller 視為有可見子節點而留存
+- **WHEN** the user switches into `controller` mode, every controller is collapsed by default, and a controller itself has no incident drawn edge (pods are nested inside it, and `pod-to-node` runs from the pod to the K8s node, not through the controller)
+- **THEN** that controller MUST NOT be hidden by the orphan cascade — its child pods remain in the visible node set after the visibility computation (collapse is a canvas-layer visual operation and does not remove from the visible set), so by `graph-view`'s orphan rule "a container with visible children is kept", the collapsed controller counts as having visible children and is retained

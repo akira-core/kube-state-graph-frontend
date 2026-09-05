@@ -1,194 +1,194 @@
 ## Purpose
 
-定義 kube-state-graph-frontend 以容器部署至 Kubernetes 的契約:多階段 `Dockerfile` 產出僅含靜態資產與靜態 web server 的 image、SPA history fallback 路由、`config.json` 由 ConfigMap 掛載注入並禁止快取、靜態資產快取 header、健康檢查端點、可選的同源反向代理、`deploy/` manifests,以及 CI 的 image 建置與推送。所有條款皆以運維者能從 image 或叢集外部驗證的行為描述。
+Defines the contract for deploying kube-state-graph-frontend to Kubernetes as a container: a multi-stage `Dockerfile` producing an image holding only static assets and a static web server, SPA history fallback routing, `config.json` injected by a ConfigMap mount and forbidden from caching, static asset cache headers, a health check endpoint, an optional same-origin reverse proxy, `deploy/` manifests, and CI image build and push. Every clause is described as behavior an operator can verify from the image or from outside the cluster.
 
 ## ADDED Requirements
 
-### Requirement: 多階段 Dockerfile 與最小化 image
+### Requirement: Multi-stage Dockerfile and minimal image
 
-repo 根目錄 SHALL 提供 `Dockerfile`,以多階段建置產出 image:建置階段以 Node 22 執行 `npm ci` 與 `npm run build`(含型別檢查,type error MUST 使 image 建置失敗);最終階段 SHALL 以小型基底 image 承載一個靜態 web server,並只複製 `dist/` 的內容。最終 image MUST NOT 含 Node.js 執行環境、`npm`、`node_modules`、原始碼或建置階段的任何中間產物。`.dockerignore` MUST 排除 `node_modules`、`dist`、`.git` 與測試輸出目錄。
+The repo root SHALL provide a `Dockerfile` that produces the image with a multi-stage build: the build stage runs `npm ci` and `npm run build` on Node 22 (including type checking; a type error MUST fail the image build); the final stage SHALL host a static web server on a small base image and copy only the contents of `dist/`. The final image MUST NOT contain a Node.js runtime, `npm`, `node_modules`, source code, or any intermediate product of the build stage. `.dockerignore` MUST exclude `node_modules`, `dist`, `.git`, and test output directories.
 
-`docker build -t <image> .` 於 clean checkout 上 MUST 不需任何 build arg、憑證或事先執行的 `npm install` 即可成功。
+`docker build -t <image> .` on a clean checkout MUST succeed without any build arg, credential, or prior `npm install`.
 
-#### Scenario: Clean checkout 直接建置 image
+#### Scenario: Build the image directly from a clean checkout
 
-- **WHEN** 於未執行過 `npm install` 的 clean checkout 執行 `docker build -t ksg-frontend:test .`
-- **THEN** 建置成功,且 `docker run --rm --entrypoint sh ksg-frontend:test -c 'command -v node || command -v npm'` 找不到任何一者
+- **WHEN** `docker build -t ksg-frontend:test .` is run on a clean checkout where `npm install` has never been run
+- **THEN** the build succeeds, and `docker run --rm --entrypoint sh ksg-frontend:test -c 'command -v node || command -v npm'` finds neither
 
-#### Scenario: 最終 image 不含原始碼
+#### Scenario: Final image contains no source code
 
-- **WHEN** 檢視 `docker run --rm --entrypoint sh ksg-frontend:test -c 'ls /'` 及靜態根目錄的內容
-- **THEN** 只存在 `dist/` 的產物與 web server 本身;找不到 `src/`、`node_modules/`、`package.json` 或 `vite.config.ts`
+- **WHEN** inspecting the output of `docker run --rm --entrypoint sh ksg-frontend:test -c 'ls /'` and the contents of the static root
+- **THEN** only the `dist/` output and the web server itself exist; `src/`, `node_modules/`, `package.json`, or `vite.config.ts` are not found
 
-### Requirement: 非 root 執行與程序生命週期
+### Requirement: Non-root execution and process lifecycle
 
-最終 image SHALL 以**數值** UID 的非 root 使用者執行(`USER` 指令為數值,使 Kubernetes `runAsNonRoot` 能於 admission 時驗證),並於非特權 port `8080` 監聽 HTTP。web server 程序 SHALL 為 PID 1 或正確轉發 signal,收到 `SIGTERM` 後 MUST 在 10 秒內結束。image 建置與執行 MUST NOT 需要任何 secret。
+The final image SHALL run as a non-root user with a **numeric** UID (the `USER` instruction is numeric, so Kubernetes `runAsNonRoot` can verify it at admission) and listen for HTTP on the unprivileged port `8080`. The web server process SHALL be PID 1 or forward signals correctly, and MUST exit within 10 seconds of receiving `SIGTERM`. Building and running the image MUST NOT require any secret.
 
-#### Scenario: 非 root 且數值 UID
+#### Scenario: Non-root with numeric UID
 
-- **WHEN** 執行 `docker inspect --format '{{.Config.User}}' ksg-frontend:test`
-- **THEN** 輸出為非 `0` 的純數值 UID(可帶 `:GID`)
+- **WHEN** `docker inspect --format '{{.Config.User}}' ksg-frontend:test` is run
+- **THEN** the output is a purely numeric UID other than `0` (optionally with `:GID`)
 
-#### Scenario: SIGTERM 後迅速停止
+#### Scenario: Stops promptly after SIGTERM
 
-- **WHEN** 以 `docker run -d -p 8080:8080 ksg-frontend:test` 啟動後執行 `docker stop`
-- **THEN** 容器在 10 秒內結束,`docker stop` 未等到強制 kill 逾時
+- **WHEN** the container is started with `docker run -d -p 8080:8080 ksg-frontend:test` and then `docker stop` is run
+- **THEN** the container exits within 10 seconds, and `docker stop` does not wait until the forced-kill timeout
 
-### Requirement: SPA history fallback 路由
+### Requirement: SPA history fallback routing
 
-靜態 web server SHALL 對每一個請求依下列規則回應:
+The static web server SHALL answer every request by the following rules:
 
-- 路徑對應 `dist/` 中實際存在的檔案時,回傳該檔案。
-- 路徑位於 `/assets/`、`/api/`、`/healthz`、`/config.json` 之外且無對應檔案時,回傳 `index.html` 並以 `200` 回應,使 client-side 路由 `/graph`、`/sankey` 及其子路徑可直接深連結或重新整理。
-- `/assets/` 下不存在的檔案 MUST 回傳 `404`,不得以 `index.html` 冒充 —— 過期 bundle 引用的資產必須以明確錯誤浮現,而非把 HTML 當 JavaScript 載入。
+- When the path maps to a file that actually exists in `dist/`, return that file.
+- When the path is outside `/assets/`, `/api/`, `/healthz`, `/config.json` and has no corresponding file, return `index.html` with `200`, so that the client-side routes `/graph`, `/sankey`, and their sub-paths can be deep-linked or refreshed directly.
+- A file that does not exist under `/assets/` MUST return `404` and must not be impersonated by `index.html` — an asset referenced by a stale bundle must surface as an explicit error, not be loaded as HTML in place of JavaScript.
 
-#### Scenario: 深連結 client-side 路由
+#### Scenario: Deep link to a client-side route
 
-- **WHEN** 對執行中的容器請求 `GET /sankey` 與 `GET /graph?focus=pod-a`
-- **THEN** 兩者皆回 `200`,body 為 `index.html` 內容,`Content-Type` 為 `text/html`
+- **WHEN** `GET /sankey` and `GET /graph?focus=pod-a` are requested from the running container
+- **THEN** both return `200`, the body is the content of `index.html`, and `Content-Type` is `text/html`
 
-#### Scenario: 不存在的資產回 404
+#### Scenario: Nonexistent asset returns 404
 
-- **WHEN** 請求 `GET /assets/does-not-exist.js`
-- **THEN** 回應為 `404`,body 不是 `index.html`
+- **WHEN** `GET /assets/does-not-exist.js` is requested
+- **THEN** the response is `404`, and the body is not `index.html`
 
-### Requirement: 執行期設定檔的掛載與提供
+### Requirement: Mounting and serving the runtime configuration file
 
-靜態 web server SHALL 將 `GET /config.json` 對應到容器內路徑 `/srv/config/config.json`;該路徑是文件化的掛載點,Kubernetes 部署時由 ConfigMap 以**目錄**方式掛載於 `/srv/config`(MUST NOT 使用 `subPath`,否則 ConfigMap 更新不會傳播到 Pod)。
+The static web server SHALL map `GET /config.json` to the in-container path `/srv/config/config.json`; that path is the documented mount point, and in a Kubernetes deployment a ConfigMap is mounted as a **directory** at `/srv/config` (MUST NOT use `subPath`, otherwise ConfigMap updates do not propagate to the Pod).
 
-`/config.json` 的回應 MUST 帶 `Cache-Control: no-store` 與 `Content-Type: application/json`,使設定修改在下一次頁面載入即生效,不受瀏覽器或中介快取影響。檔案不存在時 MUST 回 `404`(缺設定時的 app 行為由 `runtime-config` capability 規範)。`dist/` 本身 MUST NOT 含 `config.json`,因此 image 沒有內建設定,同一個 image 服務所有環境。
+The `/config.json` response MUST carry `Cache-Control: no-store` and `Content-Type: application/json`, so that a configuration change takes effect on the next page load, unaffected by browser or intermediary caches. When the file does not exist it MUST return `404` (app behavior when configuration is missing is governed by the `runtime-config` capability). `dist/` itself MUST NOT contain `config.json`, so the image has no built-in configuration and one image serves every environment.
 
-`config.json` 對每一個瀏覽器公開可讀;文件 MUST 明示其中 MUST NOT 放置任何 secret。
+`config.json` is publicly readable by every browser; the documentation MUST state explicitly that it MUST NOT hold any secret.
 
-#### Scenario: 掛載的設定以 no-store 提供
+#### Scenario: Mounted configuration is served with no-store
 
-- **WHEN** 以 `docker run -v $PWD/config.json:/srv/config/config.json -p 8080:8080` 啟動,並請求 `GET /config.json`
-- **THEN** 回應 `200`,body 與掛載的檔案逐位元組相同,header 含 `Cache-Control: no-store` 與 `Content-Type: application/json`
+- **WHEN** the container is started with `docker run -v $PWD/config.json:/srv/config/config.json -p 8080:8080` and `GET /config.json` is requested
+- **THEN** the response is `200`, the body is byte-for-byte identical to the mounted file, and the headers include `Cache-Control: no-store` and `Content-Type: application/json`
 
-#### Scenario: 未掛載設定時回 404
+#### Scenario: Returns 404 when no configuration is mounted
 
-- **WHEN** 不掛載任何檔案即啟動容器並請求 `GET /config.json`
-- **THEN** 回應為 `404`,而非 `index.html`
+- **WHEN** the container is started without mounting any file and `GET /config.json` is requested
+- **THEN** the response is `404`, not `index.html`
 
-#### Scenario: ConfigMap 修改不需重啟 Pod
+#### Scenario: ConfigMap changes do not require a Pod restart
 
-- **WHEN** 以 `kubectl edit configmap` 修改 `config.json` 內容,等待 kubelet 的 ConfigMap 傳播延遲後重新整理頁面
-- **THEN** `GET /config.json` 回傳新內容,app 依新設定運作,期間 Pod 未重啟
+- **WHEN** the `config.json` content is changed with `kubectl edit configmap`, and the page is refreshed after waiting for the kubelet's ConfigMap propagation delay
+- **THEN** `GET /config.json` returns the new content, the app operates on the new configuration, and the Pod was not restarted in the meantime
 
-### Requirement: 快取與內容協商 header
+### Requirement: Cache and content negotiation headers
 
-靜態 web server SHALL 依資源類型設定快取策略:
+The static web server SHALL set the cache policy by resource type:
 
-- `/assets/` 下以內容雜湊命名的檔案 MUST 帶 `Cache-Control: public, max-age=31536000, immutable`。
-- `index.html`(含 fallback 回應)與其他非雜湊命名的靜態檔(如 `/demo/graph.json`、`/demo/storage-graph.json`)MUST 帶 `Cache-Control: no-cache`,使每次部署新版後瀏覽器重新驗證。
-- 每個回應 MUST 帶正確的 `Content-Type`(`.js` 為 JavaScript MIME type、`.json` 為 `application/json`、`.svg` 為 `image/svg+xml`),否則 ES module 無法載入;並 MUST 帶 `X-Content-Type-Options: nosniff`。
-- 文字類資源(HTML、JavaScript、CSS、JSON、SVG)在 client 以 `Accept-Encoding` 表明支援時 MUST 以壓縮編碼回傳,並帶 `Vary: Accept-Encoding`。
+- Content-hash-named files under `/assets/` MUST carry `Cache-Control: public, max-age=31536000, immutable`.
+- `index.html` (including fallback responses) and other non-hash-named static files (such as `/demo/graph.json`, `/demo/storage-graph.json`) MUST carry `Cache-Control: no-cache`, so the browser revalidates after each new deployment.
+- Every response MUST carry the correct `Content-Type` (`.js` as the JavaScript MIME type, `.json` as `application/json`, `.svg` as `image/svg+xml`), otherwise ES modules cannot load; and MUST carry `X-Content-Type-Options: nosniff`.
+- Text resources (HTML, JavaScript, CSS, JSON, SVG) MUST be returned with a compressed encoding when the client declares support via `Accept-Encoding`, and carry `Vary: Accept-Encoding`.
 
-#### Scenario: 雜湊資產長期快取、index.html 重新驗證
+#### Scenario: Hashed assets cached long-term, index.html revalidated
 
-- **WHEN** 請求 `index.html` 引用的任一 `/assets/*.js` 與 `GET /`
-- **THEN** 前者 header 含 `Cache-Control: public, max-age=31536000, immutable`,後者含 `Cache-Control: no-cache`
+- **WHEN** any `/assets/*.js` referenced by `index.html` and `GET /` are requested
+- **THEN** the former's headers include `Cache-Control: public, max-age=31536000, immutable`, and the latter's include `Cache-Control: no-cache`
 
-#### Scenario: 壓縮傳輸
+#### Scenario: Compressed transfer
 
-- **WHEN** 以 `Accept-Encoding: gzip` 請求最大的 `/assets/*.js`
-- **THEN** 回應帶 `Content-Encoding: gzip`(或 `br`)與 `Vary: Accept-Encoding`
+- **WHEN** the largest `/assets/*.js` is requested with `Accept-Encoding: gzip`
+- **THEN** the response carries `Content-Encoding: gzip` (or `br`) and `Vary: Accept-Encoding`
 
-### Requirement: 健康檢查端點
+### Requirement: Health check endpoint
 
-靜態 web server SHALL 提供 `GET /healthz`,回應 `200` 與極短的純文字 body,並帶 `Cache-Control: no-store`。此端點 MUST 只反映 web server 本身可服務,MUST NOT 依賴 `/srv/config/config.json` 是否存在或任何後端是否可達,且 MUST NOT 落入 SPA fallback。`deploy/` 的 Deployment SHALL 以此端點作為 liveness 與 readiness probe。
+The static web server SHALL provide `GET /healthz`, responding `200` with a very short plain-text body and `Cache-Control: no-store`. This endpoint MUST reflect only that the web server itself can serve, MUST NOT depend on whether `/srv/config/config.json` exists or whether any backend is reachable, and MUST NOT fall into the SPA fallback. The Deployment in `deploy/` SHALL use this endpoint as the liveness and readiness probe.
 
-#### Scenario: 無設定、無後端時健康檢查仍通過
+#### Scenario: Health check still passes with no configuration and no backend
 
-- **WHEN** 不掛載設定、不設定任何 proxy 目標即啟動容器,請求 `GET /healthz`
-- **THEN** 回應 `200`,`Content-Type` 為 `text/plain`,body 非 `index.html`
+- **WHEN** the container is started without mounting configuration and without setting any proxy target, and `GET /healthz` is requested
+- **THEN** the response is `200`, `Content-Type` is `text/plain`, and the body is not `index.html`
 
-### Requirement: 可選的同源反向代理
+### Requirement: Optional same-origin reverse proxy
 
-靜態 web server SHALL 支援以環境變數 `KSG_API_PROXY_TARGET`(例如 `http://kube-state-graph.monitoring.svc:8080`)啟用同源反向代理:設定時,`/api/` 前綴下的請求 MUST 轉發至該目標並去除 `/api` 前綴(`/api/v1/graph` → `<target>/v1/graph`、`/api/dashboard` → `<target>/dashboard`),path 與 query string 原樣保留,回應的狀態碼、header 與 body 原樣回傳且 MUST NOT 由 web server 快取。運維者藉此在 `config.json` 使用 root-relative 端點(`/api/v1/graph`)而免除 CORS 設定。此功能為**可選**:未設定 `KSG_API_PROXY_TARGET` 時,`/api/` 下的請求 MUST 回 `404` 而非 `index.html`,讓錯誤設定以明確的 HTTP 錯誤浮現,而非 app 內的 JSON 解析失敗。
+The static web server SHALL support enabling a same-origin reverse proxy via the environment variable `KSG_API_PROXY_TARGET` (for example `http://kube-state-graph.monitoring.svc:8080`): when set, requests under the `/api/` prefix MUST be forwarded to that target with the `/api` prefix stripped (`/api/v1/graph` → `<target>/v1/graph`, `/api/dashboard` → `<target>/dashboard`), the path and query string preserved as-is, and the response status code, headers, and body returned as-is and MUST NOT be cached by the web server. This lets operators use root-relative endpoints (`/api/v1/graph`) in `config.json` and avoid CORS configuration. This feature is **optional**: when `KSG_API_PROXY_TARGET` is not set, requests under `/api/` MUST return `404` rather than `index.html`, so a misconfiguration surfaces as an explicit HTTP error rather than a JSON parse failure inside the app.
 
-web server SHALL 另支援**第二個**、獨立的環境變數 `KSG_METRICS_PROXY_TARGET`,以完全相同的規則代理 `/metrics-api/` 前綴至一個 **Prometheus 相容**的 upstream(`/metrics-api/api/v1/label/az/values` → `<target>/api/v1/label/az/values`),未設定時同樣回 `404`。
+The web server SHALL additionally support a **second**, independent environment variable `KSG_METRICS_PROXY_TARGET`, proxying the `/metrics-api/` prefix by exactly the same rules to a **Prometheus-compatible** upstream (`/metrics-api/api/v1/label/az/values` → `<target>/api/v1/label/az/values`), likewise returning `404` when not set.
 
-兩個 upstream **不可**合而為一:`endpoints.labelValues` 讀的是 `<base>/api/v1/label/<name>/values`,graph API 不提供該路徑。把 `labelValues` 指向 `/api` 會得到 404,而 404 在 UI 上的樣子是一組列不出任何選項的識別維度控制——與「這個 estate 沒有 pod」無法區分。
+The two upstreams **cannot** be merged into one: `endpoints.labelValues` reads `<base>/api/v1/label/<name>/values`, a path the graph API does not provide. Pointing `labelValues` at `/api` yields a 404, and what a 404 looks like in the UI is a set of identity dimension controls that list no options — indistinguishable from "this estate has no pods".
 
-運維者若需超出此範圍的 server 行為(例如該 metrics store 需要憑證,而 `config.json` 公開可讀不得攜帶),SHALL 能以掛載方式覆寫 image 內的 web server 設定檔;該設定檔在容器內的路徑 MUST 記載於 `deploy/README.md`。
+Operators who need server behavior beyond this scope (for example, the metrics store requires credentials, which the publicly readable `config.json` must not carry) SHALL be able to override the web server's configuration file inside the image by mounting; the in-container path of that configuration file MUST be recorded in `deploy/README.md`.
 
-#### Scenario: 以環境變數啟用代理
+#### Scenario: Enable the proxy via environment variable
 
-- **WHEN** 後端於 `http://backend:8080` 提供 `GET /v1/graph`,容器以 `KSG_API_PROXY_TARGET=http://backend:8080` 啟動,並請求 `GET /api/v1/graph?cluster=a`
-- **THEN** 後端收到 `GET /v1/graph?cluster=a`,client 收到與後端相同的狀態碼與 body,回應 origin 與 app 相同
+- **WHEN** the backend serves `GET /v1/graph` at `http://backend:8080`, the container is started with `KSG_API_PROXY_TARGET=http://backend:8080`, and `GET /api/v1/graph?cluster=a` is requested
+- **THEN** the backend receives `GET /v1/graph?cluster=a`, the client receives the same status code and body as the backend, and the response origin is the same as the app's
 
-#### Scenario: 未啟用代理時 /api/ 回 404
+#### Scenario: /api/ returns 404 when the proxy is not enabled
 
-- **WHEN** 未設定 `KSG_API_PROXY_TARGET` 即啟動容器,請求 `GET /api/v1/graph`
-- **THEN** 回應為 `404`,body 不是 `index.html`
+- **WHEN** the container is started without `KSG_API_PROXY_TARGET` set, and `GET /api/v1/graph` is requested
+- **THEN** the response is `404`, and the body is not `index.html`
 
-#### Scenario: label values 走第二個 upstream
+#### Scenario: label values go through the second upstream
 
-- **WHEN** 容器以 `KSG_API_PROXY_TARGET=http://backend:8080` 與 `KSG_METRICS_PROXY_TARGET=http://vmselect:8481/select/0/prometheus` 啟動,請求 `GET /metrics-api/api/v1/label/az/values?match%5B%5D=kube_pod_info`
-- **THEN** vmselect 收到 `GET /api/v1/label/az/values?match[]=kube_pod_info`,後端未收到任何請求
-- **AND** 只設定 `KSG_API_PROXY_TARGET` 時,同一請求回 `404`,而非被轉發至不提供該路徑的 graph API
+- **WHEN** the container is started with `KSG_API_PROXY_TARGET=http://backend:8080` and `KSG_METRICS_PROXY_TARGET=http://vmselect:8481/select/0/prometheus`, and `GET /metrics-api/api/v1/label/az/values?match%5B%5D=kube_pod_info` is requested
+- **THEN** vmselect receives `GET /api/v1/label/az/values?match[]=kube_pod_info`, and the backend receives no request
+- **AND** when only `KSG_API_PROXY_TARGET` is set, the same request returns `404` rather than being forwarded to the graph API, which does not provide that path
 
 ### Requirement: Kubernetes manifests
 
-`deploy/` SHALL 含 `kustomization.yaml` 與其引用的 `deployment.yaml`、`service.yaml`、`configmap.yaml`,可以 `kubectl apply -k deploy/` 套用;每個檔案亦 MUST 為可獨立套用的合法 manifest,使 `kubectl apply -f deploy/` 亦可。manifests MUST NOT 硬編 namespace。
+`deploy/` SHALL contain `kustomization.yaml` and the `deployment.yaml`, `service.yaml`, `configmap.yaml` it references, applicable with `kubectl apply -k deploy/`; each file MUST also be a valid manifest applicable on its own, so that `kubectl apply -f deploy/` also works. The manifests MUST NOT hardcode a namespace.
 
-- **Deployment** SHALL:引用 CI 發佈的 image;宣告 container port `8080`(命名 `http`);以 `GET /healthz` 設定 liveness 與 readiness probe;宣告 CPU / memory 的 `requests` 與 `limits`;將 ConfigMap 以目錄掛載於 `/srv/config`;符合 Pod Security Standards `restricted` profile(`runAsNonRoot: true`、`allowPrivilegeEscalation: false`、`capabilities.drop: [ALL]`、`seccompProfile.type: RuntimeDefault`);並以註解示範 `KSG_API_PROXY_TARGET` 與 `KSG_METRICS_PROXY_TARGET` 的設定方式,且註解 MUST 說明兩者是不同的 upstream。
-- **Service** SHALL 為 `ClusterIP`,port `80` 對應 targetPort `http`。Ingress 與 TLS 由叢集運維提供,不在本 capability 範圍。
-- **ConfigMap** SHALL 以 `config.json` 為 key 攜帶一份**完整**的設定範例:每一個文件化的 key 皆出現(`endpoints.graph`、`endpoints.storageGraph`、`endpoints.labelValues`、`endpoints.edgeTypes`、`endpoints.codeChanges`、`endpoints.configChanges`、`endpoints.dashboard`、`demoMode`、`refreshIntervalSeconds`、`defaultLayout`、`theme`),`demoMode` 預設 `true`,端點以 root-relative 形式示範。範例值 MUST 指向該端點**真正會被服務到**的前綴:graph API 的端點走 `/api/...`,而 `endpoints.labelValues` MUST 為 `/metrics-api`——範例是照抄用的,一個 404 的範例值等同於預設就是壞的。
+- **Deployment** SHALL: reference the image published by CI; declare container port `8080` (named `http`); configure liveness and readiness probes with `GET /healthz`; declare CPU / memory `requests` and `limits`; mount the ConfigMap as a directory at `/srv/config`; comply with the Pod Security Standards `restricted` profile (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`); and demonstrate in comments how to set `KSG_API_PROXY_TARGET` and `KSG_METRICS_PROXY_TARGET`, and the comments MUST explain that the two are different upstreams.
+- **Service** SHALL be `ClusterIP`, with port `80` mapped to targetPort `http`. Ingress and TLS are provided by cluster operations and are outside the scope of this capability.
+- **ConfigMap** SHALL carry a **complete** example configuration under the key `config.json`: every documented key appears (`endpoints.graph`, `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.edgeTypes`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard`, `demoMode`, `refreshIntervalSeconds`, `defaultLayout`, `theme`), `demoMode` defaults to `true`, and endpoints are demonstrated in root-relative form. Example values MUST point at the prefix where that endpoint is **actually served**: graph API endpoints go through `/api/...`, while `endpoints.labelValues` MUST be `/metrics-api` — the example is meant to be copied verbatim, and an example value that 404s is equivalent to being broken by default.
 
-image 參照 SHALL 可由 `kustomization.yaml` 的 `images:` 區段覆寫;`Makefile` SHALL 提供 `image`(`docker build`)、`image-push` 與 `deploy`(套用 manifests)目標,皆以文件化變數 `IMAGE=<registry>/<repo>:<tag>` 指定 image 參照。
+The image reference SHALL be overridable via the `images:` section of `kustomization.yaml`; the `Makefile` SHALL provide `image` (`docker build`), `image-push`, and `deploy` (apply the manifests) targets, all specifying the image reference via the documented variable `IMAGE=<registry>/<repo>:<tag>`.
 
-#### Scenario: 未修改的 manifests 可直接套用
+#### Scenario: Unmodified manifests can be applied directly
 
-- **WHEN** 於任一 namespace 執行 `kubectl apply -k deploy/`
-- **THEN** Deployment、Service、ConfigMap 皆建立,Pod 於 30 秒內 `Ready`,且 `kubectl get deploy -o yaml` 顯示 liveness / readiness probe 與 resources 皆已設定
+- **WHEN** `kubectl apply -k deploy/` is run in any namespace
+- **THEN** the Deployment, Service, and ConfigMap are all created, the Pod is `Ready` within 30 seconds, and `kubectl get deploy -o yaml` shows the liveness / readiness probes and resources all set
 
-#### Scenario: 符合 restricted Pod Security 標準
+#### Scenario: Complies with the restricted Pod Security standard
 
-- **WHEN** 於標記 `pod-security.kubernetes.io/enforce: restricted` 的 namespace 套用 `deploy/`
-- **THEN** Pod 被 admission 接受並進入 `Running`,無 PodSecurity 警告
+- **WHEN** `deploy/` is applied in a namespace labeled `pod-security.kubernetes.io/enforce: restricted`
+- **THEN** the Pod is accepted by admission and enters `Running`, with no PodSecurity warnings
 
-#### Scenario: 以變數覆寫 image
+#### Scenario: Override the image via variable
 
-- **WHEN** 執行 `make deploy IMAGE=registry.example/ksg-frontend:1.2.3`
-- **THEN** 建立的 Deployment 之 container image 為 `registry.example/ksg-frontend:1.2.3`
+- **WHEN** `make deploy IMAGE=registry.example/ksg-frontend:1.2.3` is run
+- **THEN** the created Deployment's container image is `registry.example/ksg-frontend:1.2.3`
 
-### Requirement: 無後端時以 demo 模式啟動
+### Requirement: Starts in demo mode without a backend
 
-image 的啟動與就緒 MUST NOT 依賴任何後端可達:容器不做啟動時連線檢查,readiness 只看 `/healthz`。當 ConfigMap 的 `config.json` 設定 `demoMode: true` 且叢集內沒有任何 kube-state-graph 後端時,套用未修改的 `deploy/` 後 app MUST 完整渲染 showcase graph。image 亦 SHALL 於 `<base>/demo/graph.json` 與 `<base>/demo/storage-graph.json` 提供 `dist/` 內的兩份範例 payload,使 `endpoints.graph: "/demo/graph.json"`、`endpoints.storageGraph: "/demo/storage-graph.json"`、`demoMode: false` 能在無後端的叢集中走完兩條真實 fetch 路徑,作為部署後的 smoke test。
+Image startup and readiness MUST NOT depend on any backend being reachable: the container performs no connectivity check at startup, and readiness looks only at `/healthz`. When the ConfigMap's `config.json` sets `demoMode: true` and there is no kube-state-graph backend anywhere in the cluster, the app MUST fully render the showcase graph after applying the unmodified `deploy/`. The image SHALL also serve the two example payloads from `dist/` at `<base>/demo/graph.json` and `<base>/demo/storage-graph.json`, so that `endpoints.graph: "/demo/graph.json"`, `endpoints.storageGraph: "/demo/storage-graph.json"`, `demoMode: false` can walk both real fetch paths in a cluster without a backend, as a post-deployment smoke test.
 
-#### Scenario: 無後端的叢集直接看到 demo
+#### Scenario: Cluster without a backend shows the demo directly
 
-- **WHEN** 叢集內無任何後端,執行 `kubectl apply -k deploy/` 後以 `kubectl port-forward` 開啟瀏覽器
-- **THEN** `GET /config.json` 回傳 `demoMode: true`,頁面渲染完整 showcase graph,Pod 日誌無對外連線錯誤
+- **WHEN** there is no backend in the cluster, `kubectl apply -k deploy/` is run, and a browser is opened via `kubectl port-forward`
+- **THEN** `GET /config.json` returns `demoMode: true`, the page renders the complete showcase graph, and the Pod logs show no outbound connection errors
 
-#### Scenario: 以範例 payload 驗證 fetch 路徑
+#### Scenario: Verify the fetch path with the example payload
 
-- **WHEN** 將 ConfigMap 改為 `demoMode: false`、`endpoints.graph: "/demo/graph.json"`,等待傳播後重新整理頁面
-- **THEN** `GET /demo/graph.json` 回 `200` 且 body 為合法 JSON,app 以 HTTP 取回並渲染出與 demo 模式相同的圖
+- **WHEN** the ConfigMap is changed to `demoMode: false`, `endpoints.graph: "/demo/graph.json"`, and the page is refreshed after waiting for propagation
+- **THEN** `GET /demo/graph.json` returns `200` with a body that is valid JSON, and the app fetches it over HTTP and renders the same graph as in demo mode
 
-### Requirement: CI 建置與推送 image
+### Requirement: CI builds and pushes the image
 
-GitHub Actions workflow SHALL 於每次 push 到 `main` 與每個 `v*` tag 時以 repo 的 `Dockerfile` 建置 image 並推送至文件化的 registry,預設為 GitHub Container Registry(`ghcr.io/<owner>/kube-state-graph-frontend`);pull request SHALL 只建置不推送,以驗證 `Dockerfile`。推送 MUST 只使用 CI 平台預設提供的憑證,不需手動建立任何 secret。
+A GitHub Actions workflow SHALL, on every push to `main` and every `v*` tag, build the image with the repo's `Dockerfile` and push it to the documented registry, defaulting to GitHub Container Registry (`ghcr.io/<owner>/kube-state-graph-frontend`); pull requests SHALL only build without pushing, to verify the `Dockerfile`. Pushing MUST use only the credentials the CI platform provides by default, requiring no manually created secret.
 
-image tag SHALL 為:push 到 `main` 時 `main` 與 `sha-<short-sha>`;tag `vX.Y.Z` 時 `X.Y.Z` 與 `latest`。image MUST 帶 OCI label `org.opencontainers.image.source` 與 `org.opencontainers.image.revision`(對應 commit SHA)。`deploy/README.md` MUST 說明如何以這些 tag 指定部署版本。
+Image tags SHALL be: on push to `main`, `main` and `sha-<short-sha>`; on tag `vX.Y.Z`, `X.Y.Z` and `latest`. The image MUST carry the OCI labels `org.opencontainers.image.source` and `org.opencontainers.image.revision` (corresponding to the commit SHA). `deploy/README.md` MUST explain how to pin a deployed version with these tags.
 
-#### Scenario: main 分支推送後可拉取 image
+#### Scenario: Image is pullable after a push to main
 
-- **WHEN** commit 被 push 到 `main` 且 workflow 完成
-- **THEN** `docker pull ghcr.io/<owner>/kube-state-graph-frontend:sha-<short-sha>` 成功,且 `docker inspect` 顯示 `org.opencontainers.image.revision` 等於該 commit SHA
+- **WHEN** a commit is pushed to `main` and the workflow completes
+- **THEN** `docker pull ghcr.io/<owner>/kube-state-graph-frontend:sha-<short-sha>` succeeds, and `docker inspect` shows `org.opencontainers.image.revision` equal to that commit SHA
 
-#### Scenario: PR 只建置不推送
+#### Scenario: PR only builds without pushing
 
-- **WHEN** 開啟含 `Dockerfile` 變更的 pull request
-- **THEN** workflow 執行 image 建置並回報結果,registry 中未出現新 tag
+- **WHEN** a pull request containing `Dockerfile` changes is opened
+- **THEN** the workflow runs the image build and reports the result, and no new tag appears in the registry
 
-### Requirement: 部署文件
+### Requirement: Deployment documentation
 
-`deploy/README.md` SHALL 記載:前置需求(可用的叢集與 `kubectl`)、image registry 與 tag 規則、套用指令(`kubectl apply -k deploy/` 與 `make deploy IMAGE=...`)、`config.json` 的掛載路徑 `/srv/config/config.json` 與「公開可讀、不得含 secret」的警語、`KSG_API_PROXY_TARGET` 與 `KSG_METRICS_PROXY_TARGET` 的用法、兩者為不同 upstream 的理由,與 CORS 取捨(root-relative 端點 + 代理,或絕對 URL + 後端允許前端 origin)、覆寫 web server 設定檔的路徑、`/healthz` 端點、修改 ConfigMap 後的生效方式與傳播延遲、升版 image tag 的方式,以及以 `demoMode: true` 與 `/demo/graph.json` 驗證部署的步驟。
+`deploy/README.md` SHALL record: prerequisites (an available cluster and `kubectl`), the image registry and tag rules, the apply commands (`kubectl apply -k deploy/` and `make deploy IMAGE=...`), the `config.json` mount path `/srv/config/config.json` and the "publicly readable, must not contain secrets" warning, the usage of `KSG_API_PROXY_TARGET` and `KSG_METRICS_PROXY_TARGET`, the reason the two are different upstreams, and the CORS trade-off (root-relative endpoints + proxy, or absolute URLs + backend allowing the frontend origin), the path for overriding the web server configuration file, the `/healthz` endpoint, how changes take effect after editing the ConfigMap and the propagation delay, how to upgrade the image tag, and the steps to verify a deployment with `demoMode: true` and `/demo/graph.json`.
 
-#### Scenario: 運維者只靠文件完成部署與驗證
+#### Scenario: Operator completes deployment and verification from the documentation alone
 
-- **WHEN** 未接觸過本專案的運維者僅依 `deploy/README.md` 操作
-- **THEN** 能在 30 分鐘內於無後端的叢集部署並看到 demo graph,且能切換到真實後端而不需閱讀原始碼
+- **WHEN** an operator who has never touched this project follows only `deploy/README.md`
+- **THEN** they can deploy to a cluster without a backend and see the demo graph within 30 minutes, and can switch to a real backend without reading the source code

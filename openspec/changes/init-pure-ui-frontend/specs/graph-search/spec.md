@@ -1,237 +1,237 @@
 ## Purpose
 
-Graph view 內建的圖搜尋:讓使用者在密集的多叢集拓樸中即時定位節點——**不重新向後端取數、不重跑佈局、不改變元素集合**。Miss fade 讓使用者一眼看出 hit 落在何處;result list 則可跳至(locate)畫面外或被摺疊於 collapsed 容器內的 hit。此功能與 app 內的 kind / edge 過濾器互補(過濾器改變元素集合並重繪),不取代它們。
+The Graph view's built-in graph search: lets the user locate nodes instantly in a dense multi-cluster topology — **without refetching from the backend, without re-running layout, without changing the element set**. Miss fade lets the user see at a glance where the hits land; the result list can jump to (locate) hits that are off-screen or folded inside a collapsed container. This feature complements the app's kind / edge filters (the filters change the element set and redraw); it does not replace them.
 
 ## ADDED Requirements
 
 ### Requirement: Search bar rendering and lifecycle
 
-Graph view SHALL 在 canvas 的**右上角**渲染一個**常駐**的搜尋列(絕對定位,與 pinned hover-tooltip 使用同一條 inset 帶——**`right: 8`**,貼齊或緊鄰 Graph view 頂緣;層疊於 canvas 之上;它 MUST NOT 佔用 layout 空間或縮小圖面)。當搜尋列與 pinned hover attributes card 同時存在時,搜尋列 MUST 疊放於 pinned card **之上**:兩者 MUST NOT 重疊;pinned card 停靠於搜尋列**下方**。搜尋 query MUST 為 Graph view 本地的、暫時性的 view state(與 pod-parent mode / legend 收合狀態同一類):它 MUST NOT 被寫入 runtime config,MUST NOT 被寫入 URL,且永不被持久化。當 graph 資料自設定的後端 URL 重新整理(refresh)而送來新資料時,query 及其效果 MUST 被保留。系統 MUST NOT 註冊任何用於喚起搜尋的全域鍵盤快捷鍵(如 `/`、`Ctrl+F`)——鍵盤行為僅存在於 input 取得焦點期間(見「Keyboard interaction inside the search input」)。當搜尋列與 partial-parse warning banner 同時存在時,兩者 MUST NOT 重疊(banner 維持在左上角;搜尋列在右上角)。
+The Graph view SHALL render a **persistent** search bar in the **top-right corner** of the canvas (absolutely positioned, sharing the same inset band as the pinned hover-tooltip — **`right: 8`**, flush with or adjacent to the Graph view's top edge; stacked above the canvas; it MUST NOT occupy layout space or shrink the graph). When the search bar and the pinned hover attributes card are both present, the search bar MUST be stacked **above** the pinned card: the two MUST NOT overlap; the pinned card docks **below** the search bar. The search query MUST be Graph-view-local, transient view state (the same class as pod-parent mode / legend collapsed state): it MUST NOT be written to runtime config, MUST NOT be written to the URL, and is never persisted. When graph data refreshes from the configured backend URL and delivers new data, the query and its effects MUST be preserved. The system MUST NOT register any global keyboard shortcut for invoking search (such as `/`, `Ctrl+F`) — keyboard behavior exists only while the input has focus (see "Keyboard interaction inside the search input"). When the search bar and the partial-parse warning banner are both present, the two MUST NOT overlap (the banner stays in the top-left corner; the search bar in the top-right).
 
 #### Scenario: Search bar always visible at top-right above pinned attributes
 
-- **WHEN** Graph view 正常渲染(非 error / 首次載入狀態)
-- **THEN** 搜尋 input 顯示於 canvas 右上角(right inset 與 pinned card 一致);圖面尺寸與佈局不受其存在影響
-- **WHEN** 有節點被選取且 pinned attributes card 顯示中
-- **THEN** pinned card 出現在搜尋列正下方,且不與其重疊
+- **WHEN** the Graph view renders normally (not in the error / first-load state)
+- **THEN** the search input is shown in the top-right corner of the canvas (right inset consistent with the pinned card); the graph's size and layout are unaffected by its presence
+- **WHEN** a node is selected and the pinned attributes card is showing
+- **THEN** the pinned card appears directly below the search bar and does not overlap it
 
 #### Scenario: Query is not persisted
 
-- **WHEN** 使用者輸入 query 後重新載入 app 頁面
-- **THEN** 搜尋 input 為空,沒有任何 fade 或 viewport 效果;runtime config 與 URL 皆不含任何搜尋相關欄位
+- **WHEN** the user enters a query and then reloads the app page
+- **THEN** the search input is empty, with no fade or viewport effect; neither runtime config nor the URL contains any search-related field
 
 #### Scenario: Data refresh preserves the query
 
-- **WHEN** query 非空時,graph 資料自設定的後端 URL 重新整理並送來新資料
-- **THEN** query 被保留;hit set 依新元素重新計算,fade 與 result list 隨之更新
+- **WHEN** the query is non-empty and graph data refreshes from the configured backend URL and delivers new data
+- **THEN** the query is preserved; the hit set is recomputed over the new elements, and the fade and result list update accordingly
 
 ### Requirement: Hit matching rules
 
-節點是否為 **hit** SHALL 由純粹的判定規則決定(無副作用,僅依據 query 與節點欄位):query 以空白切分為 token;**每個** token(AND)都必須匹配——不分大小寫的子字串——節點六個欄位中的**任一**(OR):`label`、`kind`、`namespace`、`cluster`、`application`、`ipAddress`。缺少的欄位直接略過。匹配 MUST 僅涵蓋節點:edge 永遠不是 hit,也永遠不出現在 result list 中;hit 節點的 incident edges 會與它一起保持點亮(見「Miss fade」)。不支援 regex、fuzzy 或欄位限定(field-qualifier)語法。空的(或僅含空白的)query 表示搜尋未啟用。
+Whether a node is a **hit** SHALL be decided by a pure predicate (no side effects, based only on the query and node fields): the query is split into tokens on whitespace; **every** token (AND) must match — case-insensitive substring — **any** (OR) of the node's six fields: `label`, `kind`, `namespace`, `cluster`, `application`, `ipAddress`. Missing fields are simply skipped. Matching MUST cover nodes only: edges are never hits and never appear in the result list; a hit node's incident edges stay lit together with it (see "Miss fade"). No regex, fuzzy, or field-qualifier syntax is supported. An empty (or whitespace-only) query means search is inactive.
 
 #### Scenario: Single token substring-matches label
 
-- **WHEN** query 為 `mongo`,且存在 label 為 `mongodb-replica-0` 的節點
-- **THEN** 該節點為 hit(不分大小寫——`Mongo` 亦匹配)
+- **WHEN** the query is `mongo`, and a node with label `mongodb-replica-0` exists
+- **THEN** that node is a hit (case-insensitive — `Mongo` also matches)
 
 #### Scenario: Multi-token AND across fields
 
-- **WHEN** query 為 `prod mongo`,節點 A(`cluster: prod`、`label: mongodb-0`),節點 B(`cluster: dr`、`label: mongodb-0`)
-- **THEN** 節點 A 為 hit(兩個 token 分別匹配 cluster 與 label);節點 B 不是(`prod` 在任何欄位都不匹配)
+- **WHEN** the query is `prod mongo`, node A (`cluster: prod`, `label: mongodb-0`), node B (`cluster: dr`, `label: mongodb-0`)
+- **THEN** node A is a hit (the two tokens match cluster and label respectively); node B is not (`prod` matches no field)
 
 #### Scenario: Reverse lookup by IP
 
-- **WHEN** query 為 `10.0.3`,且某 pod 的 `ipAddress` 為 `10.0.3.17`
-- **THEN** 該 pod 為 hit,且其 result row 的 subline 顯示匹配到的欄位(`ipAddress: 10.0.3.17`)
+- **WHEN** the query is `10.0.3`, and some pod's `ipAddress` is `10.0.3.17`
+- **THEN** that pod is a hit, and its result row's subline shows the matched field (`ipAddress: 10.0.3.17`)
 
 #### Scenario: Edges are never hits
 
-- **WHEN** query 為任一 edge type 字串(如 `pod-calls-pod`)
-- **THEN** 沒有任何 edge 成為 hit 或出現在 result list;只有六個欄位恰好匹配的節點(若有)才是 hit
+- **WHEN** the query is any edge type string (such as `pod-calls-pod`)
+- **THEN** no edge becomes a hit or appears in the result list; only nodes whose six fields happen to match (if any) are hits
 
 ### Requirement: Viewport fit
 
-在輸入停頓(debounce)後,Graph view SHALL 以動畫將 viewport fit 至**可見的 hit set**(包含 proxy-hit 容器;**排除**被過濾器隱藏及其他不可見的元素)。fit 後的 zoom MUST NOT 超過 `1.5`(超過時 clamp 至 1.5 並保持置中)。當 query 被清空時,viewport MUST 停留原處(不做快照、不還原——清空僅移除 fade)。當 hit set 為空時,Graph view MUST NOT 執行 fit(viewport 不變)。
+After a pause in typing (debounce), the Graph view SHALL animate the viewport to fit the **visible hit set** (including proxy-hit containers; **excluding** filter-hidden and other invisible elements). The zoom after the fit MUST NOT exceed `1.5` (when exceeded, clamp to 1.5 and keep centered). When the query is cleared, the viewport MUST stay where it is (no snapshot, no restore — clearing only removes the fade). When the hit set is empty, the Graph view MUST NOT perform a fit (viewport unchanged).
 
 #### Scenario: Debounced fit to all hits
 
-- **WHEN** 使用者停止輸入且存在 ≥1 個可見 hit
-- **THEN** viewport 以動畫 fit 至所有可見 hit 的 bounding box(包含 proxy-hit 容器),zoom ≤ 1.5
+- **WHEN** the user stops typing and ≥1 visible hit exists
+- **THEN** the viewport animates to fit the bounding box of all visible hits (including proxy-hit containers), zoom ≤ 1.5
 
 #### Scenario: A single hit is not over-zoomed
 
-- **WHEN** 恰好只有一個 hit,且自然 fit 會將 zoom 推到遠超 1.5
-- **THEN** zoom clamp 至 1.5,並將該 hit 置中
+- **WHEN** exactly one hit exists, and the natural fit would push the zoom far beyond 1.5
+- **THEN** the zoom is clamped to 1.5, and that hit is centered
 
 #### Scenario: Viewport stays put on clear
 
-- **WHEN** 使用者清空 query
-- **THEN** viewport 保持最後位置(沒有還原動畫);僅移除 fade
+- **WHEN** the user clears the query
+- **THEN** the viewport keeps its last position (no restore animation); only the fade is removed
 
 #### Scenario: Zero hits never move the viewport
 
-- **WHEN** query 沒有任何 hit
-- **THEN** viewport 不移動(整張圖 fade;result list 顯示無結果訊息)
+- **WHEN** the query has no hits
+- **THEN** the viewport does not move (the whole graph fades; the result list shows a no-results message)
 
 ### Requirement: Result list
 
-當 query 非空**且 result list 處於開啟狀態**時,SHALL 於搜尋列下方懸掛一個下拉式 result list;每一列(**result**)對應一個 hit:主行為 `label` + kind badge;subline 顯示 `namespace` / `cluster` 脈絡,且當匹配到的欄位不是 `label` 時 MUST 顯示該欄位與其值(使用者才能理解為何匹配)。列表 MUST 依 label 穩定排序,上限 **50** 列,超過上限時於末尾顯示「N more」指示。位於 collapsed 容器內的 hit MUST 標註其容器(如 `in <controller> (collapsed)`)。**被過濾器隱藏**的 hit(被 kind / edge / ingress 過濾器隱藏)MUST 仍被列出,但以 **disabled** 狀態渲染並附 `eye-slash` 標記——僅告知、不可 locate,且列表 MUST NOT 提供任何會默默改變過濾器的操作路徑。列表有最大高度(約 canvas 高度的 40%)並於內部捲動。
+When the query is non-empty **and the result list is in the open state**, a dropdown result list SHALL hang below the search bar; each row (**result**) corresponds to one hit: the main line is `label` + kind badge; the subline shows `namespace` / `cluster` context, and when the matched field is not `label` it MUST show that field and its value (so the user can understand why it matched). The list MUST be stably sorted by label, capped at **50** rows, with an "N more" indicator at the end when the cap is exceeded. Hits inside a collapsed container MUST be annotated with their container (such as `in <controller> (collapsed)`). **Filter-hidden** hits (hidden by the kind / edge / ingress filters) MUST still be listed, but rendered in a **disabled** state with an `eye-slash` badge — informational only, not locatable, and the list MUST NOT offer any action path that would silently change the filters. The list has a maximum height (about 40% of the canvas height) and scrolls internally.
 
-列表的開啟 / 關閉是**獨立於 query 字串**的暫時性 UI 狀態:
+The list's open / closed state is transient UI state **independent of the query string**:
 
-- 當使用者將 query 改為非空值,或搜尋 input 在 query 已非空時取得焦點,列表 MUST 開啟。
-- 當搜尋 input 失去焦點(blur)、某個非 disabled 的 result 被成功啟動(locate),或 query 變為空時,列表 MUST 關閉。
-- 關閉列表本身 MUST NOT 清空 query、移除 miss fade,或取消節點選取。
+- When the user changes the query to a non-empty value, or the search input gains focus while the query is already non-empty, the list MUST open.
+- When the search input loses focus (blur), a non-disabled result is successfully activated (locate), or the query becomes empty, the list MUST close.
+- Closing the list itself MUST NOT clear the query, remove the miss fade, or deselect the node.
 
 #### Scenario: List shows hits with cap
 
-- **WHEN** query 匹配 120 個節點且 result list 開啟
-- **THEN** 列表顯示前 50 列 + 「70 more」;每列帶有 label、kind badge 與脈絡 subline
+- **WHEN** the query matches 120 nodes and the result list is open
+- **THEN** the list shows the first 50 rows + "70 more"; each row carries the label, kind badge and context subline
 
 #### Scenario: Filter-hidden hit renders disabled with eye-slash
 
-- **WHEN** 某 hit 的 kind 被 legend 的可見性切換(eye)隱藏,且 result list 開啟
-- **THEN** 其列仍出現,為 disabled + `eye-slash` icon;點擊無任何效果(不選取、不 fit、kind 過濾狀態不變)
+- **WHEN** a hit's kind is hidden by the legend's visibility toggle (eye), and the result list is open
+- **THEN** its row still appears, disabled + `eye-slash` icon; clicking has no effect (no selection, no fit, kind filter state unchanged)
 
 #### Scenario: Blur hides the result list without clearing the query
 
-- **WHEN** query 非空、result list 開啟,且搜尋 input 失去焦點
-- **THEN** result list 隱藏;query 文字、miss fade 與任何既有選取皆維持不變
+- **WHEN** the query is non-empty, the result list is open, and the search input loses focus
+- **THEN** the result list is hidden; the query text, the miss fade and any existing selection all remain unchanged
 
 #### Scenario: Focus reopens the result list when the query is non-empty
 
-- **WHEN** query 非空、result list 已關閉,且使用者將焦點移至搜尋 input
-- **THEN** result list 重新開啟,顯示目前 query 的 hit
+- **WHEN** the query is non-empty, the result list is closed, and the user moves focus to the search input
+- **THEN** the result list reopens, showing the hits for the current query
 
 ### Requirement: Proxy hit (visual stand-in for collapsed hits)
 
-輸入期間(任何 locate 之前),被摺疊於 collapsed 容器內的 hit MUST 在視覺上由其**最外層的 collapsed 祖先**代表:該容器保持點亮並計入 fit set。輸入 MUST NOT 自動展開任何容器——展開只透過 locate 發生。
+While typing (before any locate), a hit folded inside a collapsed container MUST be visually represented by its **outermost collapsed ancestor**: that container stays lit and counts toward the fit set. Typing MUST NOT auto-expand any container — expansion happens only through locate.
 
 #### Scenario: Typing lights containers without expanding
 
-- **WHEN** query 匹配到多個位於 collapsed controller 內的 pod
-- **THEN** 每個 pod 的最外層 collapsed 祖先保持點亮並加入 fit set;沒有容器被展開,佈局不動;列表仍顯示這些 pod(附 collapsed 標註)
+- **WHEN** the query matches several pods inside a collapsed controller
+- **THEN** each pod's outermost collapsed ancestor stays lit and joins the fit set; no container is expanded and the layout does not move; the list still shows those pods (with the collapsed annotation)
 
 ### Requirement: Search never touches visibility or empty states
 
-搜尋(fading)MUST NOT 改變可見性計算(kind / edge / ingress 過濾器)的輸出,且 MUST NOT 觸發 empty-state overlay:在零 hit 的 query 下每個元素仍留在 canvas 上(僅被 fade),且「All elements filtered out」/「All node types filtered」empty state MUST NOT 因搜尋而出現。
+Search (fading) MUST NOT change the output of the visibility computation (kind / edge / ingress filters), and MUST NOT trigger the empty-state overlay: under a zero-hit query every element stays on the canvas (only faded), and the "All elements filtered out" / "All node types filtered" empty states MUST NOT appear because of search.
 
 #### Scenario: Zero hits do not trigger the empty state
 
-- **WHEN** query 沒有匹配任何節點(如隨機字元)
-- **THEN** 整張圖 fade 但每個元素仍可見;沒有 empty-state overlay;列表顯示無結果訊息
+- **WHEN** the query matches no node (such as random characters)
+- **THEN** the whole graph fades but every element remains visible; no empty-state overlay; the list shows a no-results message
 
 ### Requirement: Miss fade over the hit set alone
 
-當 query 非空時,Graph view SHALL 將所有**非 hit** 元素淡化(**miss fade**),且僅透過切換 style class 達成:MUST NOT 移除或隱藏元素,MUST NOT 觸發佈局執行,且 MUST NOT 參與可見性計算。點亮(未 fade)的集合恰為每個 hit 的 **focus neighborhood** 之聯集——與在 canvas 上左鍵點擊該節點所點亮的集合完全相同:hit 本身、其 incident edges、其 1-hop 鄰居節點、其後代,以及上述所有元素的祖先容器(點亮的節點絕不能位於被 fade 的容器內)——proxy-hit 容器(見「Proxy hit」)以同樣方式點亮其 neighborhood。因為每條點亮 edge 的另一端點都是點亮的鄰居,點亮的 edge MUST NOT 終止於被 fade 的節點。**任何選取都不會擴大這個集合**——不論是 query 之前遺留的選取(canvas 選取在 detail panel 關閉後仍存續),或使用者最近 locate 的節點,因為 locate 會清空 query,從而直接結束 miss fade 而非擴大它。**零 hit** 的 query 產生空的點亮集合,整張圖 fade。Miss fade 與 selection-focus fade MUST **互斥**:query 非空時只套用 miss fade(focus fade 讓位);當 query 變為空——不論經由編輯、Esc、canvas 點擊或 locate——所有 miss fade 被移除,並(若存在選取)還原 focus fade。
+When the query is non-empty, the Graph view SHALL fade all **non-hit** elements (**miss fade**), achieved solely by toggling style classes: it MUST NOT remove or hide elements, MUST NOT trigger a layout run, and MUST NOT take part in the visibility computation. The lit (unfaded) set is exactly the union of every hit's **focus neighborhood** — identical to the set lit by left-clicking that node on the canvas: the hit itself, its incident edges, its 1-hop neighbor nodes, its descendants, and the ancestor containers of all of the above (a lit node must never sit inside a faded container) — proxy-hit containers (see "Proxy hit") light their neighborhood the same way. Because the other endpoint of every lit edge is a lit neighbor, a lit edge MUST NOT terminate in a faded node. **No selection ever enlarges this set** — neither a selection left over from before the query (a canvas selection survives after the detail panel closes), nor the node the user most recently located, because locate clears the query and thereby ends the miss fade outright rather than enlarging it. A **zero-hit** query yields an empty lit set and the whole graph fades. Miss fade and selection-focus fade MUST be **mutually exclusive**: while the query is non-empty only the miss fade applies (the focus fade yields); when the query becomes empty — whether by editing, Esc, canvas click or locate — all miss fade is removed and (if a selection exists) the focus fade is restored.
 
 #### Scenario: Typing fades non-hits immediately
 
-- **WHEN** 使用者輸入的 query 使部分節點成為 hit
-- **THEN** 非 hit 元素 fade;每個 hit、其 incident edges、其 1-hop 鄰居節點及它們的祖先容器保持點亮——恰為點擊該 hit 所會點亮者;在所有 hit 的 focus neighborhood 之外的元素維持 fade;沒有元素被隱藏或移動,佈局不重跑
+- **WHEN** the user types a query that makes some nodes hits
+- **THEN** non-hit elements fade; each hit, its incident edges, its 1-hop neighbor nodes and their ancestor containers stay lit — exactly what clicking that hit would light; elements outside every hit's focus neighborhood stay faded; no element is hidden or moved, and layout does not re-run
 
 #### Scenario: No lit edge ends in a faded node
 
-- **WHEN** query 命中的節點,其鄰居本身並不匹配 query
-- **THEN** 該鄰居節點與連接 edge 一同保持點亮——canvas 上絕不出現終止於 fade 節點的點亮 edge
+- **WHEN** a node hit by the query has a neighbor that does not itself match the query
+- **THEN** that neighbor node stays lit together with the connecting edge — a lit edge terminating in a faded node never appears on the canvas
 
 #### Scenario: A selection from before the search stays faded
 
-- **WHEN** 某節點被選取,使用者關閉 detail panel(選取存續),接著輸入一個既不匹配該節點、也不命中其任何鄰居的 query
-- **THEN** 該選取節點及其 neighborhood 與其他所有 miss 一同 fade;只有各 hit 的 focus neighborhood 保持點亮
+- **WHEN** a node is selected, the user closes the detail panel (the selection survives), then types a query that neither matches that node nor hits any of its neighbors
+- **THEN** that selected node and its neighborhood fade together with all other misses; only each hit's focus neighborhood stays lit
 
 #### Scenario: Zero hits fade the whole graph
 
-- **WHEN** query 非空且不匹配任何節點,不論是否存在有效選取
-- **THEN** 每個元素都被 fade;沒有元素被隱藏,empty-state overlay 不出現
+- **WHEN** the query is non-empty and matches no node, whether or not an active selection exists
+- **THEN** every element is faded; no element is hidden, and the empty-state overlay does not appear
 
 #### Scenario: Focus fade yields while searching
 
-- **WHEN** 某節點被選取(selection-focus fade 生效中),且使用者輸入非空 query
-- **THEN** canvas 僅顯示 miss fade,且完全由 hit set 驅動;selection ring 保留,但不套用 focus fade
+- **WHEN** a node is selected (selection-focus fade in effect), and the user types a non-empty query
+- **THEN** the canvas shows only the miss fade, driven entirely by the hit set; the selection ring is retained, but no focus fade is applied
 
 #### Scenario: Clearing the query restores focus fade
 
-- **WHEN** 在某節點被選取的情況下清空 query(或以 Esc 清空)
-- **THEN** 所有 miss fade 被移除,selection-focus fade 立即還原(依選取節點的 neighborhood)
+- **WHEN** the query is cleared (or cleared with Esc) while a node is selected
+- **THEN** all miss fade is removed and the selection-focus fade is restored immediately (per the selected node's neighborhood)
 
 ### Requirement: Locate (activating a result row) ends the search
 
-啟動(點擊或 Enter)一個非 disabled 的 result SHALL 表現如同**在 canvas 上左鍵點擊該節點再加上 viewport fit**,並 SHALL 依序:(1) 若 hit 位於 collapsed 容器內,展開其 **collapsed 祖先鏈**(僅該鏈,經由既有的 collapse 狀態更新路徑——這是唯一允許改變 collapse 狀態的搜尋動作);(2) 選取該節點,**並在節點符合 detail 資格時開啟 node-detail panel**(與 canvas tap 相同路徑:highlight、pinned tooltip、detail panel 開啟——不符合 detail 資格的節點,如裝飾性的 `namespace` 群組,遵循 canvas 規則且 MUST NOT 開啟 panel);(3) fit 至該節點的 closed neighborhood(同樣的 zoom 上限);(4) **清空搜尋 query**——input 留空,MUST NOT 保留 result 的 label 或任何其他文字;(5) **關閉 result list**。
+Activating (click or Enter) a non-disabled result SHALL behave like **left-clicking that node on the canvas plus a viewport fit**, and SHALL, in order: (1) if the hit sits inside a collapsed container, expand its **collapsed ancestor chain** (that chain only, via the existing collapse state update path — this is the only search action allowed to change collapse state); (2) select the node, **and open the node-detail panel when the node is detail-eligible** (the same path as a canvas tap: highlight, pinned tooltip, detail panel opens — a non-detail-eligible node, such as a decorative `namespace` group, follows the canvas rules and MUST NOT open the panel); (3) fit to that node's closed neighborhood (the same zoom cap); (4) **clear the search query** — the input is left empty and MUST NOT retain the result's label or any other text; (5) **close the result list**.
 
-步驟 4 清空 query 時 MUST NOT 取消步驟 3 的 fit,MUST NOT 自行移動 viewport,且 MUST NOT 觸發 debounced 的 fit-to-all-hits。因為之後 query 為空,miss fade 被移除,fade 的主導權回到剛選取節點的 **focus fade**,故恰好只有該節點的 neighborhood 保持點亮。由 locate 展開的容器之後 MUST 維持展開(不自動重新摺疊)。
+Clearing the query in step 4 MUST NOT cancel the fit from step 3, MUST NOT move the viewport on its own, and MUST NOT trigger the debounced fit-to-all-hits. Because the query is empty afterwards, the miss fade is removed and control of the fade returns to the just-selected node's **focus fade**, so exactly that node's neighborhood stays lit. Containers expanded by locate MUST remain expanded afterwards (no automatic re-collapse).
 
 #### Scenario: Locate a hit inside collapsed containers
 
-- **WHEN** 某 hit 位於 collapsed controller 內,而該 controller 又位於 collapsed application 內,使用者點擊其 result row
-- **THEN** application 與 controller 依序展開(僅該鏈——其他 collapsed 容器不動),該節點被選取,若符合 detail 資格則 detail panel 開啟,且 viewport fit 至其 closed neighborhood
+- **WHEN** a hit sits inside a collapsed controller, which in turn sits inside a collapsed application, and the user clicks its result row
+- **THEN** the application and the controller expand in order (that chain only — other collapsed containers are untouched), the node is selected, the detail panel opens if it is detail-eligible, and the viewport fits to its closed neighborhood
 
 #### Scenario: Locate clears the query and closes the list
 
-- **WHEN** 使用者啟動一個非 disabled、label 為 `mongodb-replica-0` 的 result
-- **THEN** 搜尋 input 變為空,result list 關閉,且該節點被選取(locate 步驟 1–3 仍然執行)
+- **WHEN** the user activates a non-disabled result with label `mongodb-replica-0`
+- **THEN** the search input becomes empty, the result list closes, and the node is selected (locate steps 1–3 still execute)
 
 #### Scenario: Locate lights only the located node's neighborhood
 
-- **WHEN** query `gateway` 匹配多個節點(如一個 `gateway` pod,加上整個 `mesh-gateway` application、controller 與 pod),且使用者 locate 該 `gateway` pod
-- **THEN** 只有 `gateway` pod 的 focus neighborhood 保持點亮——其他先前的 hit、它們的 incident edges,以及每條另一端點被 fade 的 edge 也都被 fade
+- **WHEN** the query `gateway` matches several nodes (such as a `gateway` pod, plus the entire `mesh-gateway` application, controller and pod), and the user locates the `gateway` pod
+- **THEN** only the `gateway` pod's focus neighborhood stays lit — the other previous hits, their incident edges, and every edge whose other endpoint is faded are faded too
 
 #### Scenario: Locate opens the detail panel like a canvas node tap
 
-- **WHEN** 使用者啟動一個非 disabled、且節點符合 detail 資格(如 pod)的 result
-- **THEN** node-detail panel 開啟,且帶有與 canvas 左鍵點擊相同的選取副作用(highlight + 右上角 pinned tooltip)
+- **WHEN** the user activates a non-disabled result whose node is detail-eligible (such as a pod)
+- **THEN** the node-detail panel opens, with the same selection side effects as a canvas left-click (highlight + top-right pinned tooltip)
 
 #### Scenario: Locate of a non–detail-eligible node does not open the panel
 
-- **WHEN** 使用者啟動一個可選取但不符合 detail 資格的 result(如裝飾性的 `namespace` 群組)
-- **THEN** 選取(與 collapse cue 行為)依 canvas 規則套用,但 node-detail panel MUST NOT 開啟
+- **WHEN** the user activates a selectable but non-detail-eligible result (such as a decorative `namespace` group)
+- **THEN** selection (and collapse cue behavior) applies per the canvas rules, but the node-detail panel MUST NOT open
 
 #### Scenario: Expansion survives locate
 
-- **WHEN** locate 為了抵達其 hit 而展開了某容器
-- **THEN** query 清空後該容器維持展開;只有 fade 改變,且 viewport 保持 locate 所執行的 fit
+- **WHEN** locate expanded a container in order to reach its hit
+- **THEN** that container remains expanded after the query is cleared; only the fade changes, and the viewport keeps the fit performed by locate
 
 ### Requirement: Keyboard interaction inside the search input (arrows, Enter, Esc)
 
-當 input 取得焦點時:`↑` / `↓` SHALL 在 result list 開啟時移動 highlight 游標,**跳過 disabled 列**,並隨之捲動(scroll-follow);`Enter` SHALL 在存在 highlight 列時 locate 該列(與點擊相同步驟:符合 detail 資格則開啟 detail、fit、清空 query、關閉列表),否則立即 fit 至所有 hit(不等待 debounce);`Esc` SHALL 為兩段式——第一次按下清空 query(移除 fade、關閉列表、viewport 停留原處),第二次按下(query 已為空)使 input 失去焦點。這些鍵盤事件 MUST NOT 冒泡至 app shell / document(避免觸發任何 app 層級的 Esc / 快捷鍵行為)。
+While the input has focus: `↑` / `↓` SHALL move the highlight cursor while the result list is open, **skipping disabled rows**, and scroll along with it (scroll-follow); `Enter` SHALL locate the highlighted row when one exists (the same steps as a click: open detail if detail-eligible, fit, clear the query, close the list), otherwise fit to all hits immediately (without waiting for the debounce); `Esc` SHALL be two-stage — the first press clears the query (removes the fade, closes the list, viewport stays where it is), the second press (query already empty) blurs the input. These keyboard events MUST NOT bubble to the app shell / document (to avoid triggering any app-level Esc / shortcut behavior).
 
 #### Scenario: Arrow keys skip disabled rows
 
-- **WHEN** 開啟的列表為 [hit A, 被過濾器隱藏的 B, hit C],游標在 A,使用者按下 `↓`
-- **THEN** 游標跳至 C(跳過 B)
+- **WHEN** the open list is [hit A, filter-hidden B, hit C], the cursor is on A, and the user presses `↓`
+- **THEN** the cursor jumps to C (skipping B)
 
 #### Scenario: Enter locates highlighted row and clears the query
 
-- **WHEN** 某非 disabled 列處於 highlight 且使用者按下 `Enter`
-- **THEN** 對該列執行 locate,input 值變為空,且 result list 關閉
+- **WHEN** a non-disabled row is highlighted and the user presses `Enter`
+- **THEN** locate executes for that row, the input value becomes empty, and the result list closes
 
 #### Scenario: Enter with no cursor fits immediately
 
-- **WHEN** 使用者快速輸入並在 debounce 觸發前按下 `Enter`,且沒有 highlight 列
-- **THEN** viewport 立即 fit 至所有 hit,不等待 debounce
+- **WHEN** the user types quickly and presses `Enter` before the debounce fires, and no row is highlighted
+- **THEN** the viewport fits to all hits immediately, without waiting for the debounce
 
 #### Scenario: Two-stage Esc
 
-- **WHEN** query 非空時按下 `Esc`
-- **THEN** query 清空,result list 關閉,fade 被移除(viewport 停留原處);input 保持焦點
-- **WHEN** query 已為空時再次按下 `Esc`
-- **THEN** input 失去焦點;事件不冒泡至 app shell
+- **WHEN** `Esc` is pressed while the query is non-empty
+- **THEN** the query is cleared, the result list closes, the fade is removed (viewport stays where it is); the input keeps focus
+- **WHEN** `Esc` is pressed again while the query is already empty
+- **THEN** the input loses focus; the event does not bubble to the app shell
 
 ### Requirement: Canvas interaction and locate clear search
 
-當使用者經由 **graph canvas** 改變選取(node tap、background tap、edge tap,或不可選取的 cluster backplate——即任何 canvas 上的選取變更)且搜尋 query 非空時,Graph view SHALL 清空 query,效果與 Esc 清空相同:移除 miss fade、關閉 result list、**viewport 停留原處**。該次點擊帶來的 canvas 選取 / 取消選取 MUST 仍正常套用。**Locate** SHALL 同樣清空 query(見「Locate (activating a result row) ends the search」);它與 canvas tap 的差別僅在於先展開 collapsed 祖先鏈,再將 viewport fit 至被 locate 節點的 closed neighborhood。Detail panel 關閉與 legend 切換 MUST NOT 清空搜尋。
+When the user changes the selection via the **graph canvas** (node tap, background tap, edge tap, or the unselectable cluster backplate — that is, any selection change on the canvas) while the search query is non-empty, the Graph view SHALL clear the query, with the same effect as clearing via Esc: remove the miss fade, close the result list, **viewport stays where it is**. The canvas selection / deselection brought by that click MUST still apply normally. **Locate** SHALL likewise clear the query (see "Locate (activating a result row) ends the search"); it differs from a canvas tap only in first expanding the collapsed ancestor chain, then fitting the viewport to the located node's closed neighborhood. Closing the detail panel and toggling the legend MUST NOT clear the search.
 
 #### Scenario: Canvas node tap clears search
 
-- **WHEN** query 非空且使用者在 canvas 上 tap 某節點
-- **THEN** query 清空,miss fade 移除,result list 關閉,viewport 停留原處,且該節點被選取(符合 detail 資格則 detail 開啟)
+- **WHEN** the query is non-empty and the user taps a node on the canvas
+- **THEN** the query is cleared, the miss fade is removed, the result list closes, the viewport stays where it is, and the node is selected (detail opens if it is detail-eligible)
 
 #### Scenario: Canvas background tap clears search
 
-- **WHEN** query 非空且使用者 tap graph 背景(或 edge / cluster backplate)
-- **THEN** query 清空,miss fade 移除,且依既有的取消選取規則清除選取
+- **WHEN** the query is non-empty and the user taps the graph background (or an edge / cluster backplate)
+- **THEN** the query is cleared, the miss fade is removed, and the selection is cleared per the existing deselection rules
 
 #### Scenario: Locate clears search but still fits
 
-- **WHEN** 使用者啟動一個非 disabled、label 為 `mongodb-replica-0` 的 result
-- **THEN** query 清空方式與 canvas tap 完全相同,而與 canvas tap 不同的是 viewport 會 fit 至該節點的 closed neighborhood
+- **WHEN** the user activates a non-disabled result with label `mongodb-replica-0`
+- **THEN** the query is cleared exactly as with a canvas tap, and unlike a canvas tap the viewport fits to that node's closed neighborhood

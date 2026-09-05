@@ -1,277 +1,311 @@
 ## Context
 
-動機見 [proposal.md](./proposal.md) 的 Why;行為契約見 [specs/](./specs/)(13 個 capability)。本文只談**怎麼做**。
+Motivation is in the Why of [proposal.md](./proposal.md); the behavioural contract is in [specs/](./specs/) (13 capabilities). This document covers only **how**.
 
-塑形此設計的既有條件:
+Existing conditions that shape this design:
 
-- **來源實作存在且成熟**。`kube-state-graph-panel` 已有完整的 graph 視圖實作,其 `src/shared/**` 與各 feature 的純邏輯與 Grafana 無關,可直接移植。本 change 不是從零設計,而是**抽離宿主**。
-- **後端契約不動,且後端提供兩個圖端點**。`GET /v1/graph`(工作負載拓樸)與 `GET /v1/storage-graph`(儲存流量 DAG)回傳**同一個** cytoscape.js 形狀的 payload,差別在請求參數、投影與所帶的 node / edge 型別;`code_changes` / `config_changes` / `dashboard` 為 detail sibling,其中只有 `/dashboard` 吃 `from_time` / `to_time`。兩個圖端點的 `start` / `end` 皆為**必填且無相對形式**,`/v1/storage-graph` 的 `az` / `env` 另為必填單值。
-- **cytoscape 是既定約束**。canvas 渲染、compound 巢狀、collapse、佈局演算法都綁在 cytoscape.js 與其 extension 上,並非可替換的選擇。
-- **UI 表面小但高度自訂**。spec 已將搜尋列(兩段式 Esc、↑↓ 跳過 disabled 列、scroll-follow)、hover tooltip(跟隨游標、`right: 8` 對齊)、legend(每列 eye 切換、收合鈕 z-index 約束)指定到按鍵與像素層級;現成元件庫在這三塊幫不上忙。表格無排序、無分頁、無虛擬捲動。
-- **部署為 k8s 中的靜態容器**。同一個 image 服務所有環境,差異只來自掛載進來的 `config.json`。
+- **The source implementation exists and is mature**. `kube-state-graph-panel` already has a complete graph view implementation; its `src/shared/**` and each feature's pure logic are independent of Grafana and can be ported directly. This change is not a design from scratch but a **detachment from the host**.
+- **The backend contract does not change, and the backend provides two graph endpoints**. `GET /v1/graph` (workload topology) and `GET /v1/storage-graph` (storage flow DAG) return the **same** cytoscape.js-shaped payload; they differ in request parameters, projection and the node / edge types they carry; `code_changes` / `config_changes` / `dashboard` are detail siblings, of which only `/dashboard` takes `from_time` / `to_time`. `start` / `end` on both graph endpoints are **required and have no relative form**, and `az` / `env` on `/v1/storage-graph` are additionally required single values.
+- **cytoscape is a given constraint**. Canvas rendering, compound nesting, collapse and the layout algorithms are all bound to cytoscape.js and its extensions; it is not a replaceable choice.
+- **The UI surface is small but highly customized**. The spec already specifies the search bar (two-stage Esc, ↑↓ skipping disabled rows, scroll-follow), the hover tooltip (follows the cursor, `right: 8` alignment) and the legend (per-row eye toggle, collapse button z-index constraint) down to the key and pixel level; off-the-shelf component libraries do not help in these three areas. Tables have no sorting, no pagination, no virtual scrolling.
+- **Deployed as a static container in k8s**. The same image serves every environment; the differences come only from the mounted `config.json`.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- 行為對等:移植後的 Graph 視圖與 panel 在 spec 層級無功能落差。
-- 單一設計 token 來源,同時餵三個渲染層:DOM(CSS 變數)、cytoscape stylesheet(JS 值)、Sankey SVG(JS 值)。
-- 純邏輯零改寫移植:normalize、可見性、拓樸轉換、參數組裝等純函式從 panel 原樣帶入,連同其單元測試。
-- 相依最小化:除 cytoscape 生態外,只引入真正省下顯著工作量的套件。
-- 建置產物與環境解耦:`dist/` 不含任何環境資訊。
+- Behavioural parity: the ported Graph view has no functional gap from the panel at the spec level.
+- A single design token source feeding three rendering layers at once: DOM (CSS variables), cytoscape stylesheet (JS values), Sankey SVG (JS values).
+- Pure logic ported with zero rewrites: pure functions such as normalize, visibility, topology transform and parameter assembly are brought over from the panel as-is, together with their unit tests.
+- Minimal dependencies: beyond the cytoscape ecosystem, only introduce packages that genuinely save significant work.
+- Build output decoupled from environment: `dist/` contains no environment information.
 
 **Non-Goals:**
 
-- 不建 monorepo、不把共用邏輯抽成 npm 套件(兩 repo 之後獨立演進,見 Risks)。
-- 不做設計系統。Tailwind + token 足夠,不建元件庫文件站。
-- 不做狀態管理架構。資料流簡單(一份 graph + 每視圖 view state),不引入 Redux / Zustand / Jotai。
-- 不做 SSR / SSG。純 client-side SPA。
-- 不最佳化首次載入。cytoscape 約 300KB 是既定成本,不做 code splitting(除非日後 extension 超過 3 個)。
+- No monorepo, and shared logic is not extracted into an npm package (the two repos evolve independently from here on; see Risks).
+- No design system. Tailwind + tokens are enough; no component library documentation site.
+- No state management architecture. The data flow is simple (one graph + per-view view state); Redux / Zustand / Jotai are not introduced.
+- No SSR / SSG. Pure client-side SPA.
+- No first-load optimization. cytoscape at about 300KB is a given cost; no code splitting (unless extensions exceed 3 in the future).
 
 ## Decisions
 
-### 1. 建置工具:Vite
+### 1. Build tool: Vite
 
-**Decision:** Vite + React 18 + TypeScript。`npm run build` 先 typecheck 再 build(Docker build stage 因此也是型別閘門)。
+**Decision:** Vite + React 18 + TypeScript. `npm run build` typechecks first, then builds (the Docker build stage is therefore also a type gate).
 
-**Why:** panel 的 webpack 設定來自 `@grafana/create-plugin` 的 `.config/`,失去宿主即失去其升級路徑,不值得沿用。Vite 的 dev server 啟動與 HMR 對這個規模的 app 是數量級差異;`server.proxy` 內建,直接滿足 dev proxy 需求(見決策 12)。
+**Why:** the panel's webpack configuration comes from `@grafana/create-plugin`'s `.config/`; losing the host means losing its upgrade path, so it is not worth carrying over. Vite's dev server startup and HMR are an order of magnitude different for an app of this size; `server.proxy` is built in and directly satisfies the dev proxy need (see decision 12).
 
-**Alternatives considered:** _webpack_ —— 沿用 panel 設定但需自行維護,無收益。_Next.js_ —— 帶來 SSR / 檔案路由 / server 概念,本 app 全部不需要,且與「靜態資產容器」的部署模型衝突。
+**Alternatives considered:** _webpack_ — reuses the panel configuration but must be maintained by us, with no gain. _Next.js_ — brings SSR / file routing / server concepts, none of which this app needs, and conflicts with the "static asset container" deployment model.
 
-### 2. UI 層:Tailwind CSS + Radix primitives(按需取用)
+### 2. UI layer: Tailwind CSS + Radix primitives (taken as needed)
 
-**Decision:** Tailwind CSS 負責樣式;只安裝實際需要的 Radix primitive —— `dropdown-menu`(多個 Dashboard 連結的選單)、`tooltip`(anchored tooltip,如 alert Count 欄)、`toggle-group`(分段控制:pod-parent mode、layout、Sankey mode)。**不整包引入 shadcn/ui**;需要時才複製單一元件檔進 repo。變體以 `clsx` + `cva` 收斂。
+**Decision:** Tailwind CSS handles styling; only the Radix primitives actually needed are installed — `dropdown-menu` (the menu for multiple Dashboard links), `tooltip` (anchored tooltip, e.g. the alert Count column), `toggle-group` (segmented controls: pod-parent mode, layout, Sankey mode). **shadcn/ui is not brought in wholesale**; a single component file is copied into the repo only when needed. Variants are consolidated with `clsx` + `cva`.
 
 **Why:**
 
-- 元件庫的價值在省下寫數十個元件,但本 app 只需約 8 個,其中最難的三個(搜尋 result list、canvas hover tooltip、legend)spec 已逐條指定行為,現成元件都要拆掉重接。付框架的稅卻拿不到框架的好處。
-- Radix 補上 spec 明文要求的 a11y 缺口(focus trap、ARIA、鍵盤語意),而不吃整包元件庫的 bundle 與主題系統。
-- Tailwind 零 runtime JS,且其 CSS 變數模型與決策 3 的 token 鏈天然契合。
+- A component library's value is in saving the writing of dozens of components, but this app needs only about 8, and for the hardest three (search result list, canvas hover tooltip, legend) the spec already specifies behaviour item by item, so off-the-shelf components would all have to be torn apart and rewired. Paying the framework tax without getting the framework benefit.
+- Radix fills the a11y gaps the spec explicitly requires (focus trap, ARIA, keyboard semantics) without taking on a whole component library's bundle and theme system.
+- Tailwind has zero runtime JS, and its CSS variable model fits naturally with decision 3's token chain.
 
-**Alternatives considered:** _Mantine_ —— 開箱即用且 theme 是 JS 物件(對 cytoscape 友善),但 100+ 元件只用到 8 個,且搜尋列與 tooltip 仍要自寫,等於一半 UI 在框架外、多一套心智模型。_MUI_ —— 生態最穩,但 Material 視覺個性強,做中性運維表板需大量覆寫,且 emotion 的 per-render 樣式序列化成本在高頻 hover 更新時是負擔。_純 CSS Modules_ —— bundle 最小,但 dropdown 的焦點管理與鍵盤語意自寫是典型踩坑點,與 spec 的 a11y 要求相衝。
+**Alternatives considered:** _Mantine_ — works out of the box and its theme is a JS object (cytoscape-friendly), but only 8 of 100+ components would be used, and the search bar and tooltip would still be hand-written, meaning half the UI sits outside the framework with an extra mental model. _MUI_ — the most stable ecosystem, but Material has a strong visual personality, a neutral operations dashboard needs heavy overrides, and emotion's per-render style serialization cost is a burden under high-frequency hover updates. _Plain CSS Modules_ — smallest bundle, but hand-writing dropdown focus management and keyboard semantics is a classic pitfall and conflicts with the spec's a11y requirements.
 
-### 3. 設計 token:`tokens.ts` 為單一來源,產出 CSS 變數與 JS 值
+### 3. Design tokens: `tokens.ts` as the single source, producing CSS variables and JS values
 
-**Decision:** `src/shared/theme/tokens.ts` 以 TypeScript 物件定義 light / dark 兩組 token(語意色 `status.critical` / `status.warning`、kind 色、edge type 色、Sankey 的 read / write 色、背景與前景階層)。由它:
+**Decision:** `src/shared/theme/tokens.ts` defines the light / dark token sets as TypeScript objects (semantic colors `status.critical` / `status.warning`, kind colors, edge type colors, Sankey read / write colors, background and foreground hierarchy). From it:
 
-1. 產出注入 `<style>` 的 CSS 變數(`:root` 與 `.dark`),供 Tailwind 與 DOM 使用;
-2. 直接以 JS 值傳入 cytoscape stylesheet factory;
-3. 直接以 JS 值供 Sankey SVG 的 `stroke` / `fill` 使用。
+1. CSS variables (`:root` and `.dark`) are produced and injected into `<style>`, for Tailwind and the DOM;
+2. JS values are passed directly into the cytoscape stylesheet factory;
+3. JS values are used directly for the Sankey SVG's `stroke` / `fill`.
 
-主題切換只切 `<html>` 的 `dark` class 並重算 cytoscape stylesheet,**不重建 cytoscape instance**。
+Theme switching only toggles the `dark` class on `<html>` and recomputes the cytoscape stylesheet; it **does not rebuild the cytoscape instance**.
 
-**Why:** cytoscape stylesheet 吃的是 JS 字串值(`{ 'border-color': STATUS_COLOR.critical }`),不是 CSS class;Sankey 自繪 SVG 同理。若 token 只存在於 CSS,canvas 與 SVG 讀不到,會被迫用 `getComputedStyle` 反查(脆弱、有時序問題)或維護兩份色表(必然漂移)。以 TS 物件為源、CSS 變數為衍生物,三個渲染層保證同色。這也正是 panel 既有的形狀 —— 它的 `getStylesheet(theme: GrafanaTheme2, ...)` 就是吃 JS theme 物件,移植時只需把 `GrafanaTheme2` 換成自有的 token 型別。
+**Why:** the cytoscape stylesheet takes JS string values (`{ 'border-color': STATUS_COLOR.critical }`), not CSS classes; the same holds for the hand-drawn Sankey SVG. If tokens existed only in CSS, the canvas and SVG could not read them and would be forced to look them up via `getComputedStyle` (fragile, with timing problems) or to maintain two color tables (guaranteed to drift). With the TS object as the source and CSS variables as a derivative, the three rendering layers are guaranteed the same colors. This is also exactly the panel's existing shape — its `getStylesheet(theme: GrafanaTheme2, ...)` takes a JS theme object, so porting only requires swapping `GrafanaTheme2` for our own token type.
 
-**Alternatives considered:** _CSS 變數為單一來源,JS 端用 `getComputedStyle` 讀_ —— 需等樣式套用完成,在 cytoscape init 時序上易讀到空字串;且無法靜態檢查。_兩份色表各自維護_ —— 必然漂移,已被 panel 的 `ICON_SVG_BY_KIND` 單一來源慣例否定。
+**Alternatives considered:** _CSS variables as the single source, read on the JS side with `getComputedStyle`_ — must wait for styles to be applied, easily reads an empty string in cytoscape init timing, and cannot be statically checked. _Two color tables maintained separately_ — guaranteed to drift, already rejected by the panel's `ICON_SVG_BY_KIND` single-source convention.
 
-### 4. 路由:react-router
+### 4. Routing: react-router, one page element per route, query string as the page's input
 
-**Decision:** react-router 提供 `/graph`、`/sankey`、`/` 的 replace-redirect、not-found 與尾斜線容忍。導覽以其 `NavLink` 渲染真正的 `<a>` 並標示 `aria-current`。
+**Decision:** react-router with a layout route (nav bar + `<Outlet>`) and one page element per route: `/graph` → `GraphPage`, `/sankey` → `SankeyPage`, `/` → replace-redirect to `/graph`, `*` → not-found. Nav links are `NavLink`s to the **bare** paths. Each page parses its own query string through a small pure codec (`parse` / `serialize`) and writes it back with `replace` whenever its scope changes; navigating between pages is a push. The Sankey → Graph Locate target travels in router navigation state (`navigate('/graph', { state: { locate } })`), never in the URL.
 
-**Why:** 兩條路由確實可以手寫約 40 行 History API 程式碼,但正確處理 back/forward、replace vs push、`<a>` 的修飾鍵行為(Cmd+click 開新分頁)與 a11y 語意,手寫版會逐步長成一個劣化的 router。相對 cytoscape 的 300KB,router 的體積可忽略,且日後新增視圖零成本。
+**Why:** the router handles back/forward, replace vs push, modifier-key link behaviour and `aria-current` for free; hand-rolling those grows into a worse router. Now that the query string is the page's input (decision 18), the router's `useSearchParams` is also the single read/write seam for it — no second state store.
 
-**Alternatives considered:** _手寫 History API router_ —— 省一個相依但要自行處理上述細節。_TanStack Router_ —— 型別安全更強,但其價值在複雜巢狀路由與 search param 驗證,本 app 兩條扁平路由且 spec 明令 view state **不**入 URL,用不到。
+**Alternatives considered:** _hand-written History API router_ — saves a dependency, re-implements the details above. _TanStack Router_ — typed search params are now genuinely relevant, but two flat routes with a ~60-line codec do not justify a second routing model; revisit if the parameter set multiplies.
 
-### 5. 狀態管理:不引入函式庫
+### 5. State management: no library
 
-**Decision:** graph 資料與 runtime config 放在 shell 層的 React context;每個視圖的 ephemeral view state 以該視圖內的 `useState` / `useReducer` 持有。cytoscape 相關狀態依決策 9 由 instance 自己持有,React 端只保存需要驅動 DOM 的投影(選取 id、collapse 集合、過濾集合)。
+**Decision:** graph data and runtime config live in a shell-level React context; each view's ephemeral view state is held by `useState` / `useReducer` within that view. cytoscape-related state is held by the instance itself per decision 9; the React side keeps only the projections needed to drive the DOM (selected id, collapse set, filter set).
 
-**Why:** 資料流是「一份共享的唯讀 graph + 每視圖各自的 view state」,沒有跨元件的複雜寫入路徑,也沒有需要正規化的實體快取。引入 store 函式庫只是把 `useState` 換個寫法。
+**Why:** the data flow is "one shared read-only graph + each view's own view state"; there are no complex cross-component write paths and no entity cache that needs normalization. Introducing a store library would just be `useState` spelled differently.
 
-**Alternatives considered:** _Zustand / Jotai_ —— 對此規模是額外的間接層。_Redux Toolkit_ —— 明顯過度設計。
+**Alternatives considered:** _Zustand / Jotai_ — an extra layer of indirection at this scale. _Redux Toolkit_ — clearly over-engineered.
 
-### 6. 資料取用:自寫 hook,不引入 data-fetching 函式庫
+### 6. Data access: hand-written hook, no data-fetching library
 
-**Decision:** 一個**參數化的** shell 層載入 hook,以兩個實例分別服務兩個圖端點(見決策 17),自行實作 spec 要求的語意:單一 in-flight 請求(reload 與 auto-refresh tick 在請求進行中不重複發起)、stale-while-revalidate(刷新期間與刷新失敗後保留最後一份成功資料)、失敗只以狀態指示器呈現而不清空畫面、手動 reload 重置 interval。兩個實例的狀態互不相干。detail 端點的查詢沿用 panel 既有的 hook 形狀,把端點來源從 datasource 換成 runtime config。
+**Decision:** one **parameterized** loader hook, instantiated by each page for its own graph endpoint (see decisions 7 and 17), implementing the semantics the spec requires itself: a single in-flight request (reload and auto-refresh ticks do not re-issue while a request is in progress), stale-while-revalidate (the last successful data is retained during a refresh and after a refresh failure), failure shown only via the status indicator without clearing the screen, manual reload resetting the interval. The two instances' states are independent of each other. Detail endpoint queries reuse the panel's existing hook shape, with the endpoint source swapped from datasource to runtime config.
 
-重取的觸發鍵是**選擇**而非組出的 URL:相對時間範圍每次 render 都會解析出不同的 `start` / `end`,以 URL 當依賴會無限重取。因此 hook 依賴一個「選擇快照」(端點 + 時間範圍選項 + 篩選 / 估計 / root),而視窗於送出當下才解析。
+The refetch trigger key is the **selection**, not the assembled URL: a relative time range resolves to different `start` / `end` on every render, so using the URL as a dependency would refetch endlessly. The hook therefore depends on a "selection snapshot" (endpoint + time range option + filter / estate / root), and the window is resolved only at the moment of sending.
 
-**Why:** 只有兩個輪詢資源與少數幾個 by-id 查詢。spec 對刷新語意的規定很精確,直接寫比設定一個函式庫的快取策略更短也更好驗證。panel 的 detail hooks 已實作過同樣的 in-flight 與 key 比對邏輯,可原樣移植。
+**Why:** there are only two polled resources and a handful of by-id queries. The spec's refresh semantics are precise; writing them directly is shorter and easier to verify than configuring a library's cache policy. The panel's detail hooks have already implemented the same in-flight and key comparison logic and can be ported as-is.
 
-**Alternatives considered:** _TanStack Query_ —— 若日後 detail 端點增多、需要跨元件共享快取與失效策略,值得回頭引入;現階段其快取模型帶來的設定負擔大於收益。
+**Alternatives considered:** _TanStack Query_ — worth revisiting if detail endpoints multiply and cross-component shared caching and invalidation policies are needed; at this stage the configuration burden of its cache model outweighs the benefit.
 
-### 7. 視圖切換:首訪時延遲掛載,之後保持掛載
+The loader instance lives in the page, not the shell: it receives an `AbortSignal`, aborts in flight and clears its refresh timer on unmount, and drops any result that lands after unmount. The "selection snapshot" that keys a refetch is derived from the page's URL query plus the resolved time-range selection.
 
-**Decision:** 兩個視圖各自在**首次進入時**掛載,之後切換視圖只切換可見性(以 `hidden` 屬性),**不卸載**。切回可見時,對該視圖發一次尺寸重算(cytoscape `resize()`;Sankey 只在**首次**可見時量一次容器以決定開場視角,之後 `viewBox` 自行適配、不需重算)。
+### 7. View switching: unmount on leave, the URL carries what survives
 
-**Why:** spec 要求「跨視圖切換保留各視圖的暫時狀態」且「切換不得重新取數或重新正規化」。若卸載重掛,cytoscape instance 被銷毀 → 重建 → 重跑佈局,使用者會失去 viewport、zoom、collapse 與選取,且佈局重算是本 app 最貴的操作。保持掛載讓這些狀態自然存續。延遲首次掛載則避免使用者直接深連結到 `/sankey` 時仍付出 graph 佈局成本。
+**Decision:** Leaving a route unmounts its page — the cytoscape instance is destroyed, the Sankey SVG is gone, nothing is cached in the shell. Whatever must survive a switch is either in the URL (scope, Sankey mode, time range) or in browser storage (theme, time-range fallback). Switching is a reset; returning re-fetches with the URL's scope and re-runs layout.
 
-**Trade-off:** 隱藏的容器尺寸為 0,cytoscape 在該期間的量測無效,故切回時必須顯式 `resize()`;這是已知且可測的一步,已納入 spec 的尺寸響應需求。
+**Why:** Two views that behave like two Grafana dashboards are a simpler mental model than one shell juggling hidden containers. It removes the hidden-container measurement hazard (zero-size containers, `resize()` on reveal, "resize but do not fit"), the `visible` / `hidden` prop plumbing, and every "which view's state is this" question — state provenance is now the URL or nothing. The cost is a re-fetch and a re-layout on return; the URL restores the exact same request, and the nav lamp shows the loading state honestly.
 
-**Alternatives considered:** _兩視圖都在啟動時掛載_ —— 深連結到 Sankey 時仍付 graph 佈局成本。_切換即卸載,狀態提升到 shell_ —— cytoscape 的 viewport / zoom / collapse 難以完整序列化再還原,且重跑佈局的視覺跳動無法接受。
+**Alternatives considered:** _keep both views mounted and toggle `hidden`_ (the previous decision) — preserves viewport and selection across switches, but at the price above and with state that no link can reproduce. _Unmount but cache loader results in the shell_ — keeps the data, still loses the cytoscape viewport, and reintroduces cross-page state ownership; rejected.
 
-### 8. Sankey:自算佈局 + React 自繪 SVG,盒卡節點與單一縮放層
+### 8. Sankey: self-computed layout + React-drawn SVG, box-card nodes and a single zoom layer
 
-**Decision:** 不引入圖表庫,也**不使用 `d3-sankey`**;佈局是自己的純函式(`layoutSankey`),渲染由 React 產生 SVG(`<path>` / `<rect>` / `<text>`)。read / write 雙向緞帶、零權重的最小厚度虛線、無流量 root 的孤立卡片、hover 全路徑高亮、tooltip、點擊跨視圖 locate,全部是自己的 JSX 與事件處理。顏色取自決策 3 的 token。
-輸入是 `/v1/storage-graph` 的 body(見決策 17),推導只做三件事:依 `labels.tier` 分層、把每條 `storage-flow` edge 依當前模式取一個方向的權重、依總流量排序。**不做任何加總或均分**——後端已保證逐 tier 守恆且已完成 RWX 的均分,前端再算一次只會產生一組對不上的數字。
+**Decision:** no chart library is introduced, and **`d3-sankey` is not used**; the layout is our own pure function (`layoutSankey`), and rendering is SVG generated by React (`<path>` / `<rect>` / `<text>`). Bidirectional read / write ribbons, minimum-thickness dashed lines for zero weight, orphaned cards for no-flow roots, hover full-path highlight, tooltip, click-to-locate across views — all are our own JSX and event handling. Colors come from decision 3's tokens.
+The input is the `/v1/storage-graph` body (see decision 17), and derivation does only three things: layer by `labels.tier`, take one direction's weight from each `storage-flow` edge per the current mode, sort by total flow. **No summing or even splitting of any kind** — the backend already guarantees per-tier conservation and has already completed the RWX even split; recomputing on the frontend would only produce a set of numbers that do not match.
 
-佈局分四步,每步都是可單測的純函式:
+The layout has four steps, each a unit-testable pure function:
 
-1. **欄 x** —— tier 固定四欄(`pod` / `pvc` / `netapp-aggr` / `netapp-node`),欄寬取該欄最寬盒卡,欄距固定。
-2. **欄內順序** —— 依 spec 的確定性排序(總流量降序,同值 `label` 字典序);pod 欄先依 namespace 分組再排序。
-3. **槽位疊** —— 每個節點左右兩側各一疊槽位,槽高 `max(緞帶厚度, 最小列高)`、固定間距、於盒卡內文垂直置中;盒卡高度由此推出(不與權重成正比)。
-4. **緞帶幾何** —— 兩端錨在槽位中心的三次貝茲填色區域,厚度出自全圖共用的一把比例尺 `最大厚度 / 全圖最大權重`,下限為最小厚度。
+1. **Column x** — tiers are four fixed columns (`pod` / `pvc` / `netapp-aggr` / `netapp-node`); column width is the widest box card in that column, column gap is fixed.
+2. **Order within a column** — the spec's deterministic ordering (total flow descending, ties by `label` lexicographic order); the pod column is grouped by namespace first, then sorted.
+3. **Slot stacks** — each node has one stack of slots on each of its left and right sides; slot height is `max(ribbon thickness, minimum row height)`, with fixed spacing, vertically centered within the box card's body; box card height is derived from this (not proportional to weight).
+4. **Ribbon geometry** — a filled cubic Bézier region anchored at slot centers at both ends; thickness comes from one scale shared across the whole graph, `max thickness / graph-wide max weight`, with the minimum thickness as the floor.
 
-渲染層再加三件事:節點盒卡(標題 / 分隔線 / 副標,kind 以實線與虛線描邊區分,`netapp-node` 為葉卡)、緞帶漸層與帶上數值(描邊光暈,非不透明底板)、欄位標題與 namespace 色條。hover 全路徑高亮切 class、tooltip、點擊跨視圖 locate 都是普通的 React 事件處理。顏色一律取自決策 3 的 token。
+The rendering layer adds three more things: node box cards (title / divider / subtitle, kinds distinguished by solid versus dashed stroke, `netapp-node` as a leaf card), ribbon gradients and on-ribbon values (stroke halo, not an opaque backing plate), column headers and namespace color bars. Hover full-path highlight via class toggling, tooltip, and click-to-locate across views are all ordinary React event handling. Colors always come from decision 3's tokens.
 
-**縮放平移是一層 `<g transform>`,不是重新佈局。** SVG 以 `viewBox` + `preserveAspectRatio="xMidYMid meet"` 填滿容器,所以容器 resize 只是換一次適配比例,佈局函式不重跑;縮放與平移只改那一層 `<g>` 的 `transform`,`<defs>`(漸層)留在外面以免被一起縮放。這帶來真幾何縮放:字級與線寬跟著放大,不需要反向補償。鍵盤(`+` `-` `0` `1` `F` `Esc`)綁在圖區容器而非 `document`,因為 `app-shell` 明文禁止 shell 層級的全域快捷鍵。
+**Zoom / pan is one `<g transform>` layer, not a re-layout.** The SVG fills the container with `viewBox` + `preserveAspectRatio="xMidYMid meet"`, so a container resize is just a change of fit ratio and the layout function does not re-run; zoom and pan change only that `<g>`'s `transform`, and `<defs>` (gradients) stay outside so they are not scaled along with it. This gives true geometric zoom: font size and line width scale with it, no inverse compensation needed. Keyboard (`+` `-` `0` `1` `F` `Esc`) is bound to the graph area container rather than `document`, because `app-shell` explicitly forbids shell-level global shortcuts.
 
-**Why 不用 `d3-sankey`:** 盒卡模型讓它的每一個輸出都被覆寫。它的核心是「節點高度與通過量成正比」,而盒卡高度來自槽位最小列高與標題副標,兩者不相容;欄內順序 spec 指定為確定性排序而非它的 barycenter 疊代;連線端點錨在槽位中心而非節點高度的比例位置,`sankeyLinkHorizontal` 的等寬路徑也不是這裡的形狀。留著它等於付一個相依去算一組全部丟掉的值。改為自算後,佈局是四個小純函式,測試比整合一個被覆寫的函式庫更直接。
+**Why not `d3-sankey`:** the box card model overrides every one of its outputs. Its core is "node height proportional to throughput", while box card height comes from the slot minimum row height and the title / subtitle; the two are incompatible. The spec specifies the order within a column as a deterministic sort, not its barycenter iteration; link endpoints are anchored at slot centers rather than proportional positions along node height, and `sankeyLinkHorizontal`'s constant-width path is not the shape here either. Keeping it means paying for a dependency to compute a set of values that are all thrown away. Computed ourselves, the layout is four small pure functions, and testing is more direct than integrating an overridden library.
 
-**Why 自繪而非圖表庫:** spec 對這張圖的規定(同一對 source/target 畫兩條可區分連線、零權重仍需可見、hover 點亮上下游全路徑、顏色不得只靠色相區分、盒卡節點、圖內縮放平移)幾乎每一條都是圖表庫的邊緣案例。自繪 SVG 讓每條規則變成普通的 React 程式碼,且與 Tailwind + token 的架構一致 —— 不需要第二套主題系統。
+**Why hand-drawn rather than a chart library:** the spec's rules for this diagram (two distinguishable links drawn for the same source/target pair, zero weight must still be visible, hover lights up the full upstream and downstream path, colors must not be distinguished by hue alone, box card nodes, in-diagram zoom / pan) are almost every one an edge case for a chart library. Hand-drawn SVG turns each rule into ordinary React code, and is consistent with the Tailwind + token architecture — no second theme system needed.
 
-**Alternatives considered:** _Apache ECharts_ —— sankey 為內建 series,設定即出圖,但 canvas 渲染使 CSS 變數主題化失效(需在 JS 端重建 option)、自訂高亮須走其 `dispatchAction`、雙向連線與零權重樣式受其 API 限制,盒卡節點與槽位更不在其資料模型內,且體積約 300KB+。_@nivo/sankey_ —— React 原生且可傳自訂節點元件,但自有 theme 系統會與 Tailwind + token 並行,且同一對 source/target 的兩條連線是其資料模型的邊緣案例。_保留 `d3-sankey` 只用它排序_ —— 排序規則已由 spec 固定,它算的其餘一切都要丟掉。
+**Alternatives considered:** _Apache ECharts_ — sankey is a built-in series and configuration produces a chart, but canvas rendering defeats CSS variable theming (the option must be rebuilt on the JS side), custom highlighting must go through its `dispatchAction`, bidirectional links and zero-weight styling are limited by its API, box card nodes and slots are not in its data model at all, and it weighs about 300KB+. _@nivo/sankey_ — React-native and accepts custom node components, but its own theme system would run in parallel with Tailwind + tokens, and two links for the same source/target pair are an edge case in its data model. _Keep `d3-sankey` only for ordering_ — the ordering rule is already fixed by the spec, and everything else it computes would be thrown away.
 
-### 9. Cytoscape × React 整合慣例(自 panel 移植,兩處修正)
+### 9. Cytoscape × React integration conventions (ported from the panel, two fixes)
 
-**Decision:** 沿用 panel design.md 的整合慣例,核心為「**cytoscape instance 為單一真實狀態源,React 只負責 mount/unmount 與 imperative 同步**」:
+**Decision:** reuse the integration conventions from the panel's design.md, whose core is "**the cytoscape instance is the single source of truth for state; React only handles mount/unmount and imperative sync**":
 
-1. **Lifecycle**:所有 lifecycle 封裝在一個 hook 內;init effect(依賴空陣列)建立 instance 並在 cleanup 呼叫 `removeAllListeners()` + `destroy()` 且把 ref 歸 null;update effects 各自監聽對應輸入,以 `cy.batch()` mutate 既有 instance。React StrictMode 的 double-mount 下必須 idempotent。
-2. **Extension 註冊**:`cytoscape.use(...)` 只在 module top-level 執行一次;禁止在 component / hook 內呼叫。
-3. **型別**:使用 cytoscape 原生型別;自訂 `data` 欄位以 declaration merging 集中擴充;不用 `any`。
-4. **Stylesheet**:由 pure factory 產生 `Stylesheet[]` 陣列(輸入為決策 3 的 token 與各對應表),可序列化、可快照測試;禁止鏈式 `cy.style().selector(...)`。
-5. **Layout**:`cy.stop()` 後再 `cy.layout(opts).run()`;選項以 `useMemo` 穩定。
-6. **Events**:handler 在 init effect 註冊一次,不隨 props 變動 on/off;cytoscape → React 的狀態投影走 `useSyncExternalStore`。
-7. **尺寸**:`ResizeObserver` + debounced `cy.resize()`。
-8. **測試**:純邏輯以 `cytoscape({ headless: true, styleEnabled: true })` 驗證,不需 DOM。
-9. **效能**:批次更新一律包 `cy.batch()`;三組輸入(elements / stylesheet / layout)在 React 端 memoize。
-10. **API 邊界**:hook 對外只暴露 `containerRef` 與必要操作,不洩漏 cytoscape internals。
+1. **Lifecycle**: all lifecycle is encapsulated in one hook; the init effect (empty dependency array) creates the instance and in cleanup calls `removeAllListeners()` + `destroy()` and sets the ref back to null; update effects each watch their corresponding input and mutate the existing instance with `cy.batch()`. Must be idempotent under React StrictMode's double-mount.
+2. **Extension registration**: `cytoscape.use(...)` runs exactly once at module top level; calling it inside a component / hook is forbidden.
+3. **Types**: use cytoscape's native types; custom `data` fields are extended centrally via declaration merging; no `any`.
+4. **Stylesheet**: a pure factory produces the `Stylesheet[]` array (inputs are decision 3's tokens and the various mapping tables), serializable and snapshot-testable; chained `cy.style().selector(...)` is forbidden.
+5. **Layout**: `cy.stop()` before `cy.layout(opts).run()`; options are stabilized with `useMemo`.
+6. **Events**: handlers are registered once in the init effect and are not toggled on/off as props change; cytoscape → React state projection goes through `useSyncExternalStore`.
+7. **Size**: `ResizeObserver` + debounced `cy.resize()`.
+8. **Testing**: pure logic is verified with `cytoscape({ headless: true, styleEnabled: true })`, no DOM needed.
+9. **Performance**: batch updates are always wrapped in `cy.batch()`; the three inputs (elements / stylesheet / layout) are memoized on the React side.
+10. **API boundary**: the hook exposes only `containerRef` and the necessary operations; cytoscape internals are not leaked.
 
-**兩處修正:**
+**Two fixes:**
 
-- **元素更新的分界**。一般資料刷新走 **diff-and-patch**(比對既有與 incoming,只增刪差異),維持佈局連續性;但 **pod-parent mode 切換走整批重建**(移除全部元素後重新加入),因為該操作改變的是 compound parent 鏈本身,diff 的結果等同全量替換,重建反而更簡單且正確。此分界已寫入 `pod-parent-mode` spec。
-- **主題來源**。原 `getStylesheet(theme: GrafanaTheme2, ...)` 改為吃決策 3 的 token 型別。
+- **The boundary for element updates**. Ordinary data refreshes use **diff-and-patch** (compare existing against incoming, add / remove only the differences), preserving layout continuity; but **pod-parent mode switching uses a full rebuild** (remove all elements, then re-add), because that operation changes the compound parent chain itself, the diff result equals a full replacement, and a rebuild is simpler and more correct. This boundary is written into the `pod-parent-mode` spec.
+- **Theme source**. The original `getStylesheet(theme: GrafanaTheme2, ...)` is changed to take decision 3's token type.
 
-**Why:** 這些是社群多年踩坑的共識,避免「兩個 ref 不同步」「extension 重複註冊警告」「StrictMode 雙 mount 殘留 listener」三類 bug。panel 已在實戰中驗證過,無理由重新發明。
+**Why:** these are the community consensus from years of pitfalls, avoiding three classes of bug: "two refs out of sync", "extension double-registration warning", "listeners left over from StrictMode double mount". The panel has already proven them in practice; there is no reason to reinvent.
 
-**Alternatives considered:** _`react-cytoscapejs`_ —— 多年未活躍維護,抽象層限制細粒度更新,型別不完整。_elements 當 props 全量替換_ —— 每次更新重跑佈局、節點跳動。_cytoscape instance 放 React state_ —— 觸發整棵樹 re-render,反模式。
+**Alternatives considered:** _`react-cytoscapejs`_ — not actively maintained for years, its abstraction layer limits fine-grained updates, types are incomplete. _elements as props, fully replaced_ — re-runs layout on every update, nodes jump. _cytoscape instance in React state_ — triggers a re-render of the whole tree, an anti-pattern.
 
-### 10. 程式碼組織:feature-first + co-location
+### 10. Code organization: feature-first + co-location
 
-**Decision:** 依 feature 而非檔案類型分目錄;每個元件一個資料夾,含同名 `.tsx` / `.types.ts` / `.test.tsx` / `index.ts`;function component only;`src/**` 全面具名 export,禁止 default export;跨 feature 不得越界 import 對方內部檔案。以 ESLint 的 `import-x/no-default-export` 與 `import-x/no-restricted-paths` 強制。
+**Decision:** directories are split by feature rather than file type; one folder per component, containing same-named `.tsx` / `.types.ts` / `.test.tsx` / `index.ts`; function components only; named exports throughout `src/**`, default exports forbidden; no feature may reach across and import another feature's internal files. Enforced with ESLint's `import-x/no-default-export` and `import-x/no-restricted-paths`.
 
-**Why:** 沿用 panel 已驗證的結構,使移植是「搬資料夾」而非「重新歸檔」。禁止 default export 讓重新命名與自動 import 行為一致。邊界規則防止 feature 之間長出隱性耦合。
+**Why:** reusing the panel's proven structure makes the port "moving folders" rather than "re-filing". Forbidding default exports keeps renaming and auto-import behaviour consistent. The boundary rule prevents implicit coupling from growing between features.
 
-**註:** 這兩項是程式碼組織慣例而非可觀察行為,故不放進 spec(spec 是行為契約),改在此記錄並由 lint 強制。
+**Note:** these two are code organization conventions rather than observable behaviour, so they are not put into the spec (the spec is a behavioural contract); they are recorded here instead and enforced by lint.
 
-### 11. 移植策略:純邏輯原樣搬,宿主耦合處改寫
+### 11. Porting strategy: pure logic moved as-is, host-coupled parts rewritten
 
-**Decision:** 以「是否 import `@grafana/*`」切分:
+**Decision:** split by "whether it imports `@grafana/*`":
 
-| 類別                                                                                                                                                                                                              | 處理方式                                                        |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 純函式 + 其單元測試(normalize、可見性計算、pod-parent 拓樸轉換、ingress 集合辨識、switch level 讀取與佈局約束、node group 合成、Dashboard 參數組裝、Dashboard 連結解析、icon 對應表、各色彩與樣式對應表、fixture) | **原樣複製**,連同 `.test.ts`。不改邏輯,只改 import 路徑         |
-| Stylesheet factory                                                                                                                                                                                                | 改寫簽名:theme 參數換成自有 token 型別                          |
-| 端點解析                                                                                                                                                                                                          | 改寫:datasource 查詢換成讀 runtime config                       |
-| React 元件                                                                                                                                                                                                        | 改寫:`@grafana/ui` 元件換成 Tailwind + Radix;其餘結構與邏輯保留 |
-| Grafana 專屬(variable export、panel options editor、`PanelPlugin` 註冊、provisioning)                                                                                                                             | **不移植**                                                      |
+| Category                                                                                                                                                                                                                                                                                                                      | Treatment                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Pure functions + their unit tests (normalize, visibility computation, pod-parent topology transform, ingress set identification, switch level reading and layout constraints, node group synthesis, Dashboard parameter assembly, Dashboard link resolution, icon mapping table, all color and style mapping tables, fixture) | **Copied as-is**, together with `.test.ts`. Logic unchanged, only import paths changed                       |
+| Stylesheet factory                                                                                                                                                                                                                                                                                                            | Rewrite signature: theme parameter swapped for our own token type                                            |
+| Endpoint resolution                                                                                                                                                                                                                                                                                                           | Rewrite: datasource query swapped for reading runtime config                                                 |
+| React components                                                                                                                                                                                                                                                                                                              | Rewrite: `@grafana/ui` components swapped for Tailwind + Radix; the rest of the structure and logic retained |
+| Grafana-specific (variable export, panel options editor, `PanelPlugin` registration, provisioning)                                                                                                                                                                                                                            | **Not ported**                                                                                               |
 
-移植後以既有單元測試作為第一道正確性驗證 —— 測試能跑通,代表純邏輯搬運無損。
+After porting, the existing unit tests are the first correctness check — tests passing means the pure logic was moved without loss.
 
-**Why:** 這批純函式是 panel 最有價值也最容易在重寫時出錯的部分(絕不把 absent 當 0、controller 告警聚合、edge metrics 的兩個 union 分支、collapse 對帳的 desired ∩ present)。它們與 Grafana 無關,重寫只會引入回歸。
+**Why:** these pure functions are the panel's most valuable part and the one most prone to error in a rewrite (never treating absent as 0, controller alert aggregation, the two union branches of edge metrics, the desired ∩ present of collapse reconciliation). They are independent of Grafana; rewriting would only introduce regressions.
 
-**Trade-off:** 複製而非共用套件,代表兩 repo 的這批邏輯會分岔。見 Risks。
+**Trade-off:** copying rather than a shared package means this logic will diverge between the two repos. See Risks.
 
-### 12. Runtime config:啟動時 fetch,手寫 validator
+### 12. Runtime config: fetched at startup, hand-written validator
 
-**Decision:** 在渲染任何視圖前 fetch `<base>/config.json`,以手寫 validator 驗證(不做型別轉換:`"30"` 不會被當成 `30`,`1.5` 不是合法的 `refreshIntervalSeconds`),失敗則渲染全螢幕設定錯誤畫面並停在那裡 —— **絕不靜默退回 demo 模式**。config 路徑不可由頁面 URL 的 query / hash 覆寫。dev 模式下 `npm run dev` 服務版控的 `dev/config.json`(`demoMode: true`),可由被 gitignore 的 `dev/config.local.json` 覆寫;兩者都不進 `dist/`。真實後端以 Vite `server.proxy` 走 `/api/` 前綴。
+**Decision:** fetch `<base>/config.json` before rendering any view, validate it with a hand-written validator (no type coercion: `"30"` is not treated as `30`, `1.5` is not a valid `refreshIntervalSeconds`); on failure render a full-screen configuration error screen and stop there — **never silently fall back to demo mode**. The config path cannot be overridden by the page URL's query / hash. In dev mode `npm run dev` serves the version-controlled `dev/config.json` (`demoMode: true`), overridable by the gitignored `dev/config.local.json`; neither enters `dist/`. A real backend goes through Vite `server.proxy` under the `/api/` prefix.
 
-**Why:** 手寫 validator 約 120 行,與既有的 normalize 邊界同一種寫法(手寫型別 + 邊界執行期驗證,不做 codegen),且 spec 對錯誤訊息的要求很具體(指出設定路徑與**第一個**問題),schema 函式庫的預設訊息本來就要覆寫。零相依。「不靜默退回 demo」是刻意的:一個打錯字的 ConfigMap 若讓 app 顯示假資料,會是最難察覺的生產事故。
+**Why:** a hand-written validator is about 120 lines, written the same way as the existing normalize boundary (hand-written types + runtime validation at the boundary, no codegen), and the spec's requirements for the error message are specific (name the config path and the **first** problem), so a schema library's default messages would have to be overridden anyway. Zero dependencies. "No silent fallback to demo" is deliberate: a ConfigMap with a typo that makes the app show fake data would be the hardest production incident to notice.
 
-**Alternatives considered:** _zod_ —— 訊息品質好但約 14KB 且仍需覆寫訊息。_valibot_ —— 體積小得多,若 config schema 日後顯著變複雜,是第一順位的回頭選項。_build 時注入環境變數_ —— 與「同一 image 服務所有環境」的部署模型直接衝突,已排除。
+**Alternatives considered:** _zod_ — good message quality but about 14KB and messages still need overriding. _valibot_ — much smaller; if the config schema becomes significantly more complex later, it is the first option to revisit. _Injecting environment variables at build time_ — directly conflicts with the "one image serves all environments" deployment model; ruled out.
 
-### 13. 新增檢視時間範圍(view time range)
+### 13. Add a view time range
 
-**Decision:** 導覽列提供相對時間範圍選擇器(1h / 6h / 24h / 7d / 自訂絕對區間),預設 24h,與主題同樣持久化於瀏覽器儲存,**不寫入 URL**。它是 shell 唯一跨視圖共用的輸入,有三個消費端:`/v1/graph` 與 `/v1/storage-graph` 的 `start` / `end`,以及 `/dashboard` 查詢的 `from_time` / `to_time`;alert 的「Last occurred」點擊將其設為 `[t-300, t+300]`。
+**Decision:** the nav bar provides a relative time range selector (1h / 6h / 24h / 7d / custom absolute window), default 24h, persisted in browser storage **and** written to the current route's query as `from` / `to` (`now-6h` / `now` for relative windows, Unix seconds for absolute); on mount the URL wins, then browser storage, then `24h`, and the resolved value is written back so every page URL is self-describing. It is the shell's only input shared across views, with three consumers: `start` / `end` for `/v1/graph` and `/v1/storage-graph`, and `from_time` / `to_time` for the `/dashboard` query; clicking an alert's "Last occurred" sets it to `[t-300, t+300]`.
 
-**Why:** panel 從 Grafana dashboard 繼承時間範圍,SPA 無此宿主,而兩個圖端點的 `start` / `end` 都是**必填且沒有相對形式**——視窗只能由前端在每次請求送出當下解析。這也是為什麼視窗不能是一個 config 值或一個在選取當下凍結的常數:它會停止移動,最終落到儲存保留期之外,後端回一個與壞掉的管線無法區分的空圖。附帶取回的是實際運維動作:從一則告警跳到**該時刻**的 dashboard。
+**Why:** the panel inherits its time range from the Grafana dashboard; the SPA has no such host, and `start` / `end` on both graph endpoints are **required and have no relative form** — the window can only be resolved by the frontend at the moment each request is sent. This is also why the window cannot be a config value or a constant frozen at selection time: it would stop moving, eventually fall outside the store's retention, and the backend would return an empty graph indistinguishable from a broken pipeline. What comes back as a bonus is a real operational action: jumping from an alert to the dashboard at **that moment**.
 
-**影響:** `app-shell` spec 的檢視時間範圍需求同時規範兩個端點的重取行為;`node-detail` spec 現有的條件式敘述(「當 app 提供可變更的檢視時間範圍時」)自動成為生效分支,無需改寫。
+**Impact:** the `app-shell` spec's view time range requirement governs the refetch behaviour of both endpoints at once; the `node-detail` spec's existing conditional wording ("when the app provides a changeable view time range") automatically becomes the active branch, no rewrite needed.
 
-**Alternatives considered:** _不新增_ —— `/dashboard` 不送時間,由目標 dashboard 用自己的預設視窗,「Last occurred」降級為純文字。省下一個控制項,但失去告警到 dashboard 的時間對齊。_寫入 URL 以便分享_ —— 與 spec 既定的「view state 不入 URL」不一致,且會讓分享連結的語意需要另外定義;日後若有分享需求可單獨提案。
+**Alternatives considered:** _Do not add it_ — `/dashboard` sends no time, the target dashboard uses its own default window, and "Last occurred" degrades to plain text. Saves one control, but loses the time alignment from alert to dashboard. _not in the URL_ (the previous decision) — dropped once the URL became the snapshot carrier (decision 18): a shared link without its time window is not a snapshot.
 
-### 14. 測試策略:三層,e2e 納入 CI
+### 14. Test strategy: three layers, e2e included in CI
 
 **Decision:**
 
-- **單元(Vitest)**:純函式與 stylesheet factory;cytoscape 相關邏輯以 headless instance 驗證,不需 DOM。移植過來的測試原樣沿用。
-- **元件(Vitest + Testing Library)**:互動與 a11y 語意(鍵盤操作、`aria-current`、focus 可見)。
-- **e2e(Playwright)**:自啟 dev server,兩條必備 spec —— demo 模式冒煙測試,以及以 `/demo/graph.json` 走真實 fetch 路徑的往返測試。
+- **Unit (Vitest)**: pure functions and the stylesheet factory; cytoscape-related logic is verified with a headless instance, no DOM needed. Ported tests are reused as-is.
+- **Component (Vitest + Testing Library)**: interaction and a11y semantics (keyboard operation, `aria-current`, visible focus).
+- **e2e (Playwright)**: starts its own dev server, two mandatory specs — a demo mode smoke test, and a round-trip test that goes through the real fetch path with `/demo/graph.json`.
 
-CI 鏈:`typecheck → lint → fixture:check → unit → e2e → build`。
+CI chain: `typecheck → lint → fixture:check → unit → e2e → build`.
 
-**Why:** panel 的 e2e 需要 Grafana 容器才不進 CI;SPA 沒有這個限制,Playwright 自啟 dev server 且 demo 模式無外部依賴,約 1–2 分鐘。「乾淨 checkout 能渲染完整圖」是本專案的核心承諾之一,只有 e2e 能守住;讓它只在本機跑等於不守。
+**Why:** the panel's e2e stays out of CI only because it needs a Grafana container; the SPA has no such restriction, Playwright starts its own dev server and demo mode has no external dependencies, about 1–2 minutes. "A clean checkout renders the full graph" is one of this project's core promises, and only e2e can hold it; running it only locally amounts to not holding it.
 
-**Alternatives considered:** _e2e 維持本機觸發_ —— CI 快 1–2 分鐘,但 demo 回歸不會被自動抓到,與該承諾的重要性不成比例。
+**Alternatives considered:** _e2e stays locally triggered_ — CI is 1–2 minutes faster, but demo regressions are not caught automatically, out of proportion to the importance of that promise.
 
-### 15. Fixture 與 demo 模式
+### 15. Fixture and demo mode
 
-**Decision:** `SHOWCASE_GRAPH`(TypeScript,typed as `WireGraph`)維持單一假資料來源。`fixture:build` 產出 `public/demo/graph.json` —— 序列化為完整的 `GET /v1/graph` 回應體;`fixture:check` 擋漂移並在 CI 與 pre-push 執行。demo 模式直接 import TS fixture(不經網路);`public/demo/graph.json` 則有兩個用途:對後端實作者而言是範例 payload,對測試而言是讓 `demoMode: false` + `endpoints.graph: "/demo/graph.json"` 能在無後端下走完整的 fetch 路徑。
+**Decision:** `SHOWCASE_GRAPH` (TypeScript, typed as `WireGraph`) remains the single fake data source. `fixture:build` produces `public/demo/graph.json` — serialized as a complete `GET /v1/graph` response body; `fixture:check` blocks drift and runs in CI and pre-push. Demo mode imports the TS fixture directly (no network); `public/demo/graph.json` serves two purposes: for backend implementers it is a sample payload, and for tests it lets `demoMode: false` + `endpoints.graph: "/demo/graph.json"` go through the complete fetch path without a backend.
 
-**Why:** 兩條路徑(直接 import 與真實 fetch)覆蓋不同的錯誤類別 —— 前者驗證渲染,後者驗證取數、驗證與錯誤處理。以同一份 fixture 餵養兩者,保證兩條路徑測的是同一張圖。
+**Why:** the two paths (direct import and real fetch) cover different error classes — the former verifies rendering, the latter verifies fetching, validation and error handling. Feeding both from the same fixture guarantees the two paths test the same graph.
 
-### 16. 容器與部署
+### 16. Container and deployment
 
-**Decision:** 多階段 `Dockerfile`(build stage 執行 typecheck + build;runtime stage 只含 `dist/` 與靜態 web server),以數值 UID 的非 root 使用者執行,監聽 `8080`。config 以目錄形式掛載於 `/srv/config`(不用 `subPath`,使 ConfigMap 更新能反映到容器內)。快取標頭:`/assets/*` 長期不可變、`index.html` `no-cache`、`config.json` `no-store`。`GET /healthz` 供 liveness / readiness probe。history-API fallback 使 `/graph` 與 `/sankey` 的深連結在重新載入時可用。選用的同源反向代理(`/api/` → 後端)讓運維者能以 root-relative 端點 URL 避開 CORS。manifests 置於 `deploy/`,符合 Pod Security Standards 的 `restricted`。
+**Decision:** multi-stage `Dockerfile` (build stage runs typecheck + build; runtime stage contains only `dist/` and a static web server), running as a non-root user with a numeric UID, listening on `8080`. Config is mounted as a directory at `/srv/config` (no `subPath`, so ConfigMap updates are reflected inside the container). Cache headers: `/assets/*` long-lived immutable, `index.html` `no-cache`, `config.json` `no-store`. `GET /healthz` for liveness / readiness probes. A history-API fallback makes deep links to `/graph` and `/sankey` usable on reload. An optional same-origin reverse proxy (`/api/` → backend) lets operators avoid CORS with root-relative endpoint URLs. Manifests live in `deploy/` and conform to the Pod Security Standards `restricted` profile.
 
-**Why:** 「同一 image + 不同 ConfigMap」是此設計的核心部署前提(見決策 12)。`no-store` 於 config 確保設定變更在下次載入即生效,不需重建 image 或重啟 Pod。不用 `subPath` 是因為該掛載方式不會接收 ConfigMap 的後續更新。
+**Why:** "same image + different ConfigMap" is this design's core deployment premise (see decision 12). `no-store` on config ensures a configuration change takes effect on the next load, with no image rebuild or Pod restart. `subPath` is avoided because that mount mode does not receive subsequent ConfigMap updates.
 
-### 17. 兩個圖端點,兩個資料來源
+### 17. Two graph endpoints, two data sources
 
-**Decision:** Graph 視圖走 `GET /v1/graph`,Sankey 視圖走 `GET /v1/storage-graph`,兩者是 shell 層兩個獨立的 loader 實例(決策 6),各有自己的 in-flight 請求、狀態、錯誤與最後成功時間。重新載入與自動刷新只作用於**當前視圖**的來源;storage-graph 為 **lazy**,使用者未進入 Sankey 視圖前不發出任何請求。兩者的 body 是同一個 cytoscape 形狀,因此共用同一組 `WireGraph` 型別與同一個 `normalizeGraph`——**只有請求端分岔,回應端不分岔**。
+**Decision:** the Graph page uses `GET /v1/graph`, the Sankey page uses `GET /v1/storage-graph`; each page owns its own loader instance (decision 6), with its own in-flight request, state, error and last success time. Reload and auto-refresh act only on the mounted page's source; storage-graph is **lazy** in the strongest sense — the loader does not exist until the Sankey page is mounted (decision 7). Both bodies are the same cytoscape shape, so they share the same `WireGraph` types and the same `normalizeGraph` — **only the request side forks, the response side does not**.
 
-**Why:** 早期設計讓兩個視圖共用一份 `/v1/graph` 資料,由前端沿 `pod → pvc → netapp-aggr` 推鏈、自行加總 aggregate 的入邊、自行把 RWX claim 的量測均分給 pod。後端的 storage-graph 端點使這條路同時**不可能**也**不必要**:
+**Why:** the early design had both views share one `/v1/graph` dataset, with the frontend deriving the chain along `pod → pvc → netapp-aggr`, summing an aggregate's incoming edges itself, and splitting an RWX claim's measurement evenly across pods itself. The backend's storage-graph endpoint makes that path both **impossible** and **unnecessary**:
 
-- `netapp-svm` 是一整層 tier,`/v1/graph` 根本不輸出這個節點型別;
-- root 搜尋(自 aggregate、SVM、controller、pod 或 node 任一端出發,兩側取交集)是後端的投影,前端無從以 `/v1/graph` 的 body 重現;
-- 權重的**守恆**是後端在 build 時算好的性質。前端自行加總會在捨入與 FlexGroup / 未排程 pod 這類殘缺路徑上與後端分歧,產生一組無法對帳的數字;
-- `az` 是 Harvest 的路由鍵,`/v1/storage-graph` 因此要求 `az` / `env` 必填單值——這個約束在 `/v1/graph` 上不存在,無法用同一組 filter 表達。
+- `netapp-svm` is an entire tier, and `/v1/graph` does not output that node type at all;
+- root search (starting from any of aggregate, SVM, controller, pod or node, taking the intersection of both sides) is a backend projection that the frontend has no way to reproduce from the `/v1/graph` body;
+- weight **conservation** is a property the backend computes at build time. Frontend summing would diverge from the backend on rounding and on incomplete paths such as FlexGroup / unscheduled pods, producing a set of numbers that cannot be reconciled;
+- `az` is Harvest's routing key, so `/v1/storage-graph` requires `az` / `env` as required single values — this constraint does not exist on `/v1/graph` and cannot be expressed with the same set of filters.
 
-**代價:** 同名維度出現在兩處(Graph 的多選 filter bar 與 Sankey 的單選估計選擇器),使用者需要理解它們各自送往不同端點。這是刻意的:把兩者綁在一起,就得在 Graph 的多值選擇上強加一個單值限制,或在 Sankey 上沉默取第一個值——後者正是這個 demo 存在要抓的那種靜默失配。
+**Cost:** same-named dimensions appear in two places (the Graph's multi-select filter bar and the Sankey's single-select estate selector), and users need to understand that each is sent to a different endpoint. This is deliberate: tying the two together would mean forcing a single-value restriction onto the Graph's multi-value selection, or silently taking the first value on the Sankey — the latter is exactly the kind of silent mismatch this demo exists to catch.
 
-**Alternatives considered:** _Sankey 繼續由 `/v1/graph` 推導,只補 SVM_ —— SVM 不在該 body 中,補不了。_一個 loader 依當前視圖切換端點_ —— 切視圖會丟掉另一個視圖已載入的資料,違反「視圖切換不重新取數」。_兩個端點共用一組篩選控制_ —— 見上述代價。
+**Alternatives considered:** _Sankey keeps deriving from `/v1/graph`, only adding SVM_ — SVM is not in that body; it cannot be added. _One loader switching endpoints by current view_ — no longer an option once each page owns its loader (decision 7). _Both endpoints sharing one set of filter controls_ — see the cost above.
+
+Both pages' scope parameters mirror the backend parameter names in the URL, so a page URL's query is a near-verbatim copy of the request it produces (minus `start` / `end`, which are derived from `from` / `to`).
+
+### 18. The URL query is the snapshot mechanism (Grafana variable model)
+
+**Decision:** A page's request-shaping inputs live in its query string and nowhere else. Graph: `cluster` / `az` / `env` / `namespace` / `edge_type` / `prune`. Sankey: `az` / `env` / `ontap_cluster` / `node` / `aggr` / `svm` / `pod` / `cluster` / `namespace` / `mode`. Both: `from` / `to`. Multi-value = repeated key, no `var-` prefix. Defaults are omitted (empty lists, `prune=true`, `mode=both`) except `from` / `to`, which are always written because they have a browser-storage fallback and "absent" would be ambiguous. In-page changes `replace`; unknown params are ignored and stripped on the next write; values not in the option list are applied and marked unlisted; `prune` / `mode` are validated to their enums, `pod` roots to `<ns>/<pod>`, `from` / `to` as a pair. Demo mode ignores scope params but still writes `from` / `to`.
+
+**Why:** With switch-as-reset, some carrier must let a scope survive navigation and be shared. Three were weighed:
+
+| Carrier                           | Shareable | Restorable (Back / refresh)       | Visible                                                                                               | Cost                               |
+| --------------------------------- | --------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| URL query (Grafana `var-*` model) | yes       | yes — history is snapshot history | yes — address bar and controls agree                                                                  | codec + validation                 |
+| localStorage named snapshots      | no        | needs its own list UI             | no — auto-applied state is invisible, the exact failure the old "no persistence" rule guarded against | a new persistent surface           |
+| backend-stored snapshots          | yes       | yes                               | yes                                                                                                   | backend change — a stated non-goal |
+
+The URL is the only stateless, shareable carrier a static SPA has. The old rule "filters are never persisted" was aimed at invisible auto-applied state; a filter in the address bar is not invisible, and a clean `/graph` still means "no filter". Mirroring backend parameter names keeps the URL readable as the request it will produce. Named snapshots, if ever wanted, are stored URLs — a layer on top, not a change to this contract.
+
+**Alternatives considered:** _no carrier_ — Locate → Back would lose the Sankey scope. _`var-` prefixed names_ — Grafana needs the namespace because many panels share one URL; here each page produces exactly one request. _time range not in the URL_ — rejected by the user: a snapshot without its window is not a snapshot.
+
+### 19. Grafana-style dropdown: Radix Popover + a hand-rolled ARIA listbox, one shared component
+
+**Decision:** One `shared/ui` component (`ScopeSelect`, name final at implementation) with `mode: 'single' | 'multi'`, `options`, `value`, `onChange`, `allowCustom`, `label`. The trigger shows the label plus `All` or up to two pills with `×` and a `+N` overflow; the popover (Radix `Popover` for anchoring, dismiss and focus return) holds a search input (`role="combobox"`), a `listbox` with checkbox rows for multi (with a pinned `All` row) or plain rows for single, and — when `allowCustom` and the typed text matches no option — a `Use "<text>"` row. Unlisted values render with a dashed pill border and a title. Graph filter bar, Sankey estate / narrowing selectors, root kind and Projection all use it; `edge_type` is the only `allowCustom: false` list dimension.
+
+**Why:** Radix ships no combobox; Popover covers the hard parts (positioning, outside-click, Escape, focus restoration) and the listbox semantics are ~150 lines that the spec pins to the key anyway. A single component makes the two control bars consistent and folds the Sankey free-text fallback into the custom-value row.
+
+**Alternatives considered:** _`cmdk`_ — opinionated fuzzy filtering, single-select oriented; checkbox rows and custom values need workarounds. _`downshift`_ — capable, but a hooks-based state machine is a second mental model for one component. _native `<select multiple>`_ (current) — no search, no pills, poor discoverability on macOS, cannot express custom values.
 
 ## Risks / Trade-offs
 
-- **兩 repo 的純邏輯分岔** → 移植是複製而非共用套件。後端契約變更(新 kind、新 edge type、新 metrics 欄位)需要在兩處各改一次,且可能不同步。**Mitigation:** 兩邊都以 `WireGraph` 型別與 fixture drift check 把契約變更變成 typecheck 失敗而非執行期空白畫面;若日後分岔成本顯著上升,再評估抽成套件或 monorepo(此為刻意延後的決定,不是疏漏)。
+- **Pure logic diverges between the two repos** → the port is a copy, not a shared package. A backend contract change (new kind, new edge type, new metrics field) must be made once in each place and may fall out of sync. **Mitigation:** both sides use the `WireGraph` types and the fixture drift check to turn a contract change into a typecheck failure rather than a blank screen at runtime; if the cost of divergence rises significantly later, re-evaluate extracting a package or a monorepo (this is a deliberately deferred decision, not an oversight).
 
-- **搜尋列、tooltip、legend 需自寫** → 這三塊佔前端工作量的顯著比例,且 spec 規定到按鍵層級,實作偏差不易在 code review 中看出。**Mitigation:** 每條鍵盤與定位規則都有對應 scenario,以元件測試逐條覆蓋;`right: 8`、40% 最大高度、z-index 相對關係等定位契約寫成可斷言的測試。
+- **Search bar, tooltip and legend must be hand-written** → these three account for a significant share of the frontend work, and the spec specifies them down to the key level, so implementation deviations are hard to spot in code review. **Mitigation:** every keyboard and positioning rule has a corresponding scenario, covered one by one with component tests; positioning contracts such as `right: 8`, the 40% max height and z-index relative ordering are written as assertable tests.
 
-- **隱藏視圖的尺寸量測** → 決策 7 讓非作用中的視圖容器尺寸為 0,cytoscape 在該期間的量測無效;Sankey 只有「開場視角」這一次量測會被影響(`viewBox` 適配本身不需要量容器)。**Mitigation:** cytoscape 於切回可見時顯式觸發尺寸重算;Sankey 把開場視角的計算延到容器量得到非零尺寸之後。以 e2e 覆蓋「切到 Sankey 再切回 Graph,圖面尺寸正確且 viewport 未重置」與「深連結直接進 `/sankey`,開場視角為符合視窗且不放大」。
+- **URL ↔ state sync loop** → a codec that is not idempotent, or a write on every render, spams `replace` and can loop. **Mitigation:** pure `parse` / `serialize`, canonical parameter order, write only when the serialized string differs; tests assert history length is unchanged across in-page changes.
 
-- **`ResizeObserver` 與 cytoscape `resize()` 的抖動** → debounce 太短會在拖曳視窗時反覆重算,太長則感覺遲鈍。**Mitigation:** 沿用 panel 已調校過的 debounce 值,並以 spec 的尺寸響應 scenario 驗證。
+- **Custom values reach the backend unvalidated** → `az` / `env` / `cluster` / `namespace` are raw label matchers; a typo yields an empty 200. **Mitigation:** unlisted marker on the pill; the empty state names the scope it queried; `edge_type` has no custom path because it is the one value the backend rejects with a 400.
 
-- **Sankey 自繪的工作量** → 去掉 `d3-sankey` 後連佈局也自寫:欄 x、欄內順序、槽位疊、緞帶幾何,加上盒卡、欄位標題、色條、縮放平移與專注模式,量級約在 600 行。**Mitigation:** 佈局四步與 hover 路徑追蹤(給定節點求上下游連線集合)全是純函式,可脫離 DOM 單測;渲染層只做「純函式輸出 → SVG」的直譯,沒有藏在渲染裡的幾何。縮放平移不碰佈局,兩者的測試互不干擾。
+- **Returning to a page re-fetches and re-lays-out** → accepted cost of decision 7. **Mitigation:** the nav lamp shows loading; layout time is bounded by the existing performance limits.
 
-- **Sankey 的 `az` / `env` 是一道額外的門檻** → 後端要求兩者必填單值,使用者進入 Sankey 視圖後可能看到一個什麼都沒畫的畫面。**Mitigation:** 候選值只有一個時自動預選(多數單估計部署即為此情況);未選齊時的提示與「沒有儲存流量」的空狀態必須是兩段不同的文字——把兩者寫成同一句,會讓一個未完成的選擇看起來像壞掉的管線。
+- **Locate target lost if the first Graph load fails** → **Mitigation:** the target is retained until the first successful load (spec), then consumed once.
 
-- **兩份 fixture 的一致性** → demo 模式下 Sankey 與 Graph 讀不同 fixture,兩者若描述不同的估計,跨視圖 Locate 在 demo 下會找不到目標。**Mitigation:** 兩份 fixture 共用同一組節點 id 與名稱,並由一個單元測試斷言 storage fixture 的每個 pod / pvc / netapp 節點 id 都存在於 graph fixture(SVM 除外——`/v1/graph` 不輸出該型別),以及 `storage-flow` 權重逐 tier 守恆。
+- **Jitter between `ResizeObserver` and cytoscape `resize()`** → too short a debounce recomputes repeatedly while dragging the window; too long feels sluggish. **Mitigation:** reuse the panel's already-tuned debounce value, and verify with the spec's size responsiveness scenario.
 
-- **cytoscape bundle 約 300KB** → 首次載入成本固定存在。**Mitigation:** 接受(見 Non-Goals);Sankey 選 d3-sankey 而非 ECharts 已避免再疊加 300KB。
+- **The workload of hand-drawing the Sankey** → with `d3-sankey` removed, even the layout is hand-written: column x, order within a column, slot stacks, ribbon geometry, plus box cards, column headers, color bars, zoom / pan and focus mode, on the order of 600 lines. **Mitigation:** the four layout steps and hover path tracing (given a node, find the set of upstream and downstream links) are all pure functions, unit-testable away from the DOM; the rendering layer does only a literal "pure function output → SVG" translation, with no geometry hidden in rendering. Zoom / pan does not touch layout, so the two sets of tests do not interfere.
 
-- **專注模式收起 shell 導覽列** → 這是全 app 唯一由視圖隱藏 shell chrome 的路徑,離開的出口只剩 `Esc` 與控制列的按鈕;若兩者同時失效,使用者會被困在一個沒有導覽的畫面。**Mitigation:** `app-shell` 的導覽列需求寫死這條例外並只給 Sankey 專注模式;離開的兩條路徑各有 scenario;專注模式不入 URL、不持久化,重新整理必定回到有導覽列的狀態。
+- **The Sankey's `az` / `env` are an extra hurdle** → the backend requires both as single values, so a user entering the Sankey view may see a screen with nothing drawn. **Mitigation:** auto-preselect when there is only one candidate value (most single-estate deployments are exactly this case); the hint when not both are selected and the "no storage flow" empty state must be two different pieces of text — writing them as the same sentence makes an incomplete selection look like a broken pipeline.
 
-- **`demoMode` 誤設於生產** → ConfigMap 打錯字可能讓生產環境顯示假資料。**Mitigation:** demo 模式必須在 UI 顯眼處標示;且設定錯誤絕不靜默退回 demo(決策 12)。
+- **Consistency of the two fixtures** → in demo mode the Sankey and the Graph read different fixtures; if the two describe different estates, cross-view Locate would fail to find its target under demo. **Mitigation:** the two fixtures share the same set of node ids and names, and one unit test asserts that every pod / pvc / netapp node id in the storage fixture exists in the graph fixture (except SVM — `/v1/graph` does not output that type), and that `storage-flow` weights are conserved per tier.
 
-- **CORS** → 若運維者以絕對 URL 指向不同 origin 的後端,瀏覽器會擋。**Mitigation:** 容器提供選用的同源反向代理,並在文件中把 root-relative URL 列為建議做法。
+- **cytoscape bundle about 300KB** → the first-load cost is fixed. **Mitigation:** accepted (see Non-Goals); choosing d3-sankey over ECharts for the Sankey already avoided stacking another 300KB.
+
+- **Focus mode collapses the shell nav bar** → this is the only path in the whole app where a view hides shell chrome, leaving only `Esc` and the control bar button as exits; if both fail at once, the user is trapped in a screen with no navigation. **Mitigation:** the `app-shell` nav bar requirement hard-codes this exception and grants it only to Sankey focus mode; each of the two exit paths has a scenario; focus mode does not enter the URL and is not persisted, so a refresh always returns to a state with the nav bar.
+
+- **`demoMode` misconfigured in production** → a ConfigMap typo could make a production environment show fake data. **Mitigation:** demo mode must be marked prominently in the UI; and a configuration error never silently falls back to demo (decision 12).
+
+- **CORS** → if an operator points at a backend on a different origin with an absolute URL, the browser blocks it. **Mitigation:** the container provides an optional same-origin reverse proxy, and the documentation lists root-relative URLs as the recommended practice.
 
 ## Migration Plan
 
-此 repo 目前只有 LICENSE 與 openspec 目錄,**沒有既有使用者、沒有既有部署、沒有資料要遷移**。所謂 migration 是 panel 使用者的切換路徑,而非本 app 內部的版本升級。
+This repo currently holds only LICENSE and the openspec directory; **there are no existing users, no existing deployments and no data to migrate**. The "migration" here is the switchover path for panel users, not a version upgrade within this app.
 
-**建置順序**(細節見 tasks.md):
+**Build order** (details in tasks.md):
 
-1. 專案骨架與工具鏈 → 2. token 與主題層 → 3. runtime config 載入與錯誤畫面 → 4. 純邏輯移植(含其測試) → 5. app shell 與路由 → 6. Graph 視圖(canvas → legend → 互動 → 搜尋 → detail) → 7. Graph 請求組裝(時間範圍 + filter bar) → 8. storage-graph 來源與 Sankey 視圖(估計 / root 選擇器 → tier 推導 → 渲染 → 跨視圖 Locate) → 9. 容器與 k8s manifests → 10. e2e 與 CI。
+1. Project scaffold and toolchain → 2. Tokens and theme layer → 3. Runtime config loading and error screen → 4. Pure logic port (including its tests) → 5. App shell and routing → 6. Graph view (canvas → legend → interaction → search → detail) → 7. Graph request assembly (time range + filter bar) → 8. storage-graph source and Sankey view (estate / root selectors → tier derivation → rendering → cross-view Locate) → 9. Container and k8s manifests → 10. e2e and CI → 11. Grafana-style dropdowns, page split and URL scope (revision, tasks §24).
 
-每一階段結束時 demo 模式必須可渲染,使進度隨時可見。
+Demo mode must render at the end of every stage, so progress is visible at all times.
 
-**與 panel 的關係:** 兩者並存,不互相取代。panel 繼續服務嵌入 Grafana dashboard 的情境;本 app 服務需要多視圖與完整 UI 控制的情境。本 change 不變更、不棄用、不封存 panel repo。
+**Relationship to the panel:** the two coexist and do not replace each other. The panel continues to serve the scenario of embedding in a Grafana dashboard; this app serves the scenario that needs multiple views and full UI controls. This change does not modify, deprecate or archive the panel repo.
 
-**回退策略:** 部署層面,image 以 `sha-<short>` 標記,回退即是把 Deployment 指回前一個 tag;因為設定在 ConfigMap 而非 image 內,回退 image 不會連帶回退設定。開發層面,本 change 全部是新增檔案,無既有程式碼被修改。
+**Rollback strategy:** at the deployment level, images are tagged `sha-<short>`, and rollback is pointing the Deployment back at the previous tag; because configuration lives in the ConfigMap rather than the image, rolling back the image does not roll back the configuration with it. At the development level, this change is entirely new files; no existing code is modified.
 
 ## Open Questions
 
-- **Sankey 在超大拓樸下的可讀性上限**。spec 已訂效能界線(500 條 `pvc-to-netapp-aggr` edge 內首次繪製 ≤ 1 秒),但「幾百條連線的 Sankey 是否還讀得懂」是視覺問題而非效能問題。可能需要 top-N 篩選或聚合。**可延後**:待真實資料規模已知後再決定,不影響現有 spec、架構或任務拆解。
-- **是否需要匯出**(PNG / SVG / CSV)。運維情境常見「把圖貼進事件報告」。**可延後**:是獨立的附加功能,不影響現有設計。
-- **是否要提供 namespace / Application 層級的 Sankey**。後端刻意不把這兩者做成 tier(pod 不一定有 Application,`pod → node` 是物理跳而 `pod → application` 是邏輯跳),但同一份 body 帶著 `data.parent`,前端可以走 parent 鏈並加總守恆的權重推導出來。**可延後**:是既有 body 上的加法,不影響現有 spec 或架構。
-- **`refreshIntervalSeconds` 的實務預設值**。spec 訂預設 0(關閉),由運維者決定。實際部署後或許會發現某個值應成為文件建議值。**可延後**:純文件層面。
+- **The readability ceiling of the Sankey on very large topologies**. The spec already sets a performance bound (first draw ≤ 1 second within 500 `pvc-to-netapp-aggr` edges), but "is a Sankey with several hundred links still readable" is a visual question, not a performance one. Top-N filtering or aggregation may be needed. **Can be deferred**: decide once the real data scale is known; does not affect the existing spec, architecture or task breakdown.
+- **Whether export is needed** (PNG / SVG / CSV). "Paste the diagram into an incident report" is common in operations. **Can be deferred**: a standalone add-on feature that does not affect the existing design.
+- **Whether to provide a namespace / Application level Sankey**. The backend deliberately does not make these two into tiers (a pod does not necessarily have an Application; `pod → node` is a physical hop while `pod → application` is a logical hop), but the same body carries `data.parent`, so the frontend can walk the parent chain and sum the conserved weights to derive it. **Can be deferred**: an addition on top of the existing body that does not affect the existing spec or architecture.
+- **The practical default for `refreshIntervalSeconds`**. The spec sets the default to 0 (off), left to the operator. After real deployment it may turn out that some value should become the documented recommendation. **Can be deferred**: purely a documentation matter.
+- **Named snapshots** ("Save as…" — stored URLs in browser storage or a backend). Deferred; the URL is the carrier either way (decision 18), so this is a layer on top, not a contract change.
+- **Root value enumeration** (aggregate / SVM / controller names from Harvest label values) for the Sankey root selector. Deferred; today the root value is free text because no enumeration source is configured.

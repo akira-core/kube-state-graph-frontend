@@ -1,119 +1,119 @@
 ## Purpose
 
-自 `switch` 節點的 `data.labels.level` 讀取實體網路的層級(level),並在力導向(`fcose`)佈局下將 switch fabric 固定為逐層堆疊的橫列——高層級在上、同層級同列——同時以正交路由呈現 `node-to-switch` / `switch-to-switch` 邊,使 K8s node 的 uplink 與 switch fabric 在 Graph view 中讀作一個清楚分層的實體網路。
+Reads the physical network's tier (level) from the `data.labels.level` of `switch` nodes, and under the force-directed (`fcose`) layout pins the switch fabric into per-level stacked horizontal rows — higher levels above, same level on the same row — while rendering `node-to-switch` / `switch-to-switch` edges with orthogonal routing, so that K8s node uplinks and the switch fabric read as a clearly tiered physical network in the Graph view.
 
 ## ADDED Requirements
 
-### Requirement: 自節點標籤讀取 switch level
+### Requirement: read the switch level from node labels
 
-系統 SHALL 自每個 `switch` 節點的 `data.labels.level` 值讀取其網路 **level**,以 base-10 整數解析。level 只有在解析結果為大於或等於零的整數時 SHALL 被接受;`labels.level` 缺席、空白、非數字或為負數的 `switch` 節點 SHALL 不獲指派任何 level。此讀取 SHALL 僅取決於所提供的 graph 元素,對相同輸入 MUST 產生相同結果(確定性),且不得產生任何副作用。系統 SHALL NOT 由圖結構推導 level(不得走訪 `node-to-switch` / `switch-to-switch` 邊)。
+The system SHALL read each `switch` node's network **level** from its `data.labels.level` value, parsed as a base-10 integer. A level SHALL be accepted only when it parses to an integer greater than or equal to zero; `switch` nodes whose `labels.level` is absent, blank, non-numeric or negative SHALL be assigned no level. This read SHALL depend only on the graph elements supplied, MUST produce the same result for the same input (deterministic), and must not produce any side effect. The system SHALL NOT derive levels from the graph structure (it must not walk `node-to-switch` / `switch-to-switch` edges).
 
-#### Scenario: 有效的 level 標籤被讀取
+#### Scenario: a valid level label is read
 
-- **WHEN** 某 `switch` 節點的 `labels.level` 為字串 `"2"`
-- **THEN** 該節點被指派 level 2
+- **WHEN** a `switch` node's `labels.level` is the string `"2"`
+- **THEN** the node is assigned level 2
 
-#### Scenario: 缺少 level 標籤時不指派 level
+#### Scenario: a missing level label assigns no level
 
-- **WHEN** 某 `switch` 節點沒有 `labels.level` 值
-- **THEN** 該節點不獲指派 level,並自 level 對應表中排除
+- **WHEN** a `switch` node has no `labels.level` value
+- **THEN** the node is assigned no level and is excluded from the level map
 
-#### Scenario: 無效的 level 標籤不指派 level
+#### Scenario: an invalid level label assigns no level
 
-- **WHEN** 某 `switch` 節點的 `labels.level` 無法解析為非負整數(空白、非數字或負數)
-- **THEN** 該節點不獲指派 level,並自 level 對應表中排除
+- **WHEN** a `switch` node's `labels.level` cannot be parsed as a non-negative integer (blank, non-numeric or negative)
+- **THEN** the node is assigned no level and is excluded from the level map
 
-#### Scenario: 非 switch 節點被忽略
+#### Scenario: non-switch nodes are ignored
 
-- **WHEN** 某 `kind` 不是 `switch` 的節點帶有 `labels.level` 值
-- **THEN** 該節點被忽略,永不被指派 level
+- **WHEN** a node whose `kind` is not `switch` carries a `labels.level` value
+- **THEN** the node is ignored and is never assigned a level
 
-#### Scenario: 沒有 switch 時結果為空
+#### Scenario: the result is empty when there are no switches
 
-- **WHEN** graph 不含任何 `switch` 節點
-- **THEN** level 讀取回傳空的對應表
+- **WHEN** the graph contains no `switch` nodes
+- **THEN** the level read returns an empty map
 
-### Requirement: switch fabric 固定為逐層堆疊的橫列
+### Requirement: the switch fabric is pinned into per-level stacked rows
 
-系統 SHALL 依 level 為每個具 level 的 `switch` 節點指定一個固定的絕對位置,使 switch 形成一層一列的橫列:level 數字較高者位於較低者**之上**(例如最高 level 的 core switch 渲染於最頂端),同一 level 的 switch 則在同一列上水平散開。此固定 SHALL 僅透過力導向佈局原生支援的「固定節點位置」能力表達,不得引入新的佈局引擎或額外相依。
+The system SHALL assign every levelled `switch` node a fixed absolute position by level, so that the switches form one horizontal row per level: higher level numbers sit **above** lower ones (for example the highest-level core switches render at the very top), and switches of the same level spread out horizontally along the same row. This pinning SHALL be expressed only through the "fixed node position" capability the force-directed layout natively supports, without introducing a new layout engine or additional dependency.
 
-系統 SHALL NOT 在任一 pod-parent mode 下固定 K8s `node` 節點:與 fabric 相連的 node(`node-to-switch` 邊的 source)只由其 uplink 邊拉向 fabric,力導向佈局得自由擺放它們(以及包含它們的 cluster compound)而不與 fabric 重疊。(緣由:曾有版本將 controller mode 下與 fabric 相連的 node 固定在由 `min(switchLevel) − 1` 推導出的 fabric 下方一層;該固定已移除——整個 cluster compound 被拖到已固定的 fabric 上會造成 compound 重疊。)
+The system SHALL NOT pin K8s `node` nodes in either pod-parent mode: nodes attached to the fabric (sources of `node-to-switch` edges) are pulled toward the fabric only by their uplink edges, and the force-directed layout is free to place them (and the cluster compounds containing them) without overlapping the fabric. (Rationale: an earlier version pinned fabric-attached nodes in controller mode to a tier below the fabric derived from `min(switchLevel) − 1`; that pinning was removed — the whole cluster compound being dragged onto the pinned fabric caused compound overlap.)
 
-當 switch 經由 `data.parent` 巢狀於單一虛擬 `network` compound(kind `network`,例如標籤為 `physical network`)之下、由其框住整個 fabric 時,固定位置約束 SHALL 仍只針對簡單的 `switch` 節點本身,且不論該 wrapper compound 是否存在 SHALL 套用完全相同的結果——wrapper 的外框僅跟隨其已固定的子節點;作為 compound,它與 cluster compound 保持距離,並可如任何其他容器一般收合(legend 行為見 graph-view)。
+When switches are nested via `data.parent` under a single virtual `network` compound (kind `network`, for example labelled `physical network`) that boxes the whole fabric, the fixed-position constraints SHALL still target only the simple `switch` nodes themselves, and SHALL apply exactly the same result whether or not that wrapper compound exists — the wrapper's outline merely follows its pinned children; as a compound, it keeps its distance from the cluster compounds and can be collapsed like any other container (see graph-view for legend behaviour).
 
-當資料含有至少一個**無 parent** 的 `switch`,且**沒有**任何 `network` kind 節點時,app SHALL 自行合成此 wrapper(於正規化之後施加的純 graph 資料步驟):注入單一 `network` 節點(id `network/fabric`,label `physical network`),並將每個無 parent 的 `switch` 重新掛載於其下。當已存在 `network` kind 節點(資料自行擁有分組),或每個 `switch` 皆已帶有 `parent`(後端指派的 parent 永不被覆寫)時,此合成 SHALL 完全退讓,使元素維持不變。此步驟 MUST 為純函式(不得變更輸入)。
+When the data contains at least one **parentless** `switch` and **no** `network` kind node, the app SHALL synthesize this wrapper itself (a pure graph-data step applied after normalization): inject a single `network` node (id `network/fabric`, label `physical network`) and re-parent every parentless `switch` under it. When a `network` kind node already exists (the data owns its own grouping), or every `switch` already carries a `parent` (a backend-assigned parent is never overwritten), this synthesis SHALL back off entirely, leaving the elements unchanged. This step MUST be a pure function (it must not mutate its input).
 
-約束 SHALL 只引用具 level 的 `switch` 節點;其他所有節點(pod、controller、service、pvc、cluster、K8s node、虛擬 `network` wrapper、無 level 的 switch)SHALL 維持由力導向佈局自由擺放。約束 SHALL 只在目前佈局為力導向(`fcose`)佈局時套用。當沒有任何 `switch` 節點帶有有效 level 時,系統 SHALL 不產生任何約束,佈局 SHALL 表現得與沒有此功能時完全相同。
+The constraints SHALL reference only levelled `switch` nodes; every other node (pods, controllers, services, pvcs, clusters, K8s nodes, the virtual `network` wrapper, unlevelled switches) SHALL remain freely placed by the force-directed layout. The constraints SHALL apply only when the current layout is the force-directed (`fcose`) layout. When no `switch` node carries a valid level, the system SHALL produce no constraints and the layout SHALL behave exactly as it would without this feature.
 
-#### Scenario: 為無 parent 的 switch 合成 wrapper
+#### Scenario: a wrapper is synthesized for parentless switches
 
-- **WHEN** 資料含有沒有 `data.parent` 的 `switch` 節點,且沒有 `network` kind 節點
-- **THEN** 注入單一 `network/fabric` wrapper(label `physical network`),並將那些 switch 重新掛載於其下
+- **WHEN** the data contains `switch` nodes without `data.parent` and no `network` kind node
+- **THEN** a single `network/fabric` wrapper (label `physical network`) is injected and those switches are re-parented under it
 
-#### Scenario: 資料提供的 network 分組優先
+#### Scenario: a data-provided network grouping takes precedence
 
-- **WHEN** 資料已含有 `network` kind 節點
-- **THEN** 不合成 wrapper、不重新掛載任何 switch(元素原樣通過)
+- **WHEN** the data already contains a `network` kind node
+- **THEN** no wrapper is synthesized and no switch is re-parented (the elements pass through as-is)
 
-#### Scenario: 同一 level 的 switch 共用一列
+#### Scenario: switches of the same level share a row
 
-- **WHEN** 在 `fcose` 佈局下,兩個以上的 `switch` 節點解析為同一 level
-- **THEN** 它們被固定在相同的垂直位置(同一列)、相異的水平位置
+- **WHEN** under the `fcose` layout, two or more `switch` nodes resolve to the same level
+- **THEN** they are pinned at the same vertical position (the same row) and distinct horizontal positions
 
-#### Scenario: level 由高至低自上而下堆疊
+#### Scenario: levels stack top to bottom from high to low
 
-- **WHEN** 在 `fcose` 佈局下,level `k` 與 level `k+1` 都含有 switch
-- **THEN** level `k+1` 的列被固定於 level `k` 的列之上
+- **WHEN** under the `fcose` layout, both level `k` and level `k+1` contain switches
+- **THEN** the level `k+1` row is pinned above the level `k` row
 
-#### Scenario: K8s node 永不被固定
+#### Scenario: K8s nodes are never pinned
 
-- **WHEN** 在任一 pod-parent mode 下,某 K8s `node` 為 `node-to-switch` 邊的 source
-- **THEN** 該節點不被固定;只有其 uplink 邊將其拉向 fabric
+- **WHEN** in either pod-parent mode, a K8s `node` is the source of a `node-to-switch` edge
+- **THEN** the node is not pinned; only its uplink edge pulls it toward the fabric
 
-#### Scenario: 固定只引用具 level 的 switch
+#### Scenario: pinning references only levelled switches
 
-- **WHEN** 產生佈局約束
-- **THEN** 約束只引用具 level 的 `switch` id;沒有任何 pod / controller / service / pvc / cluster / K8s node,也沒有任何無 level 的 switch 被固定
+- **WHEN** layout constraints are generated
+- **THEN** the constraints reference only levelled `switch` ids; no pod / controller / service / pvc / cluster / K8s node, and no unlevelled switch, is pinned
 
-#### Scenario: 沒有 switch 具 level 時不產生約束
+#### Scenario: no constraints are produced when no switch has a level
 
-- **WHEN** 沒有任何 `switch` 節點帶有有效 level(含完全沒有 switch 的情況)
-- **THEN** 不產生任何佈局約束
+- **WHEN** no `switch` node carries a valid level (including the case of no switches at all)
+- **THEN** no layout constraints are produced
 
-#### Scenario: 只在 fcose 佈局下固定
+#### Scenario: pinned only under the fcose layout
 
-- **WHEN** 目前佈局為 `dagre`
-- **THEN** 不套用 fabric 約束(`dagre` 已對整張圖分層)
+- **WHEN** the current layout is `dagre`
+- **THEN** the fabric constraints are not applied (`dagre` already tiers the whole graph)
 
-### Requirement: switch 相關邊的正交路由
+### Requirement: orthogonal routing of switch-related edges
 
-系統 SHALL 在**兩種** pod-parent mode 下皆以正交(直角)路由渲染 `node-to-switch` 與 `switch-to-switch` 邊(cytoscape.js 的 `taxi` curve style),使匯入同一 switch 的多條邊共用直角通道,而非彼此重疊的曲線。其他所有 edge type SHALL 維持既有的曲線路由(`bezier` curve style)。`node-to-switch` 與 `switch-to-switch` SHALL 共用**同一個 infra 顏色**——顏色權威由 graph-view 的 edge type 配色表擁有,`node-to-switch` MUST NOT 另設獨立的顏色(例如 indigo);路由 SHALL NOT 改變 graph-view 所指派的任何顏色。edge 路由 SHALL 為 stylesheet 層的責任,因此與目前使用的佈局演算法無關。
+The system SHALL render `node-to-switch` and `switch-to-switch` edges with orthogonal (right-angle) routing (cytoscape.js's `taxi` curve style) in **both** pod-parent modes, so that multiple edges converging on the same switch share right-angle channels rather than overlapping curves. Every other edge type SHALL keep its existing curved routing (`bezier` curve style). `node-to-switch` and `switch-to-switch` SHALL share **the same infra color** — color authority is owned by graph-view's edge type color table, and `node-to-switch` MUST NOT have a separate color of its own (for example indigo); routing SHALL NOT change any color graph-view assigns. Edge routing SHALL be a stylesheet-layer responsibility and therefore independent of the layout algorithm currently in use.
 
-#### Scenario: switch 邊以正交方式路由
+#### Scenario: switch edges are routed orthogonally
 
-- **WHEN** 某邊的 type 為 `node-to-switch` 或 `switch-to-switch`
-- **THEN** 以 `taxi`(正交)curve style 渲染
+- **WHEN** an edge's type is `node-to-switch` or `switch-to-switch`
+- **THEN** it is rendered with the `taxi` (orthogonal) curve style
 
-#### Scenario: 非 switch 邊維持曲線
+#### Scenario: non-switch edges stay curved
 
-- **WHEN** 某邊的 type 為 `node-to-switch` / `switch-to-switch` 以外的任何 type
-- **THEN** 以既有的 `bezier` curve style 渲染
+- **WHEN** an edge's type is anything other than `node-to-switch` / `switch-to-switch`
+- **THEN** it is rendered with the existing `bezier` curve style
 
-#### Scenario: node-to-switch 與 switch-to-switch 共用一個 infra 顏色
+#### Scenario: node-to-switch and switch-to-switch share one infra color
 
-- **WHEN** 渲染 `node-to-switch` 與 `switch-to-switch` 邊
-- **THEN** 兩者使用同一個 infra 顏色與實線樣式(node-to-switch 沒有獨立的 indigo),只在端點上不同;`taxi` 路由不改變該顏色
+- **WHEN** `node-to-switch` and `switch-to-switch` edges are rendered
+- **THEN** both use the same infra color and solid line style (node-to-switch has no separate indigo), differing only in their endpoints; `taxi` routing does not change that color
 
-### Requirement: 沒有 switch 具 level 時零影響
+### Requirement: zero impact when no switch has a level
 
-系統 SHALL 保證:當 graph 中沒有任何 `switch` 節點帶有有效 level 時,其佈局結果與此 capability 不存在時完全相同——不產生任何約束,力導向佈局結果不變。(switch 相關邊的路由由上述正交路由需求規範,與 level 無關。)
+The system SHALL guarantee that when no `switch` node in the graph carries a valid level, its layout result is exactly the same as if this capability did not exist — no constraints are produced and the force-directed layout result is unchanged. (The routing of switch-related edges is governed by the orthogonal routing requirement above and is independent of levels.)
 
-#### Scenario: 無 switch 的 graph 不受影響
+#### Scenario: a graph without switches is unaffected
 
-- **WHEN** graph 不含任何 `switch` 節點
-- **THEN** 不產生佈局約束,既有佈局行為完整保留
+- **WHEN** the graph contains no `switch` nodes
+- **THEN** no layout constraints are produced and the existing layout behaviour is fully preserved
 
-#### Scenario: 無 level 的 switch 不被固定
+#### Scenario: unlevelled switches are not pinned
 
-- **WHEN** graph 含有 `switch` 節點,但沒有任何一個帶有有效 level
-- **THEN** 不產生佈局約束,每個 switch 皆由力導向佈局自由擺放
+- **WHEN** the graph contains `switch` nodes but none carries a valid level
+- **THEN** no layout constraints are produced and every switch is freely placed by the force-directed layout

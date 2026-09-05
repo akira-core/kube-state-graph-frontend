@@ -1,102 +1,153 @@
 ## Purpose
 
-定義送往後端的 graph 過濾:一列位於導覽列之下的過濾控制(cluster / AZ / env / namespace / edge type 與投影),它們如何成為 `endpoints.graph` 的查詢參數,選項自何處列舉(pod inventory 的 label values 與後端的 edge-type 目錄),以及選項來源失敗時的行為。此能力取代 Grafana dashboard 變數所做的事。它與 `element-filter`(legend 上的視覺過濾)互不相干:前者決定後端回傳什麼,後者只在已回傳的圖上做視覺精修。
+Defines the graph filtering sent to the backend: a row of filter controls below the nav bar (cluster / AZ / env / namespace / edge type and projection), how they become query parameters of `endpoints.graph`, where the options are enumerated from (the label values of the pod inventory and the backend's edge-type catalogue), and the behaviour when an option source fails. This capability replaces what Grafana dashboard variables did. The controls are presented with the **dropdown interaction of Grafana dashboard variables** (this contract is also shared by the estate / narrowing selectors of `storage-flow-sankey`), and the selection is synced to the URL query of the current route. It is unrelated to `element-filter` (the visual filtering on the legend): the former decides what the backend returns, the latter only visually refines the graph already returned.
 
 ## ADDED Requirements
 
-### Requirement: 過濾列與其控制
+### Requirement: Filter bar and its controls
 
-非 demo 模式下,app SHALL 於導覽列之下、視圖區之上顯示一列固定高度的**過濾列**,含下列控制,每個皆 MUST 具有可存取名稱並可經鍵盤操作:
+Outside demo mode, the app SHALL display a fixed-height **filter bar** below the nav bar and above the view area, with the following controls, each of which MUST have an accessible name and be operable by keyboard:
 
-1. **Cluster**、**AZ**、**Env**、**Namespace** 四個多選控制(身分維度);
-2. **Edge type** 多選控制;
-3. **Projection** 單選控制,兩個選項為 `Traffic graph`(對應 `prune=true`,預設)與 `Full inventory`(對應 `prune=false`);
-4. **Clear** 動作,將全部選擇還原為預設(五個清單清空、投影回 `Traffic graph`);當已是預設時 MUST 為 disabled。
+1. Four **multi-select dropdown** controls **Cluster**, **AZ**, **Env**, **Namespace** (identity dimensions; custom values allowed);
+2. An **Edge type** multi-select dropdown control (custom values **not** allowed — the backend returns 400 for unregistered values);
+3. A **Projection** single-select control, whose two options are `Traffic graph` (mapping to `prune=true`, the default) and `Full inventory` (mapping to `prune=false`);
+4. A **Clear** action, restoring every selection to its default (the five lists emptied, projection back to `Traffic graph`); it MUST be disabled when already at the default.
 
-`demoMode` 為 `true` 時 MUST NOT 顯示過濾列——demo 模式渲染內建 fixture,沒有可窄化的後端。
+When `demoMode` is `true` the filter bar MUST NOT be shown, and the app MUST NOT read or write any filter-related query parameters — demo mode renders the bundled fixture, and there is no backend to narrow.
 
-某個維度已被選取的值即使不再出現於該維度的選項清單中(如 namespace 已被清空、cluster 已下線),MUST 仍留在清單中並維持選取樣式:把它從清單移除會在控制仍宣稱過濾生效的情況下,悄悄放寬過濾範圍。
+A value already selected in some dimension (whether from user action or from the URL), even when it is not in that dimension's option list (e.g. the namespace has been emptied, the cluster has gone offline, the options have not loaded yet, the value is custom), MUST remain in the list and keep its selected styling, and MUST be marked as **unlisted** (on both the pill and the list row): removing it from the list would silently widen the filter scope while the control still claims the filter is in effect.
 
-#### Scenario: demo 模式不顯示過濾列
+#### Scenario: Demo mode does not show the filter bar
 
-- **WHEN** runtime config 的 `demoMode` 為 `true`
-- **THEN** 過濾列不存在於 DOM,且 app 不對 `endpoints.labelValues` / `endpoints.edgeTypes` 發出任何請求
+- **WHEN** `demoMode` in the runtime config is `true`
+- **THEN** the filter bar is absent from the DOM, and the app issues no request to `endpoints.labelValues` / `endpoints.edgeTypes`
 
-#### Scenario: Clear 還原為預設
+#### Scenario: Clear restores the defaults
 
-- **WHEN** 使用者選了兩個 namespace 並將投影改為 `Full inventory`,然後按下 Clear
-- **THEN** 五個清單皆清空、投影回 `Traffic graph`,且 Clear 隨即為 disabled
+- **WHEN** the user selects two namespaces and changes the projection to `Full inventory`, then presses Clear
+- **THEN** all five lists are emptied, the projection returns to `Traffic graph`, and Clear is immediately disabled
 
-#### Scenario: 已消失的選取值仍留在清單
+#### Scenario: A selected value that has disappeared stays in the list
 
-- **WHEN** 使用者選取 namespace `shop`,其後選項來源不再回報 `shop`
-- **THEN** `shop` 仍出現於 Namespace 控制中且維持選取,過濾範圍不變
+- **WHEN** the user selects namespace `shop`, and afterwards the option source no longer reports `shop`
+- **THEN** `shop` still appears in the Namespace control and remains selected, and the filter scope is unchanged
 
-### Requirement: 過濾由後端執行,而非前端
+### Requirement: Interaction contract of the dropdown control (Grafana style)
 
-過濾選擇 MUST 以查詢參數送往 `endpoints.graph`,MUST NOT 於前端對已回傳的圖套用:此處要證明的正是 `cluster` / `az` / `env` / `namespace` 作為原始 label matcher 抵達上游 PromQL。參數對應為 `cluster` / `az` / `env` / `namespace` / `edge_type`(前端欄位 `edgeType` 於組 URL 之處更名,是唯一一處)與 `prune`。同一參數名重複代表 OR,不同參數名之間為 AND。清單為空的維度 MUST 完全不出現於查詢字串;`prune` MUST 恆帶(見 `graph-data-source`)。
+Each dropdown control SHALL consist of a **trigger** and a **popover**, mimicking the dropdown of Grafana dashboard variables:
 
-變更任一過濾控制 MUST 以新的選擇對 `endpoints.graph` 重新取數,並走與「重新載入」相同的路徑:既有圖於請求進行中持續可見,不重跑佈局,亦不重置視圖狀態。
+- **Trigger**: a button carrying the dimension label, whose accessible name is that dimension name. With no selection it shows `All`; with a selection it shows each selected value as a pill, each pill carrying a removable `×`; with more than two it shows the first two pills and a `+N` summary. Click, `Enter`, `Space` or `↓` MUST open the popover.
+- **Popover**: on open, focus MUST land on the **search input** at the top; typing filters the list by case-insensitive substring. The list is a `listbox`: in multi-select each row is a checkbox row, with a fixed `All` row at the top (shown checked when nothing is selected; activating it MUST empty that dimension); in single-select each row is a plain row, with the current value marked. `↑` / `↓` move, `Enter` toggles (multi-select) or selects and closes (single-select), `Esc` closes and returns focus to the trigger, `Tab` and clicking outside close. After a multi-select toggle the popover MUST stay open.
+- **Custom value** (dimensions that allow it): when the search text is non-empty and does not exactly match any option, a "Use "<text>"" row MUST appear at the bottom of the list; activating it MUST add that text to the selection (multi-select) or set it as the selection (single-select), marked as unlisted. Dimensions that do not allow custom values MUST NOT show this row — `edge_type` is the only one, because its catalogue and the backend validation come from the same registry.
+- **No options**: for a dimension that allows custom values, with zero options the popover MUST still open and contain only the search input and the custom-value row; for one that does not, it shows "No options available" and is not selectable.
+- **ARIA**: trigger `aria-haspopup="listbox"` and `aria-expanded`; search input `role="combobox"`, `aria-controls` pointing at the list; list `role="listbox"`, with `aria-multiselectable="true"` in multi-select; each row `role="option"` and `aria-selected`.
+- This contract MUST be implemented by a single shared component, and the Graph filter bar and the Sankey's estate / narrowing selectors MUST use that same component; Projection is single-select and is likewise presented with this component.
 
-過濾選擇 MUST NOT 被持久化——不寫入瀏覽器本機儲存、不寫入 URL、不寫入 runtime config。被記住的過濾在下次造訪時是隱形的,會把一個被窄化的機房當成全部呈現,正是投影控制要避免的那種「這裡沒有東西」與「這裡沒有顯示東西」的混淆。
+#### Scenario: Search and toggle in a multi-select dropdown
 
-`element-filter` 的 kind / edge-type 顯示切換、ingress toggle、搜尋、pod-parent mode 與 collapse 狀態 MUST NOT 影響此處的任何參數,反之亦然。
+- **WHEN** the user opens the Namespace dropdown, types `sh`, moves to `shop` with `↓` and presses `Enter`
+- **THEN** `shop` is checked, the trigger shows a `shop` pill, the popover stays open and the search text is still `sh`; the graph request carries `namespace=shop`
 
-#### Scenario: 多選送出重複參數
+#### Scenario: The All row empties the dimension
 
-- **WHEN** 使用者於 Cluster 選取 `prod` 與 `dr`,於 Namespace 選取 `shop`
-- **THEN** 送出的 graph 請求帶 `cluster=prod&cluster=dr&namespace=shop`,不帶 `az` 與 `env`
+- **WHEN** Namespace has `shop` and `infra` selected, and the user activates the `All` row at the top of the list
+- **THEN** both are deselected, the trigger shows `All`, and the graph request carries no `namespace`
 
-#### Scenario: 投影切換送出 prune
+#### Scenario: Custom value
 
-- **WHEN** 使用者將投影自 `Traffic graph` 改為 `Full inventory`
-- **THEN** 送出的 graph 請求帶 `prune=false`,且該次取數期間既有圖持續可見
+- **WHEN** Cluster's options are `prod` / `dr`, and the user types `staging` and activates the "Use "staging"" row
+- **THEN** `staging` becomes selected and is marked as unlisted, and the graph request carries `cluster=staging`
 
-#### Scenario: 過濾不被記住
+#### Scenario: Edge type offers no custom value
 
-- **WHEN** 使用者選取 cluster `prod` 後重新整理頁面
-- **THEN** Cluster 控制為空選,網址列不含任何過濾參數,runtime config 未被寫入
+- **WHEN** the user types `bogus-edge` in the Edge type dropdown
+- **THEN** the list is empty and there is no "Use "bogus-edge"" row, `Enter` does not change the selection, and the graph request carries no `edge_type`
 
-### Requirement: 選項來源
+#### Scenario: Keyboard close and focus restoration
 
-四個身分維度的選項 SHALL 讀自 `endpoints.labelValues` 所指的 Prometheus 相容 HTTP API 根:每個維度請求 `<root>/api/v1/label/<dimension>/values?match[]=kube_pod_info`,回應 MUST 依 Prometheus 封套 `{"status":"success","data":[…]}` 驗證,`data` MUST 為字串陣列。`status` 非 `success` 時 MUST 視為失敗並回報其 `error`,MUST NOT 讀成空清單——一個空的下拉與一個壞掉的 store 不可長得一樣。
+- **WHEN** the user opens the AZ dropdown by keyboard and then presses `Esc`
+- **THEN** the popover closes, focus returns to the AZ trigger, and the selection is unchanged
 
-序列 `kube_pod_info` MUST 固定,不可設定:它就是 Kubernetes pod inventory 的定義,也正是後端把 `?cluster=` / `?az=` / `?env=` / `?namespace=` 推入上游查詢時所比對的 label 家族。選項 MUST NOT 改由 graph 回應推導——回應帶的是合成後的 `<az>-<env>-<cluster>` 身分,把它送回作 `?cluster=` 會比不中任何序列、得到一張 200 的空圖;`az` 與 `env` 更根本不在回應裡。
+#### Scenario: Pill overflow summary
 
-Edge type 的選項 SHALL 讀自 `endpoints.edgeTypes`(後端的 `/v1/edge-types`),回應形狀為 `{ "edge_types": [{ "type": "…" }, …] }`,任一元素缺 `type` 即為失敗。該目錄與驗證 `?edge_type=` 的是上游同一份 registry,故它提供的值必為後端接受的值;寫死於前端的清單遲早會提供一個換來 400 的值。
+- **WHEN** Namespace has four values selected
+- **THEN** the trigger shows the first two pills and `+2`; after removing one of the pills the graph request updates immediately
 
-兩個端點皆為選用:缺席(或為空字串)時,對應控制 MUST 不提供任何選項,且 MUST NOT 因此發出請求。選項 MUST 於每個來源各載入一次,而非隨每次 graph 請求重載:選項追蹤的是 inventory 與 registry,兩者都不隨投影或當前選擇變動;隨請求重建會把 namespace 清單縮成剛好那張被 prune 過的圖所含的值,使用者便再也無法把過濾放寬回去。
+### Requirement: Filtering is performed by the backend, not the frontend
 
-#### Scenario: 身分維度自 label values 列舉
+The filter selection MUST be sent to `endpoints.graph` as query parameters, and MUST NOT be applied on the frontend to the graph already returned: what is being proven here is precisely that `cluster` / `az` / `env` / `namespace` reach the upstream PromQL as raw label matchers. The parameter mapping is `cluster` / `az` / `env` / `namespace` / `edge_type` (the frontend field `edgeType` is renamed where the URL is built, the only such place) and `prune`. Repeating the same parameter name means OR; between different parameter names it is AND. A dimension whose list is empty MUST NOT appear in the query string at all; `prune` MUST always be carried (see `graph-data-source`).
 
-- **WHEN** `endpoints.labelValues` 為 `https://prom.example/`,`GET https://prom.example/api/v1/label/namespace/values?match[]=kube_pod_info` 回 `{"status":"success","data":["shop","infra"]}`
-- **THEN** Namespace 控制提供 `shop` 與 `infra` 兩個選項
+Changing any filter control MUST refetch `endpoints.graph` with the new selection, and take the same path as "reload": the existing graph stays visible while the request is in flight, the layout is not re-run, and the view state is not reset.
 
-#### Scenario: store 回報錯誤不被當成空清單
+The filter selection MUST be synced to the URL query of the current route (rules in the "view routing" of `app-shell`): the parameter names are the same as those sent to the backend (`cluster` / `az` / `env` / `namespace` / `edge_type` / `prune`), multiple values are expressed as repeated keys; a dimension whose list is empty is not written, and `prune` is written only when `false` (the default `true` is not written). Changes update with replace. On page mount the initial selection MUST be read from the URL — **the URL is the source of truth for these selections**; a value the URL provides that is not in the option list MUST still be applied and marked as unlisted (the options may not have loaded yet, the source may have failed, or the value was custom to begin with). The filter selection MUST NOT be written to browser local storage, and MUST NOT be written to the runtime config: an invisible filter applied automatically would present a narrowed estate as the whole of it, exactly the confusion between "there is nothing here" and "nothing is shown here" that the projection control is meant to avoid; a filter in the URL is visible in the address bar and on the controls at the same time, and a clean `/graph` means no filter.
 
-- **WHEN** label values 端點回 `{"status":"error","error":"query timed out"}`
-- **THEN** 該控制不提供選項,且過濾列顯示來源不可用的指示,其細節含 `query timed out`
+The kind / edge-type display toggles of `element-filter`, the ingress toggle, search, pod-parent mode and collapse state MUST NOT affect any parameter here, and vice versa.
 
-#### Scenario: edge type 自後端目錄列舉
+#### Scenario: Multi-select sends repeated parameters
 
-- **WHEN** `endpoints.edgeTypes` 回 `{"edge_types":[{"type":"pod-calls-service"},{"type":"pvc-to-netapp-aggr"}]}`
-- **THEN** Edge type 控制恰好提供這兩個值
+- **WHEN** the user selects `prod` and `dr` in Cluster, and `shop` in Namespace
+- **THEN** the graph request sent carries `cluster=prod&cluster=dr&namespace=shop`, and carries no `az` or `env`
 
-#### Scenario: 端點缺席即不提供選項
+#### Scenario: Projection switch sends prune
 
-- **WHEN** runtime config 無 `endpoints.edgeTypes`
-- **THEN** app 不為 edge type 發出任何請求,該控制沒有選項,其餘控制不受影響
+- **WHEN** the user changes the projection from `Traffic graph` to `Full inventory`
+- **THEN** the graph request sent carries `prune=false`, and the existing graph stays visible for the duration of that fetch
 
-### Requirement: 選項來源失敗不得變成缺圖
+#### Scenario: Filters restore from the URL
 
-任一選項來源失敗(HTTP 非 2xx、網路錯誤、JSON 解析失敗、形狀不符、Prometheus `status` 非 `success`)MUST NOT 使 graph 取數失敗、MUST NOT 阻擋過濾列渲染、MUST NOT 拋出未捕捉的錯誤。失敗的維度 MUST 呈現為空的控制,並於過濾列上以一個指示說明有幾個來源不可用,其細節(每個失敗來源一行,含 URL 與原因)MUST 可被使用者讀到。一個消失的下拉絕不能變成一張消失的圖。
+- **WHEN** the user selects cluster `prod` and then refreshes the page
+- **THEN** the address bar contains `cluster=prod`, the Cluster control is still `prod`, the graph request carries `cluster=prod`, and the runtime config has not been written; opening a bare `/graph` separately leaves Cluster with an empty selection
 
-#### Scenario: 一個來源失敗其餘照常
+#### Scenario: Deep link carries an unlisted value
 
-- **WHEN** `endpoints.labelValues` 回 503,而 `endpoints.edgeTypes` 正常回應
-- **THEN** 四個身分控制為空、Edge type 控制正常提供選項,過濾列顯示 4 個來源不可用的指示,graph 仍以目前選擇正常取數並渲染
+- **WHEN** the user opens `/graph?namespace=ghost`, and the label values do not contain `ghost`
+- **THEN** Namespace shows `ghost` as selected and marked unlisted, the graph request carries `namespace=ghost`; the (possibly empty) graph the backend returns renders as usual
 
-#### Scenario: 失敗細節可讀
+#### Scenario: prune default is not written to the URL
 
-- **WHEN** 某個來源以 `GET https://prom.example/api/v1/label/az/values…: data is not an array` 失敗
-- **THEN** 該訊息可自過濾列的來源指示讀到,而非只記於主控台
+- **WHEN** the user switches the projection to `Full inventory`, then back to `Traffic graph`
+- **THEN** the address bar first contains `prune=false`, and after switching back does not contain `prune`; both graph requests carry `prune`
+
+### Requirement: Option sources
+
+The options of the four identity dimensions SHALL be read from the Prometheus-compatible HTTP API root that `endpoints.labelValues` points to: each dimension requests `<root>/api/v1/label/<dimension>/values?match[]=kube_pod_info`, the response MUST be validated against the Prometheus envelope `{"status":"success","data":[…]}`, and `data` MUST be an array of strings. When `status` is not `success` it MUST be treated as a failure and its `error` reported, and MUST NOT be read as an empty list — an empty dropdown and a broken store must not look the same.
+
+The series `kube_pod_info` MUST be fixed, not configurable: it is the definition of the Kubernetes pod inventory, and it is precisely the label family the backend matches against when it pushes `?cluster=` / `?az=` / `?env=` / `?namespace=` into the upstream query. The options MUST NOT instead be derived from the graph response — the response carries the composed `<az>-<env>-<cluster>` identities, and sending one back as `?cluster=` would match no series and yield an empty graph with a 200; `az` and `env` are, more fundamentally, not in the response at all.
+
+The Edge type options SHALL be read from `endpoints.edgeTypes` (the backend's `/v1/edge-types`), with response shape `{ "edge_types": [{ "type": "…" }, …] }`; any element missing `type` is a failure. That catalogue and the validation of `?edge_type=` are the same upstream registry, so the values it offers are necessarily values the backend accepts; a list hard-coded in the frontend will sooner or later offer a value that earns a 400.
+
+Both endpoints are optional: when absent (or an empty string), the corresponding control MUST offer no options, and MUST NOT issue a request because of it; the identity-dimension controls can still take custom values, while the Edge type control has no options and no custom value. Options MUST be loaded once per source, not reloaded with every graph request: options track the inventory and the registry, neither of which changes with the projection or the current selection; rebuilding them per request would shrink the namespace list to exactly the values contained in that pruned graph, and the user could never widen the filter back out.
+
+#### Scenario: Identity dimensions enumerate from label values
+
+- **WHEN** `endpoints.labelValues` is `https://prom.example/`, and `GET https://prom.example/api/v1/label/namespace/values?match[]=kube_pod_info` returns `{"status":"success","data":["shop","infra"]}`
+- **THEN** the Namespace control offers the two options `shop` and `infra`
+
+#### Scenario: A store reporting an error is not taken as an empty list
+
+- **WHEN** the label values endpoint returns `{"status":"error","error":"query timed out"}`
+- **THEN** that control offers no options, and the filter bar shows a source-unavailable indicator whose details contain `query timed out`
+
+#### Scenario: Edge type enumerates from the backend catalogue
+
+- **WHEN** `endpoints.edgeTypes` returns `{"edge_types":[{"type":"pod-calls-service"},{"type":"pvc-to-netapp-aggr"}]}`
+- **THEN** the Edge type control offers exactly these two values
+
+#### Scenario: An absent endpoint offers no options
+
+- **WHEN** the runtime config has no `endpoints.edgeTypes`
+- **THEN** the app issues no request for edge type, that control has no options, and the other controls are unaffected
+
+### Requirement: An option source failure must not become a missing graph
+
+Failure of any option source (HTTP non-2xx, network error, JSON parse failure, shape mismatch, Prometheus `status` not `success`) MUST NOT make the graph fetch fail, MUST NOT block the filter bar from rendering, and MUST NOT throw an uncaught error. The failed dimension MUST be presented as a control with no options that still accepts custom values (except edge type: no options and no custom value), and the filter bar MUST carry an indicator stating how many sources are unavailable, whose details (one line per failed source, with URL and reason) MUST be readable by the user. A vanished dropdown must never become a vanished graph.
+
+#### Scenario: One source fails, the rest proceed as usual
+
+- **WHEN** `endpoints.labelValues` returns 503, while `endpoints.edgeTypes` responds normally
+- **THEN** the four identity controls have no options but accept custom values, the Edge type control offers options normally, the filter bar shows an indicator of 4 sources unavailable, and the graph still fetches and renders normally with the current selection
+
+#### Scenario: Failure details are readable
+
+- **WHEN** some source fails with `GET https://prom.example/api/v1/label/az/values…: data is not an array`
+- **THEN** that message is readable from the filter bar's source indicator, not only logged to the console

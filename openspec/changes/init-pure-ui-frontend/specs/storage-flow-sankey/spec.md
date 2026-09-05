@@ -1,657 +1,674 @@
 ## Purpose
 
-`storage-flow-sankey` 定義 Sankey 儲存流量視圖的行為契約。此視圖的資料來自**它自己的後端端點** `GET /v1/storage-graph`(runtime config 的 `endpoints.storageGraph`),與 Graph 視圖的 `GET /v1/graph` 是兩條獨立的取數路徑;取數本身的規則由 `graph-data-source` 規範,本 capability 規範視圖行為:估計選擇器(`az` / `env` / root / `cluster` / `namespace`)、六層 tier 的呈現、以後端已加總的 `storage-flow` 權重繪製、讀 / 寫分流、缺值(absent ≠ 0)處理、排序、tooltip、hover 高亮、跨視圖 Locate、主題、尺寸、重新整理與效能界限。本 capability 不決定繪圖框架(於 design 定案),只規範可觀察行為。
+`storage-flow-sankey` defines the behavioural contract of the Sankey storage-flow view. This view's data comes from **its own backend endpoint** `GET /v1/storage-graph` (`endpoints.storageGraph` in the runtime config), which is a fetch path independent of the Graph view's `GET /v1/graph`; the rules of fetching itself are specified by `graph-data-source`, and this capability specifies the view behaviour: the estate selectors (`az` / `env` / root / `cluster` / `namespace` — presented with the dropdown contract of `graph-filters`, and synced to the URL query together with mode), the presentation of the six tiers, drawing with the backend-summed `storage-flow` weights, the read / write split, missing-value handling (absent ≠ 0), sorting, tooltips, hover highlighting, cross-view Locate, theme, sizing, refresh and performance bounds. This capability does not decide the drawing framework (settled in design); it only specifies observable behaviour.
 
-**為何不再由 `/v1/graph` 推導。** 早期設計讓 Sankey 與 Graph 共用一份 `/v1/graph` 資料,由前端沿 `pod → pvc → netapp-aggr` 推鏈、自行加總 aggregate 入邊、自行把 RWX claim 的量測均分給掛載它的 pod。後端的 storage-graph 端點使這條路失效也不必要:它多出一個 `netapp-svm` tier(`/v1/graph` 沒有這個節點型別)、多出 Kubernetes node tier、提供由儲存端或工作負載端出發的 root 搜尋,並保證權重**逐 tier 守恆**——這些沒有一項能從 `/v1/graph` 的 body 推導出來,而前端自行加總只會產生一組與後端不一致、且無法對帳的數字。
+**Why it is no longer derived from `/v1/graph`.** The early design had the Sankey and the Graph share one copy of `/v1/graph` data, with the frontend walking the chain along `pod → pvc → netapp-aggr`, summing the aggregate's inbound edges itself, and splitting an RWX claim's measurement evenly across the pods that mount it. The backend's storage-graph endpoint makes that path both invalid and unnecessary: it adds a `netapp-svm` tier (`/v1/graph` has no such node type), adds a Kubernetes node tier, offers root search starting from either the storage side or the workload side, and guarantees that weights are **conserved per tier** — none of these can be derived from the body of `/v1/graph`, and a frontend summing on its own would only produce a set of numbers that disagree with the backend and cannot be reconciled.
 
 ## ADDED Requirements
 
-### Requirement: 輸入為自有的 storage-graph 取數
+### Requirement: Input is its own storage-graph fetch
 
-Sankey 視圖 MUST 以 `endpoints.storageGraph` 的回應(經 `graph-data-source` 的同一個 normalize boundary 正規化後)為唯一輸入。它 MUST NOT 讀取 Graph 視圖的 `/v1/graph` 資料,MUST NOT 對 `endpoints.graph` 發出任何請求,亦 MUST NOT 由 `pvc-to-netapp-aggr` / `pod-mounts-pvc` / `pod-to-node` edge 推導任何節點或 link——這些 edge 不會出現在 storage-graph 的 body 中。
+The Sankey view MUST take the response of `endpoints.storageGraph` (normalized through the same normalize boundary of `graph-data-source`) as its sole input. It MUST NOT read the Graph view's `/v1/graph` data, MUST NOT issue any request to `endpoints.graph`, and MUST NOT derive any node or link from `pvc-to-netapp-aggr` / `pod-mounts-pvc` / `pod-to-node` edges — those edges do not appear in the storage-graph body.
 
-Sankey 的節點與 link 為自該回應推導的**唯讀衍生資料**,推導過程 MUST NOT 變更(mutate)該正規化結果的任何節點、edge 或欄位——推導前後 MUST 深度相等(deep-equal)。其資料來源處於 loading / error 狀態時,Sankey MUST 呈現該來源自身的 loading / error 狀態(而非 Graph 視圖的),且不繪製任何圖形。
+The Sankey's nodes and links are **read-only derived data** computed from that response; the derivation MUST NOT mutate any node, edge or field of the normalized result — the result MUST be deep-equal before and after derivation. While its data source is in the loading / error state, the Sankey MUST present that source's own loading / error state (not the Graph view's) and draw no graphics.
 
-`endpoints.storageGraph` 未設定時,視圖 MUST 顯示「未設定 storage graph 端點」的說明狀態(見 `runtime-config`),MUST NOT 顯示為錯誤,MUST NOT 退回以 `/v1/graph` 推導。
+When `endpoints.storageGraph` is not configured, the view MUST show the "storage graph endpoint not configured" explanatory state (see `runtime-config`), MUST NOT show it as an error, and MUST NOT fall back to deriving from `/v1/graph`.
 
-#### Scenario: Sankey 不讀 graph 端點
+#### Scenario: Sankey does not read the graph endpoint
 
-- **WHEN** 使用者於 Graph 視圖載入資料後切換至 Sankey 視圖,`az` / `env` 已選定
-- **THEN** app 對 `endpoints.storageGraph` 發出恰好一次請求,對 `endpoints.graph` 發出零次請求,且 Sankey 繪出的元素全部來自 storage-graph 的回應
+- **WHEN** the user switches from `/graph` to `/sankey?az=zone-a&env=prod`
+- **THEN** the app issues exactly one request to `endpoints.storageGraph`, zero requests to `endpoints.graph`, and every element the Sankey draws comes from the storage-graph response
 
-#### Scenario: 推導不改變來源資料
+#### Scenario: Derivation does not change the source data
 
-- **WHEN** 以 storage fixture 正規化後的結果執行 Sankey 推導(Read / Write / Both 三種模式各一次)
-- **THEN** 推導後的正規化結果與推導前的深拷貝 deep-equal(無新增欄位、無改寫的 `metrics`、無被移除的 edge)
+- **WHEN** the Sankey derivation runs on the normalized result of the storage fixture (once each in Read / Write / Both mode)
+- **THEN** the normalized result after derivation is deep-equal to a deep copy taken before derivation (no added fields, no rewritten `metrics`, no removed edges)
 
-#### Scenario: 兩個來源的狀態互相獨立
+#### Scenario: The two sources' states are independent of each other
 
-- **WHEN** Graph 視圖的資料處於 error 狀態,而 storage-graph 請求成功
-- **THEN** Sankey 正常繪製,不呈現任何錯誤;反之 storage-graph 失敗時 Graph 視圖不受影響
+- **WHEN** `/graph` previously ended in error, and the user switches to `/sankey` where the storage-graph request succeeds
+- **THEN** the Sankey draws normally and shows no error; conversely, after a storage-graph failure, switching to `/graph` loads the Graph page with its own state, unaffected
 
-#### Scenario: 未設定端點
+#### Scenario: Endpoint not configured
 
-- **WHEN** runtime config 缺 `endpoints.storageGraph` 且 `demoMode` 為 `false`
-- **THEN** 視圖顯示未設定說明,不發出任何請求,且 MUST NOT 以 Graph 視圖的資料繪製任何圖形
+- **WHEN** the runtime config lacks `endpoints.storageGraph` and `demoMode` is `false`
+- **THEN** the view shows the not-configured explanation, issues no request, and MUST NOT draw any graphics from the Graph view's data
 
-### Requirement: az / env 為必要的單值選擇器
+### Requirement: az / env are required single-value selectors
 
-視圖 SHALL 提供 `az` 與 `env` 兩個**單選**控制,其選項來自 `endpoints.labelValues`(與 Graph 視圖 filter bar 同一來源,見 `graph-data-source`)。兩者 MUST 恰好各送出一個值:後端對缺值以 400 `missing_az` / `missing_env`、對重複值以 400 `invalid_scope` 拒絕,故:
+The view SHALL provide two **single-select dropdown** controls, `az` and `env` (contract: see "Interaction contract of the dropdown control" in `graph-filters`; custom values allowed), whose options come from `endpoints.labelValues` (the same source as the Graph view's filter bar, see `graph-data-source`). Each MUST send exactly one value: the backend rejects a missing value with 400 `missing_az` / `missing_env` and a repeated value with 400 `invalid_scope`, therefore:
 
-- 兩者**皆已選定**前,視圖 MUST NOT 發出任何 storage-graph 請求,並顯示提示說明需各選一個 `az` 與 `env`;此時兩個控制 MUST 可操作。
-- `endpoints.labelValues` 與 `endpoints.storageGraph` 各自獨立選用,故選項可能**一個都列不出來**。此時兩個控制 MUST 仍然渲染且 MUST 仍可輸入(退化為自由文字輸入),MUST NOT 消失或成為空的下拉選單——後端要求這兩個值,一個列不出選項的下拉選單會讓「請各選一個 az 與 env」的提示指向一個選不了的控制,使該視圖永遠無法取數。
-- 某維度的選項**恰好只有一個**時,視圖 SHALL 自動預選該值(此時該維度沒有可做的選擇,要求使用者手動點一次只是摩擦)。選項為零個或兩個以上時 MUST NOT 自動選取。
-- app MUST NOT 從多個候選值中自行挑選其一,MUST NOT 送出空值。
+- Until **both are selected**, the view MUST NOT issue any storage-graph request, and shows a hint explaining that one `az` and one `env` must each be chosen; both controls MUST remain operable at this point.
+- `endpoints.labelValues` and `endpoints.storageGraph` are each independently optional, so the options may be **entirely unlistable**. In that case both controls MUST still render and MUST still accept a custom value (with zero options the dropdown holds only the search input and the "use "<text>"" row); they MUST NOT disappear or become an empty, unselectable dropdown — the backend requires these two values, and a dropdown that lists no options would leave the "please choose one az and one env" hint pointing at a control that cannot be selected, making the view permanently unable to fetch.
+- When a dimension has **exactly one** option, the view SHALL auto-preselect that value (there is no choice to make on that dimension, and requiring a manual click is just friction). With zero or two-or-more options it MUST NOT auto-select.
+- The app MUST NOT pick one of several candidate values on its own, and MUST NOT send an empty value.
+- The selected value MUST sync to the `az` / `env` URL query (replace); on page mount a value present in the URL takes precedence over auto-preselect; a URL value not among the options MUST still be applied and marked as unlisted.
 
-兩者為 Sankey **自有**的控制,與 Graph 視圖 filter bar 的 `az` / `env`(可多選)**互相獨立**:變更其中一邊 MUST NOT 改變另一邊,亦 MUST NOT 觸發另一個視圖重新取數。
+Both are the Sankey's **own** controls and are **independent** of the Graph view filter bar's `az` / `env` (which are multi-select): changing one side MUST NOT rewrite the other page's URL query.
 
-選定值 MUST 於模式切換、resize、主題切換與重新整理後保留;重新整理後若選定值已不在選項中,MUST 清除該選擇並回到「未選齊」狀態,MUST NOT 沉默改選另一個值。
+The selected values MUST be retained across mode switches, resize and theme switches, and restored via the URL after refresh and Back; a restored value that is no longer among the options MUST still be applied and marked as unlisted (the same rule as `graph-filters`), MUST NOT be cleared, and MUST NOT be silently switched to another value — the backend matches on that value; the listing is only an aid.
 
-#### Scenario: 未選齊不取數
+#### Scenario: No fetch until both are selected
 
-- **WHEN** 使用者首次進入 Sankey 視圖,`az` 有三個候選值、`env` 有兩個
-- **THEN** 兩者皆未預選,視圖顯示「請各選一個 az 與 env」提示,且對 `endpoints.storageGraph` 的請求數為 0
+- **WHEN** the user opens bare `/sankey`, `az` has three candidate values and `env` has two
+- **THEN** neither is preselected, the view shows the "please choose one az and one env" hint, and the request count to `endpoints.storageGraph` is 0
 
-#### Scenario: 單一候選值自動預選
+#### Scenario: A single candidate value is auto-preselected
 
-- **WHEN** `az` 的候選值只有 `local-a`、`env` 的候選值只有 `demo`
-- **THEN** 兩者自動預選,視圖立即發出一次請求,查詢字串含 `az=local-a&env=demo`
+- **WHEN** the only candidate value of `az` is `local-a` and the only candidate value of `env` is `demo`
+- **THEN** both are auto-preselected, the view immediately issues one request whose query string contains `az=local-a&env=demo`, and the address bar is replaced with one containing `az=local-a&env=demo`
 
-#### Scenario: 與 Graph filter bar 獨立
+#### Scenario: Independent of the Graph filter bar
 
-- **WHEN** 使用者於 Graph 視圖的 filter bar 選取 `env: prod` 與 `env: dev`(兩個值),再切換至 Sankey 視圖
-- **THEN** Sankey 的 `env` 不受影響(維持其自身選擇或未選狀態),且 MUST NOT 因 Graph 端為多值而顯示錯誤
+- **WHEN** the user selects `env: prod` and `env: dev` (two values) in the Graph view's filter bar, then clicks the Sankey link
+- **THEN** the Sankey's `env` is decided by the rules of bare `/sankey` (auto-preselected or unselected), unaffected by the Graph side's multiple values, and MUST NOT show an error
 
-#### Scenario: 選項消失後回到未選齊
+#### Scenario: Selection is retained when the option disappears
 
-- **WHEN** 已選 `az: zone-b`,重新整理後 label values 不再含 `zone-b`
-- **THEN** `az` 的選擇被清除,視圖回到「請各選一個」提示並停止取數,而非改選其他 zone
+- **WHEN** `az: zone-b` is selected (URL contains `az=zone-b`) and after a refresh the label values no longer contain `zone-b`
+- **THEN** `az` is still `zone-b` and marked as unlisted, the request still carries `az=zone-b`; the user can pick another value from the dropdown
 
-### Requirement: Root 選擇器,可自儲存端或工作負載端出發
+#### Scenario: Deep link carries the estate
 
-視圖 SHALL 提供 root 控制,讓操作者自流向的**任一端**出發搜尋。支援的 root 種類與後端一致:
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod`
+- **THEN** both controls show those values, and the view immediately issues one request carrying `az=zone-a&env=prod` without any control being operated
 
-| 種類          | 參數            | 語意                                                                                    |
-| ------------- | --------------- | --------------------------------------------------------------------------------------- |
-| ONTAP cluster | `ontap_cluster` | 該 ONTAP cluster 內的全部 controller / aggregate / SVM                                  |
-| Node          | `node`          | 同時比對 **NetApp controller 名稱與 Kubernetes node 名稱**——命中任一側即成為該側的 root |
-| Aggregate     | `aggr`          | 一個 ONTAP aggregate                                                                    |
-| SVM           | `svm`           | 一個 SVM                                                                                |
-| Pod           | `pod`           | 一個 pod,值的形式為 `<namespace>/<pod-name>`                                            |
+### Requirement: Root selector, starting from either the storage side or the workload side
 
-每一種皆可重複、可混用。控制項 MUST 明示 `node` 同時比對兩種節點(操作者常不知道手上的名字是哪一種),並 MUST 明示混用兩側時後端取**交集**(路徑須同時碰到儲存端與工作負載端的 root),而非聯集。
+The view SHALL provide a root control that lets the operator start the search from **either end** of the flow. The supported root kinds match the backend:
 
-`pod` 的值 MUST 於送出前驗證為恰有一個 `/` 且兩段皆非空;不合法時 MUST 就地提示且 MUST NOT 送出(後端會以 400 `invalid_scope` 拒絕整個請求,連帶讓其他合法 root 一起失效)。
+| Kind          | Parameter       | Meaning                                                                                                             |
+| ------------- | --------------- | ------------------------------------------------------------------------------------------------------------------- |
+| ONTAP cluster | `ontap_cluster` | Every controller / aggregate / SVM within that ONTAP cluster                                                        |
+| Node          | `node`          | Matches **both NetApp controller names and Kubernetes node names** — a hit on either side makes it that side's root |
+| Aggregate     | `aggr`          | One ONTAP aggregate                                                                                                 |
+| SVM           | `svm`           | One SVM                                                                                                             |
+| Pod           | `pod`           | One pod, with the value in the form `<namespace>/<pod-name>`                                                        |
 
-全部 root 為空時等同「該估計的完整儲存流量」,MUST 為合法狀態而非錯誤。root 的變更 MUST 觸發一次重新取數。app MUST NOT 於客戶端再依 root 過濾後端回傳的元素——投影已由後端完成,客戶端再過濾會破壞權重守恆。
+Every kind may be repeated and mixed. The control MUST state explicitly that `node` matches both kinds of node (operators often do not know which kind the name in hand is), and MUST state explicitly that when both sides are mixed the backend takes the **intersection** (a path must touch both a storage-side root and a workload-side root), not the union.
 
-視圖 SHALL 另提供選用的 `cluster` 與 `namespace` 收斂控制(可多選,選項來自 `endpoints.labelValues`),非空時作為請求參數送出。它們 MUST NOT 於客戶端過濾——理由同上。
+A `pod` value MUST be validated before sending as containing exactly one `/` with both segments non-empty; when invalid it MUST prompt inline and MUST NOT be sent (the backend would reject the whole request with 400 `invalid_scope`, taking the other valid roots down with it).
 
-與 `az` / `env` 不同,這兩者是對一個**可列舉集合**的收斂:列不出任何選項且當前無選擇時 MUST NOT 渲染(沒有可收斂的對象,而請求本來就不需要它們)。
+The root kind is chosen with the shared dropdown (single-select, custom values not allowed); the root value is free text (there is no listable source). The root selection MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys); on page mount it is read from the URL, and an invalid `pod` value in the URL MUST not be sent and MUST prompt inline.
 
-#### Scenario: 儲存端 root
+All roots empty is equivalent to "the complete storage flow of that estate" and MUST be a valid state rather than an error. A root change MUST trigger one refetch. The app MUST NOT further filter the elements returned by the backend by root on the client side — the projection has already been done by the backend, and client-side filtering would break weight conservation.
 
-- **WHEN** 使用者加入 root `aggr: aggr1`
-- **THEN** 請求含 `aggr=aggr1`,回傳的 body 只含流經 `aggr1` 的路徑,視圖原樣繪製而不再自行篩選
+The view SHALL additionally provide optional `cluster` and `namespace` narrowing controls (multi-select dropdowns, contract see `graph-filters`, options from `endpoints.labelValues`; the selection syncs to the URL's `cluster` / `namespace`), sent as request parameters when non-empty. They MUST NOT filter on the client side — for the same reason as above.
 
-#### Scenario: 工作負載端 root
+Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can be listed and there is currently no selection, they MUST NOT render (there is nothing to narrow, and the request does not need them anyway).
 
-- **WHEN** 使用者加入 root `pod: shop/orders-0`
-- **THEN** 請求含 `pod=shop%2Forders-0`,視圖繪出該 pod 之下的完整儲存鏈
+#### Scenario: Storage-side root
 
-#### Scenario: 兩側混用取交集
+- **WHEN** the user adds root `aggr: aggr1`
+- **THEN** the request contains `aggr=aggr1`, the returned body contains only paths flowing through `aggr1`, and the view draws it as-is without filtering further on its own
 
-- **WHEN** 使用者同時加入 `aggr: aggr1` 與 `pod: shop/orders-0`,而該 pod 另掛載一個位於 `aggr2` 的 claim
-- **THEN** 兩個 root 一併送出;控制項說明文字指出兩側取交集,且視圖只繪出 `aggr1` 到該 pod 的路徑(後端已完成投影)
+#### Scenario: Workload-side root
 
-#### Scenario: 不合法的 pod root 不送出
+- **WHEN** the user adds root `pod: shop/orders-0`
+- **THEN** the request contains `pod=shop%2Forders-0`, and the view draws the full storage chain beneath that pod
 
-- **WHEN** 使用者輸入 pod root `orders-0`(缺 namespace)
-- **THEN** 控制項就地提示需為 `<namespace>/<pod>`,該值不進入請求,既有的其他 root 仍正常運作
+#### Scenario: Mixing both sides takes the intersection
 
-#### Scenario: 無 root 為合法狀態
+- **WHEN** the user adds both `aggr: aggr1` and `pod: shop/orders-0`, and that pod also mounts a claim located on `aggr2`
+- **THEN** both roots are sent together; the control's explanatory text states that the two sides are intersected, and the view draws only the path from `aggr1` to that pod (the backend has already done the projection)
 
-- **WHEN** 使用者清空所有 root
-- **THEN** 請求只帶 `start` / `end` / `az` / `env`(與選用的 `cluster` / `namespace`),視圖繪出該估計的完整儲存流量,不顯示任何錯誤或提示
+#### Scenario: An invalid pod root is not sent
 
-### Requirement: 流向鏈與 tier 結構
+- **WHEN** the user enters pod root `orders-0` (namespace missing)
+- **THEN** the control prompts inline that it must be `<namespace>/<pod>`, the value does not enter the request, and the other existing roots keep working normally
 
-Sankey SHALL 由左至右呈現六個 tier,方向為 **storage → workload**:`netapp-node` → `netapp-aggr` → `netapp-svm` → `pvc` → `pod` → `node`(Kubernetes node)。
+#### Scenario: Roots restored from the URL
 
-Link MUST 一對一對應 body 中的 `storage-flow` edge,其 tier 歸屬 MUST 讀自該 edge 的 `labels.tier`(`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` / `pod-node`),MUST NOT 由端點的 kind 反推:
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod&aggr=aggr1&pod=shop%2Forders-0`
+- **THEN** the root control lists `aggr: aggr1` and `pod: shop/orders-0`, and the request carries both
 
-- **FlexGroup claim** 的路徑自 `svm-pvc` 起始(無 `node-aggr` / `aggr-svm`),其 SVM 在 aggregate tier 上沒有入邊——這是正常形狀,MUST NOT 視為缺漏、MUST NOT 合成替代節點。
-- **未排程的 pod** 的路徑於 `pvc-pod` 結束(無 `pod-node`),該 pod 在 node tier 上沒有出邊。
-- **無流量的 root**(後端materialise 但無任何已繪製 link 的節點)MUST 仍繪於其所屬 tier,作為孤立節點,並在其標籤或 tooltip 標示「無流量」;這是後端刻意的答案(一個沒有 claim 的降級 aggregate、一個沒掛 NetApp claim 的 pod),MUST NOT 被當成缺值而略去。
-  - 這涵蓋**兩種**形狀:完全沒有 edge 的節點,以及有 edge 但每條 edge 皆無量測的節點(見「缺值處理」)。後者無法以「沒有 edge」判定。
-  - 回應的 wire 格式**不帶 root 標記**,故 app MUST 以**發出該請求時的 root 選擇**判定 rootness,比對規則與後端一致:`node` 同時比對 `netapp-node` 與 Kubernetes `node` 的名稱、`ontap_cluster` 涵蓋其下全部 controller / aggregate / SVM、`pod` 比對 `<namespace>/<pod>`;`pvc` 不是 root 種類,故 claim 永不因此保留。
-  - 此判定只用於**保留**投影中已存在的節點,MUST NOT 用於剔除任何節點——後者即是被禁止的客戶端 root 過濾,會破壞權重守恆。root 全空時無節點因此保留,回到「完全沒有 edge」這一種形狀。
+#### Scenario: No root is a valid state
 
-edge 的 `source` / `target` MUST 以 id 解析為 body 中實際存在的節點,否則該 edge MUST 被忽略。`storage-cluster`、`cluster`、`namespace`、`application`、`controller`、`service`、`switch` 等群組或無關節點 MUST NOT 出現為 Sankey 的 tier 節點;它們只作為 `data.parent` 存在(供未來的分組檢視使用)。
+- **WHEN** the user clears all roots
+- **THEN** the request carries only `start` / `end` / `az` / `env` (plus the optional `cluster` / `namespace`), the view draws that estate's complete storage flow, and no error or hint is shown
 
-#### Scenario: fixture 推導出六個 tier
+### Requirement: Flow chain and tier structure
 
-- **WHEN** 以 storage fixture(`SHOWCASE_STORAGE_GRAPH`)推導 Sankey(Both 模式)
-- **THEN** 六個 tier 分別為 `ontap-prod-01` / `ontap-prod-02`、`aggr1` / `aggr2`、`svm_shop` / `svm_dr`、`data-mongo-0` / `data-mongo-1`、`mongo-0` / `mongo-1`、`node-1` / `node-2`
-- **AND** link 依 `labels.tier` 分為五組,且 `storage-cluster/ontap-prod`、`prod/app/mongodb`、`prod/ctrl/StatefulSet/mongodb` 皆不出現為 tier 節點
+The Sankey SHALL present six tiers from left to right, in the direction **storage → workload**: `netapp-node` → `netapp-aggr` → `netapp-svm` → `pvc` → `pod` → `node` (Kubernetes node).
 
-#### Scenario: FlexGroup 路徑自 SVM 起始
+Links MUST correspond one-to-one to the `storage-flow` edges in the body; their tier membership MUST be read from the edge's `labels.tier` (`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` / `pod-node`), and MUST NOT be inferred from the endpoints' kinds:
 
-- **WHEN** body 中某條路徑的最上游 edge 的 `labels.tier` 為 `svm-pvc`,且沒有任何 `aggr-svm` edge 指向該 SVM
-- **THEN** 該 SVM 繪於 SVM tier 且無入邊,其下游正常繪製,視圖不合成任何 aggregate 或 controller 節點
+- The path of a **FlexGroup claim** starts at `svm-pvc` (no `node-aggr` / `aggr-svm`); its SVM has no inbound edge on the aggregate tier — this is a normal shape, MUST NOT be treated as a gap, and MUST NOT have a substitute node synthesized.
+- The path of an **unscheduled pod** ends at `pvc-pod` (no `pod-node`); that pod has no outbound edge on the node tier.
+- A **no-flow root** (a node the backend materialised but that has no drawn link) MUST still be drawn on its tier as an orphaned node, with "no flow" marked on its label or tooltip; this is a deliberate answer from the backend (a degraded aggregate with no claims, a pod mounting no NetApp claim) and MUST NOT be dropped as a missing value.
+  - This covers **two** shapes: a node with no edges at all, and a node that has edges but none of whose edges carries a measurement (see "Missing-value handling"). The latter cannot be decided by "has no edges".
+  - The response's wire format **carries no root marker**, so the app MUST decide rootness from **the root selection at the time that request was issued**, with matching rules consistent with the backend: `node` matches the names of both `netapp-node` and Kubernetes `node`, `ontap_cluster` covers every controller / aggregate / SVM under it, `pod` matches `<namespace>/<pod>`; `pvc` is not a root kind, so a claim is never retained on this basis.
+  - This decision is used only to **retain** nodes already present in the projection; it MUST NOT be used to remove any node — that would be the forbidden client-side root filtering, which breaks weight conservation. With all roots empty no node is retained on this basis, reverting to the single "no edges at all" shape.
 
-#### Scenario: 未排程的 pod 於 pod tier 結束
+An edge's `source` / `target` MUST resolve by id to nodes actually present in the body; otherwise that edge MUST be ignored. Group or unrelated nodes such as `storage-cluster`, `cluster`, `namespace`, `application`, `controller`, `service`, `switch` MUST NOT appear as Sankey tier nodes; they exist only as `data.parent` (for a future grouped view).
 
-- **WHEN** 某 pod 有 `pvc-pod` 入邊但沒有 `pod-node` 出邊
-- **THEN** 該 pod 繪於 pod tier 且無出邊,node tier 不因此出現任何佔位節點
+#### Scenario: The fixture derives six tiers
 
-#### Scenario: 無流量的 root 仍繪製
+- **WHEN** the Sankey is derived from the storage fixture (`SHOWCASE_STORAGE_GRAPH`) in Both mode
+- **THEN** the six tiers are respectively `ontap-prod-01` / `ontap-prod-02`, `aggr1` / `aggr2`, `svm_shop` / `svm_dr`, `data-mongo-0` / `data-mongo-1`, `mongo-0` / `mongo-1`, `node-1` / `node-2`
+- **AND** the links fall into five groups by `labels.tier`, and none of `storage-cluster/ontap-prod`, `prod/app/mongodb`, `prod/ctrl/StatefulSet/mongodb` appears as a tier node
 
-- **WHEN** 使用者以 `aggr: aggr9` 為 root,body 含 `aggr9` 節點與其 controller,但沒有任何 edge
-- **THEN** 兩個節點繪於各自 tier,標示為無流量,視圖 MUST NOT 顯示「無資料」空狀態
+#### Scenario: A FlexGroup path starts at the SVM
 
-### Requirement: 權重直接取自後端,不做客戶端聚合或均分
+- **WHEN** the most upstream edge of some path in the body has `labels.tier` `svm-pvc`, and no `aggr-svm` edge points at that SVM
+- **THEN** that SVM is drawn on the SVM tier with no inbound edge, its downstream is drawn normally, and the view synthesizes no aggregate or controller node
 
-Link 的權重 MUST 直接讀自該 `storage-flow` edge 的 `data.metrics`,對應當前模式的方向欄位(`read_bytes_per_sec` / `write_bytes_per_sec`)。app MUST NOT:
+#### Scenario: An unscheduled pod ends at the pod tier
 
-- 自行加總下游 link 以推導上游權重(後端已保證逐 tier 守恆);
-- 自行把 claim 的量測均分給多個 pod(後端已完成均分);
-- 以 `read_ops` / `write_ops` / `read_latency_us` / `write_latency_us` / `max_iops` / `max_bytes_per_sec` 作為 link 粗細。
+- **WHEN** some pod has a `pvc-pod` inbound edge but no `pod-node` outbound edge
+- **THEN** that pod is drawn on the pod tier with no outbound edge, and no placeholder node appears on the node tier because of it
 
-`labels.attribution` 為 `"split"` 的 `pvc-pod` link,其權重是 RWX claim 均分後的**歸屬值**而非量測值;該 link 的 tooltip MUST 標示為「均分估計」。缺該 label 的 link MUST NOT 標示為估計。
+#### Scenario: A no-flow root is still drawn
 
-視圖 SHALL 提供 mode selector,選項為 **Read** / **Write** / **Both**,預設 **Both**。Read 或 Write 模式下每條 edge 至多一條 link;Both 模式下每條 edge MUST 繪製兩條可區分的 link(read 與 write 各一,顏色不同),且畫面 MUST 顯示 legend 說明兩種顏色。
+- **WHEN** the user uses `aggr: aggr9` as root, and the body contains the `aggr9` node and its controller but no edges at all
+- **THEN** both nodes are drawn on their respective tiers, marked as no-flow, and the view MUST NOT show the "no data" empty state
 
-#### Scenario: 權重原樣取用
+### Requirement: Weights come straight from the backend, with no client-side aggregation or splitting
 
-- **WHEN** 於 Read 模式,`svm_shop → data-mongo-0` 的 edge 帶 `metrics.read_bytes_per_sec: 5242880`
-- **THEN** 該 link 權重為 `5242880`,不受同一 edge 的 `write_bytes_per_sec`、`read_ops` 或 `max_bytes_per_sec` 影響
+A link's weight MUST be read directly from that `storage-flow` edge's `data.metrics`, from the direction field matching the current mode (`read_bytes_per_sec` / `write_bytes_per_sec`). The app MUST NOT:
 
-#### Scenario: 上游權重不由客戶端加總
+- sum downstream links itself to derive an upstream weight (the backend already guarantees per-tier conservation);
+- split a claim's measurement evenly across several pods itself (the backend has already done the split);
+- use `read_ops` / `write_ops` / `read_latency_us` / `write_latency_us` / `max_iops` / `max_bytes_per_sec` as link thickness.
 
-- **WHEN** `ontap-prod-01 → aggr1` 的 edge 帶 `metrics.read_bytes_per_sec: 6000000`,而其下游兩條 `aggr-svm` link 的和為 `5999999`(後端捨入)
-- **THEN** 上游 link 的權重仍為後端給的 `6000000`,app MUST NOT 以下游之和取代它,亦 MUST NOT 因兩者不等而顯示警示
+For a `pvc-pod` link whose `labels.attribution` is `"split"`, the weight is the **attributed value** after evenly splitting an RWX claim, not a measured value; that link's tooltip MUST mark it as "split estimate". A link lacking that label MUST NOT be marked as an estimate.
 
-#### Scenario: 均分歸屬標示為估計
+The view SHALL provide a mode selector with the options **Read** / **Write** / **Both**, defaulting to **Both**. In Read or Write mode each edge yields at most one link; in Both mode each edge MUST draw two distinguishable links (one read, one write, in different colors), and the page MUST show a legend explaining the two colors. The mode MUST sync to the `mode` URL query (`read` / `write`; the default `both` is not written); on page mount it is read from the URL, and an invalid value is treated as `both`.
 
-- **WHEN** 某 `pvc-pod` link 帶 `labels.attribution: "split"` 與 `write_bytes_per_sec: 524288`
-- **THEN** 其權重為 `524288`,tooltip 標示該值為均分估計;同一路徑上的 `svm-pvc` link(無該 label)不標示為估計
+#### Scenario: Mode restored from the URL
 
-#### Scenario: 切換模式即時重算
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod&mode=write`
+- **THEN** the mode selector is Write and only write links are drawn
 
-- **WHEN** 使用者自 Both 切換為 Write
-- **THEN** 每條 edge 只剩 write link,legend 不再顯示 read 項目,且 MUST NOT 重新取數
+#### Scenario: Weights taken as-is
 
-### Requirement: 缺值處理(absent ≠ 0)
+- **WHEN** in Read mode, the `svm_shop → data-mongo-0` edge carries `metrics.read_bytes_per_sec: 5242880`
+- **THEN** that link's weight is `5242880`, unaffected by the same edge's `write_bytes_per_sec`, `read_ops` or `max_bytes_per_sec`
 
-推導 MUST 區分「量測不存在」與「量測為 0」:
+#### Scenario: Upstream weights are not summed by the client
 
-- 某 edge 缺少當前方向的欄位(`read_bytes_per_sec` 或 `write_bytes_per_sec` 不存在)→ 該方向不繪製 link;Both 模式下只繪製存在的那個方向。
-- 某 edge 兩個方向皆不存在(含整個 `metrics` 不存在)→ 該 edge 不產生任何 link。後端對「路徑上每個 claim 都沒有量測」的情況就是不給 `metrics` key,這是一條真實存在但無量測的路徑。
-- 值為 `0` → MUST 繪製一條零權重 link,以最小可見粗細且與非零 link 視覺可區分的方式呈現(例如虛線或半透明),MUST NOT 視為缺值。
-- 節點的所有 link 皆被排除、且該節點不是 root → 該節點不繪製。**root 節點永遠繪製**(見「流向鏈與 tier 結構」)。
-- 上述判定 MUST 只依賴欄位存在與否與數值,MUST NOT 以 `0`、`null` 或任何預設值補入缺值。
+- **WHEN** the `ontap-prod-01 → aggr1` edge carries `metrics.read_bytes_per_sec: 6000000`, while the sum of its two downstream `aggr-svm` links is `5999999` (backend rounding)
+- **THEN** the upstream link's weight remains the backend-given `6000000`; the app MUST NOT replace it with the downstream sum, and MUST NOT show a warning because the two differ
 
-#### Scenario: 只有 read 量測的 edge
+#### Scenario: Split attribution is marked as an estimate
 
-- **WHEN** 某 `svm-pvc` edge 的 `metrics` 為 `{ read_bytes_per_sec: 262144 }`(無 `write_bytes_per_sec`)
-- **THEN** Read 模式繪製權重 `262144` 的 link;Write 模式該對無 link;Both 模式只有 read link,且 tooltip 不顯示 write 值(不顯示為 `0`)
+- **WHEN** some `pvc-pod` link carries `labels.attribution: "split"` and `write_bytes_per_sec: 524288`
+- **THEN** its weight is `524288`, and the tooltip marks the value as a split estimate; the `svm-pvc` link on the same path (without that label) is not marked as an estimate
 
-#### Scenario: 零值繪製為零權重 link
+#### Scenario: Switching mode recomputes immediately
 
-- **WHEN** 某 edge 的 `metrics` 為 `{ read_bytes_per_sec: 0, write_bytes_per_sec: 1048576 }` 且處於 Read 模式
-- **THEN** 該對繪製一條零權重 link,tooltip 顯示 `0 B/s`,其視覺樣式與非零 link 可區分,且其 source / target 節點仍被繪製
+- **WHEN** the user switches from Both to Write
+- **THEN** each edge keeps only its write link, the legend no longer shows the read item, and the app MUST NOT refetch
 
-#### Scenario: 無量測的完整路徑
+### Requirement: Missing-value handling (absent ≠ 0)
 
-- **WHEN** body 含一條五段齊全但每段皆無 `metrics` 的路徑
-- **THEN** 該路徑不產生任何 link;其節點若非 root 則不繪製,若為 root(比對該請求的 root 選擇)則以無流量節點呈現
+The derivation MUST distinguish "measurement does not exist" from "measurement is 0":
 
-#### Scenario: 無量測路徑上的 root 仍繪製
+- An edge lacks the field for the current direction (`read_bytes_per_sec` or `write_bytes_per_sec` does not exist) → no link is drawn for that direction; in Both mode only the direction that exists is drawn.
+- An edge lacks both directions (including the whole `metrics` being absent) → that edge yields no link at all. For "no claim on the path has a measurement" the backend simply omits the `metrics` key; this is a path that genuinely exists but has no measurement.
+- The value is `0` → a zero-weight link MUST be drawn, at the minimum visible thickness and visually distinguishable from non-zero links (for example dashed or semi-transparent); it MUST NOT be treated as a missing value.
+- All of a node's links are excluded and the node is not a root → that node is not drawn. **Root nodes are always drawn** (see "Flow chain and tier structure").
+- The above decisions MUST depend only on field presence and numeric value; the app MUST NOT fill a missing value with `0`, `null` or any default.
 
-- **WHEN** 使用者以 `aggr: aggr1` 為 root,body 回傳 `ontap-prod-01 → aggr1 → svm_shop` 三個節點與兩條皆無 `metrics` 的 edge
-- **THEN** `aggr1` 以無流量節點繪於 aggregate tier,`ontap-prod-01` 與 `svm_shop` 不繪製(它們非 root 且無已繪製 link),視圖 MUST NOT 顯示狀態 3
+#### Scenario: An edge with only a read measurement
 
-### Requirement: 空狀態
+- **WHEN** some `svm-pvc` edge's `metrics` is `{ read_bytes_per_sec: 262144 }` (no `write_bytes_per_sec`)
+- **THEN** Read mode draws a link of weight `262144`; in Write mode that pair has no link; in Both mode there is only the read link, and the tooltip shows no write value (not shown as `0`)
 
-視圖 MUST 依原因區分下列狀態,各以不同說明文字呈現,且 mode selector 與所有選擇器在任一狀態下 MUST 保持可操作:
+#### Scenario: A zero value is drawn as a zero-weight link
 
-1. **端點未設定** —— `endpoints.storageGraph` 缺席(見 `runtime-config`)。
-2. **估計未選齊** —— `az` 或 `env` 尚未選定;說明需各選一個,且明示尚未發出任何請求。
-3. **回應為空** —— 請求成功但 `elements` 無節點:說明所選估計與 root 在此時間範圍內沒有儲存流量,並提示可能原因(root 名稱打錯、該 estate 無 NetApp 支撐的 claim、時間範圍落在保留期外)。
-4. **當前方向無量測** —— body 有 `storage-flow` edge,但當前模式的方向全無量測(例如 Read 模式下所有 edge 只有 `write_bytes_per_sec`):說明當前方向無量測並提示切換模式。
+- **WHEN** some edge's `metrics` is `{ read_bytes_per_sec: 0, write_bytes_per_sec: 1048576 }` and the mode is Read
+- **THEN** that pair draws one zero-weight link, the tooltip shows `0 B/s`, its visual style is distinguishable from non-zero links, and its source / target nodes are still drawn
 
-`demoMode` 為 `true` 時,狀態 3 的說明 MUST 額外指出目前顯示的是 demo fixture 資料。
+#### Scenario: A complete path with no measurement
 
-#### Scenario: 未選齊與空回應可區分
+- **WHEN** the body contains a path with all five segments present but no `metrics` on any segment
+- **THEN** that path yields no link; its nodes are not drawn if they are not roots, and if they are roots (matched against the request's root selection) they are presented as no-flow nodes
 
-- **WHEN** `az` / `env` 未選齊
-- **THEN** 顯示狀態 2 的說明,且不顯示「沒有儲存流量」——這兩者代表完全不同的事,混用會讓一個未完成的選擇看起來像一個壞掉的管線
+#### Scenario: A root on a measurement-less path is still drawn
 
-#### Scenario: root 打錯字
+- **WHEN** the user uses `aggr: aggr1` as root, and the body returns the three nodes `ontap-prod-01 → aggr1 → svm_shop` and two edges both lacking `metrics`
+- **THEN** `aggr1` is drawn as a no-flow node on the aggregate tier, `ontap-prod-01` and `svm_shop` are not drawn (they are not roots and have no drawn link), and the view MUST NOT show state 3
 
-- **WHEN** 使用者以 `aggr: typo` 為 root,後端回 200 且 `elements` 為空
-- **THEN** 顯示狀態 3,說明含「root 名稱可能不存在」的提示,且 root 控制項保持可編輯
+### Requirement: Empty states
 
-#### Scenario: 當前方向無量測
+The view MUST distinguish the following states by cause, each presented with different explanatory text, and the mode selector and all selectors MUST remain operable in every state:
 
-- **WHEN** 所有帶量測的 edge 只有 `write_bytes_per_sec`,使用者選擇 Read 模式
-- **THEN** 顯示狀態 4 並提示可切換至 Write / Both;切換至 Write 後圖形正常繪製
+1. **Endpoint not configured** — `endpoints.storageGraph` is absent (see `runtime-config`).
+2. **Estate not both selected** — `az` or `env` is not yet selected; explains that one of each must be chosen, and states explicitly that no request has been issued yet.
+3. **Empty response** — the request succeeded but `elements` has no nodes: explains that the selected estate and roots have no storage flow in this time range, and hints at possible causes (a mistyped root name, no NetApp-backed claim in that estate, the time range falling outside retention).
+4. **No measurement in the current direction** — the body has `storage-flow` edges, but none carries a measurement in the current mode's direction (for example, in Read mode every edge has only `write_bytes_per_sec`): explains that the current direction has no measurement and suggests switching mode.
 
-### Requirement: tier 內排序
+When `demoMode` is `true`, the explanation of state 3 MUST additionally point out that demo fixture data is currently being shown.
 
-每個 tier 內的節點 SHALL 由上而下依節點在**當前模式**下的總流量降序排列;總流量定義為該節點所有已繪製 link 權重的總和(Read / Write 模式為單一方向;Both 模式為 read + write),對同時有入邊與出邊的節點取入邊總和與出邊總和中的較大者。無流量的 root 節點總流量視為 `0`,MUST 排在該 tier 最下方。總流量相同時 MUST 依節點 `label` 字典序升序(以 `localeCompare` 比較)。排序結果 MUST 為確定性(同一輸入永遠得到同一順序)。
+#### Scenario: Not-both-selected and empty response are distinguishable
 
-此加總只用於**排序**,MUST NOT 用來取代任何 link 的權重(權重一律取自後端,見「權重直接取自後端」)。pod tier 另受 namespace 分組約束(見「pod tier 的 namespace 分組色條與相鄰排列」):分組相鄰優先於跨群組的流量排序,群組內部仍依本規則排序。
+- **WHEN** `az` / `env` are not both selected
+- **THEN** the explanation of state 2 is shown, and "no storage flow" is not shown — the two mean entirely different things, and conflating them makes an incomplete selection look like a broken pipeline
 
-#### Scenario: 依總流量降序
+#### Scenario: Mistyped root
 
-- **WHEN** 於 Both 模式以 fixture 推導(`aggr1` 總流量 `6291456`、`aggr2` 總流量 `311296`)
-- **THEN** aggregate tier 中 `aggr1` 在 `aggr2` 之上;切換為 Write 模式後(`1048576` vs `49152`)順序不變
+- **WHEN** the user uses `aggr: typo` as root, and the backend returns 200 with empty `elements`
+- **THEN** state 3 is shown, its explanation contains the hint "the root name may not exist", and the root control remains editable
 
-#### Scenario: 無流量 root 排在最下
+#### Scenario: No measurement in the current direction
 
-- **WHEN** aggregate tier 含 `aggr1`(有流量)與 `aggr9`(root,無流量)
-- **THEN** `aggr9` 排在 `aggr1` 之下
+- **WHEN** every edge that carries a measurement has only `write_bytes_per_sec`, and the user selects Read mode
+- **THEN** state 4 is shown with a hint to switch to Write / Both; after switching to Write the graphic draws normally
 
-#### Scenario: 同值以 label 排序
+### Requirement: Sorting within a tier
 
-- **WHEN** 兩個 pvc 在當前模式下總流量皆為 `1048576`,label 分別為 `data-b` 與 `data-a`
-- **THEN** `data-a` 排在 `data-b` 之上
+Within each tier the nodes SHALL be ordered top to bottom by the node's total flow in the **current mode**, descending; total flow is defined as the sum of the weights of all of that node's drawn links (a single direction in Read / Write mode; read + write in Both mode), and for a node with both inbound and outbound edges the larger of the inbound sum and the outbound sum. A no-flow root node's total flow counts as `0` and MUST sort to the bottom of its tier. On equal total flow, nodes MUST be ordered by `label` lexicographically ascending (compared with `localeCompare`). The sort result MUST be deterministic (the same input always yields the same order).
 
-### Requirement: 節點以盒卡呈現,連線自槽位進出
+This summation is used only for **sorting** and MUST NOT replace any link's weight (weights always come from the backend, see "Weights come straight from the backend"). The pod tier is additionally constrained by namespace grouping (see "Namespace grouping color bars and adjacent placement on the pod tier"): group adjacency takes precedence over cross-group flow ordering, and within a group this rule still applies.
 
-每個 Sankey 節點 MUST 繪製為一張圓角盒卡,而非高度與權重成正比的細長矩形。盒卡內容自上而下為:
+#### Scenario: Descending by total flow
 
-- **標題列**:節點 `label`。
-- **分隔線**:標題列與內文之間。
-- **副標列**:節點 kind;`pod` 另顯示其 `namespace`;`pvc` 與 `netapp-aggr` 在 `usage` 的 `usedBytes` 與 `capacityBytes` **皆**存在時顯示 `used / capacity`,任一缺值即整項不顯示,MUST NOT 補 `0`。
+- **WHEN** derived from the fixture in Both mode (`aggr1` total flow `6291456`, `aggr2` total flow `311296`)
+- **THEN** on the aggregate tier `aggr1` is above `aggr2`; after switching to Write mode (`1048576` vs `49152`) the order is unchanged
 
-連線 MUST 自盒卡邊緣的**槽位**進出:入邊掛左緣、出邊掛右緣;同一側的槽位由上而下依該連線權重降序排列,權重相同時依對側節點 `label` 字典序升序(`localeCompare`)。槽位高度為 max(該連線的緞帶厚度, 固定的最小列高),槽位之間有固定間距;盒卡高度為標題與副標所需高度加上 max(左側槽疊總高, 右側槽疊總高, 內文最小高度),兩側槽疊各自於盒卡內文垂直置中。因為槽位有最小列高而緞帶厚度沒有,同一節點左右兩疊的總高度**不必**相等 —— 守恆看的是緞帶厚度,不是槽疊高度。
+#### Scenario: No-flow root sorts to the bottom
 
-節點 kind MUST 以描邊語彙區分,且區分 MUST NOT 只依賴色相:`netapp-aggr` 與 `netapp-node` 非 Kubernetes 資源,以**虛線**描邊;`pod` 與 `pvc` 以**實線**描邊。最右側 tier 的 `netapp-node` 為流向終點,MUST 以較小的**葉卡**呈現(標題、kind 與該節點當前模式下的總流入,無右緣槽位)。
+- **WHEN** the aggregate tier contains `aggr1` (with flow) and `aggr9` (root, no flow)
+- **THEN** `aggr9` is placed below `aggr1`
 
-盒卡內的所有文字 MUST NOT 接收指標事件(`pointer-events: none`):文字若吃事件會遮斷其下緞帶的 hover 高亮與 tooltip。
+#### Scenario: Ties sort by label
 
-#### Scenario: pvc 盒卡的三列內容
+- **WHEN** two pvcs both have total flow `1048576` in the current mode, with labels `data-b` and `data-a`
+- **THEN** `data-a` is placed above `data-b`
 
-- **WHEN** 使用者檢視 `data-mongo-0`(其 `usage` 為 `usedBytes` `700` GB 與 `capacityBytes` `1` TB)
-- **THEN** 盒卡顯示標題 `data-mongo-0`、副標含 `pvc` 與 `700 GB / 1 TB`;其入邊掛左緣、出邊掛右緣
+### Requirement: Nodes are presented as box cards, with links entering and leaving through slots
 
-#### Scenario: 缺 usage 的盒卡不補零
+Each Sankey node MUST be drawn as a rounded box card rather than a thin rectangle whose height is proportional to its weight. The card's content, top to bottom, is:
 
-- **WHEN** 某 `pvc` 節點沒有 `usage`,或只有 `usedBytes` 而無 `capacityBytes`
-- **THEN** 該盒卡副標只顯示 kind,不出現 used / capacity 項目,也不顯示 `0`
+- **Title row**: the node's `label`.
+- **Divider**: between the title row and the body.
+- **Subtitle row**: the node kind; a `pod` additionally shows its `namespace`; a `pvc` and a `netapp-aggr` show `used / capacity` when **both** `usedBytes` and `capacityBytes` of `usage` are present; if either is missing the whole item is omitted, and the app MUST NOT fill in `0`.
 
-#### Scenario: 槽位排序與最小列高
+Links MUST enter and leave through **slots** on the card's edges: inbound edges attach to the left edge, outbound edges to the right edge; slots on the same side are ordered top to bottom by that link's weight, descending, and on equal weight by the opposite node's `label` lexicographically ascending (`localeCompare`). A slot's height is max(that link's ribbon thickness, a fixed minimum row height), with a fixed gap between slots; the card's height is the height needed by the title and subtitle plus max(total height of the left slot stack, total height of the right slot stack, minimum body height), with each side's slot stack vertically centred within the card body. Because slots have a minimum row height and ribbon thickness does not, the total heights of a node's left and right stacks **need not** be equal — conservation is about ribbon thickness, not slot-stack height.
 
-- **WHEN** 某 `netapp-aggr` 有三條入邊,權重分別為 `5242880`、`0` 與 `1000`
-- **THEN** 左緣槽位由上而下為 `5242880`、`1000`、`0`;後兩者的緞帶厚度雖遠小於最小列高,其槽位仍各佔最小列高,三條緞帶互不重疊
+Node kinds MUST be distinguished by a stroke vocabulary, and the distinction MUST NOT rely on hue alone: `netapp-aggr` and `netapp-node` are not Kubernetes resources and use a **dashed** stroke; `pod` and `pvc` use a **solid** stroke. The `netapp-node` on the rightmost tier is the flow's terminus and MUST be presented as a smaller **leaf card** (title, kind and that node's total inflow in the current mode, with no right-edge slots).
 
-#### Scenario: netapp-node 為葉卡
+No text inside a box card MUST receive pointer events (`pointer-events: none`): text that takes events would cut off the hover highlight and tooltip of the ribbon beneath it.
 
-- **WHEN** 使用者檢視 `ontap-prod-01`
-- **THEN** 該節點以葉卡呈現(較小尺寸、虛線描邊),只有左緣槽位,無右緣槽位
+#### Scenario: The three rows of a pvc box card
 
-### Requirement: 連線為共用比例尺的漸層緞帶
+- **WHEN** the user views `data-mongo-0` (whose `usage` is `usedBytes` `700` GB and `capacityBytes` `1` TB)
+- **THEN** the card shows the title `data-mongo-0` and a subtitle containing `pvc` and `700 GB / 1 TB`; its inbound edges attach to the left edge and its outbound edges to the right edge
 
-所有連線的厚度 MUST 出自**同一把**比例尺:比例尺為最大厚度除以當前模式下所有**已繪製**連線權重的最大值,連線厚度為 max(最小厚度, 權重 × 比例尺)。Both 模式下 read 與 write 兩族 MUST 共用這一把尺 —— 各自縮放會使兩者的粗細不可互相比較。切換 mode 或重新取數後 MUST 依新的最大值重算比例尺。
+#### Scenario: A card missing usage does not fill in zero
 
-緞帶 MUST 為三次貝茲曲線圍成的**填色區域**(而非等寬 stroke 路徑),兩端各錨於來源與目標的槽位中心,並以自 source 端至 target 端的線性漸層填色;漸層兩端色 MUST 同屬該方向(read / write)的色族,使方向仍可辨識。
+- **WHEN** some `pvc` node has no `usage`, or has only `usedBytes` without `capacityBytes`
+- **THEN** that card's subtitle shows only the kind, with no used / capacity item and no `0` shown
 
-hover 高亮 MUST 由 class 或 CSS `:hover` 驅動的樣式切換完成,並 MUST 在 `mouseleave` 不會觸發的情況下(指標直接移出瀏覽器視窗、觸控中斷、平移開始)仍能還原:MUST NOT 有任何連線卡在高亮樣式。
+#### Scenario: Slot ordering and minimum row height
 
-#### Scenario: 共用比例尺
+- **WHEN** some `netapp-aggr` has three inbound edges with weights `5242880`, `0` and `1000`
+- **THEN** the left-edge slots top to bottom are `5242880`, `1000`, `0`; although the ribbon thickness of the latter two is far below the minimum row height, their slots each still occupy the minimum row height, and the three ribbons do not overlap
 
-- **WHEN** 於 Both 模式,全圖已繪製連線的最大權重為 `5242880`(一條 read 連線)
-- **THEN** 該連線以最大厚度呈現;權重 `1048576` 的 write 連線厚度約為其五分之一,兩者以同一把尺換算
+#### Scenario: netapp-node is a leaf card
 
-#### Scenario: 切換模式重算比例尺
+- **WHEN** the user views `ontap-prod-01`
+- **THEN** that node is presented as a leaf card (smaller size, dashed stroke) with only left-edge slots and no right-edge slots
 
-- **WHEN** 使用者自 Both 切換為 Write,最大權重自 `5242880` 變為 `1048576`
-- **THEN** 比例尺依 `1048576` 重算,該 write 連線改以最大厚度呈現
+### Requirement: Links are gradient ribbons on a shared scale
 
-#### Scenario: hover 不卡在高亮
+The thickness of every link MUST come from **one and the same** scale: the scale is the maximum thickness divided by the maximum weight among all **drawn** links in the current mode, and a link's thickness is max(minimum thickness, weight × scale). In Both mode the read and write families MUST share this one scale — scaling each separately would make their thicknesses incomparable. After a mode switch or a refetch the scale MUST be recomputed from the new maximum.
 
-- **WHEN** 使用者 hover 一條緞帶後,將指標直接移出瀏覽器視窗(不經過任何其他元素)
-- **THEN** 該緞帶回到未高亮樣式
+A ribbon MUST be a **filled area** bounded by cubic Bézier curves (not a constant-width stroked path), anchored at each end to the centre of the source and target slots, and filled with a linear gradient from the source end to the target end; both gradient stops MUST belong to that direction's (read / write) color family so that the direction remains recognisable.
 
-### Requirement: 緞帶上的數值標籤
+Hover highlighting MUST be done by a style switch driven by a class or CSS `:hover`, and MUST still revert in cases where `mouseleave` does not fire (the pointer leaving the browser window directly, a touch being interrupted, a pan starting): no link MUST ever be stuck in the highlighted style.
 
-每條已繪製的連線 MUST 於其緞帶中點標示該方向格式化後的 bytes/sec 值。標籤 MUST 以**描邊光暈**(描邊先於填色繪製,描邊色為圖區背景色)與其下的緞帶分離,MUST NOT 使用不透明底板 —— 底板會在緞帶上打出一塊缺口。Both 模式下 read 與 write 兩條各自標示。當緞帶厚度小於標籤字高時 MUST 省略該標籤以免疊字,該值仍 MUST 可自 link tooltip 讀到。
+#### Scenario: Shared scale
 
-#### Scenario: Both 模式兩條各自標示
+- **WHEN** in Both mode, the maximum weight among all drawn links is `5242880` (a read link)
+- **THEN** that link is drawn at the maximum thickness; a write link of weight `1048576` is about one fifth as thick, both converted with the same scale
 
-- **WHEN** 使用者於 Both 模式檢視 `data-mongo-0→aggr1`
-- **THEN** read 緞帶標 `5.24 MB/s`、write 緞帶標 `1.05 MB/s`,兩個標籤皆有描邊光暈,標籤之下的緞帶仍連續可見(無不透明底板造成的缺口)
+#### Scenario: Switching mode recomputes the scale
 
-#### Scenario: 極細緞帶省略標籤
+- **WHEN** the user switches from Both to Write, and the maximum weight changes from `5242880` to `1048576`
+- **THEN** the scale is recomputed from `1048576`, and that write link is now drawn at the maximum thickness
 
-- **WHEN** 某連線權重為 `0`,緞帶以最小厚度呈現
-- **THEN** 該緞帶不標數值;hover 時 tooltip 仍顯示 `0 B/s`
+#### Scenario: Hover does not get stuck highlighted
 
-### Requirement: 欄位標題
+- **WHEN** the user hovers a ribbon and then moves the pointer straight out of the browser window (without passing over any other element)
+- **THEN** that ribbon returns to the un-highlighted style
 
-六個 tier MUST 各於其欄頂端標示一行標題,由左至右為 `NetApp node`、`NetApp aggregate`、`SVM`、`PVC`、`Pod`、`Node`。標題 MUST 以次要前景色與較寬字距呈現,且 MUST NOT 佔用節點的佈局空間(不推擠盒卡)。某 tier 在當前模式與當前估計 / root 選擇下沒有任何已繪製節點時,該欄標題 MUST NOT 繪製。
+### Requirement: Value labels on ribbons
 
-#### Scenario: 四欄標題
+Every drawn link MUST label the formatted bytes/sec value for its direction at the midpoint of its ribbon. The label MUST be separated from the ribbon beneath it by a **stroke halo** (the stroke is painted before the fill, in the chart area's background color), and MUST NOT use an opaque backing plate — a plate would punch a gap into the ribbon. In Both mode the read and write ribbons are each labelled separately. When a ribbon's thickness is smaller than the label's font height the label MUST be omitted to avoid overlapping text, and the value MUST still be readable from the link tooltip.
 
-- **WHEN** 以 fixture 於 Both 模式開啟 Sankey
-- **THEN** 由左至右依序出現 `Pod`、`PVC`、`NetApp aggregate`、`NetApp node` 四行欄位標題
+#### Scenario: Both mode labels each ribbon separately
 
-#### Scenario: 空 tier 不標題
+- **WHEN** the user views `data-mongo-0→aggr1` in Both mode
+- **THEN** the read ribbon is labelled `5.24 MB/s` and the write ribbon `1.05 MB/s`, both labels have a stroke halo, and the ribbon beneath each label remains continuously visible (no gap from an opaque backing plate)
 
-- **WHEN** 所有帶量測的 pvc 都沒有任何 `pod-mounts-pvc` edge 指向它,pod tier 因而沒有節點
-- **THEN** `Pod` 欄標題不繪製,其餘三行照常繪製
+#### Scenario: Very thin ribbons omit the label
 
-### Requirement: pod tier 的 namespace 分組色條與相鄰排列
+- **WHEN** some link has weight `0` and its ribbon is drawn at the minimum thickness
+- **THEN** that ribbon carries no value label; on hover the tooltip still shows `0 B/s`
 
-pod tier 內,同一 `namespace` 的 pod MUST 相鄰排列,並於其盒卡左緣掛一條固定寬度的圓角色條,同 namespace 者同色。色盤 MUST 依 namespace 在該 tier 內**首次出現的順序**取色、用盡即循環,MUST NOT 以雜湊(hash)決定 —— 色盤色數有限時雜湊撞色不可控,相鄰兩組同色比跨次載入顏色不穩更傷可讀性。色盤 MUST 與 read / write 的語意色可區分。沒有 `namespace` 的 pod MUST NOT 掛色條,並排在所有已分組的 pod 之後。
+### Requirement: Column headers
 
-分組後的排序 MUST 仍為確定性:群組之間依「群組內節點總流量的最大值」降序,同值依 namespace 名稱字典序升序;群組內部依「tier 內排序」的規則。namespace 不是流量路徑上的節點,MUST NOT 被畫成盒卡,MUST NOT 產生任何連線。
+Each of the six tiers MUST carry one header line at the top of its column, left to right `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Node`. Headers MUST be rendered in the secondary foreground color with wider letter spacing, and MUST NOT occupy node layout space (they do not push the box cards). When a tier has no drawn node under the current mode and the current estate / root selection, that column's header MUST NOT be drawn.
 
-#### Scenario: 同 namespace 相鄰且同色
+#### Scenario: Four column headers
 
-- **WHEN** pod tier 含 `prod` 的 `mongo-0`、`mongo-1` 與 `staging` 的 `redis-0`,且 `redis-0` 的總流量高於兩個 mongo
-- **THEN** `staging` 群組排在 `prod` 群組之上;`mongo-0` 與 `mongo-1` 相鄰且左緣色條同色,與 `redis-0` 的色條不同色
+- **WHEN** the Sankey is opened with the fixture in Both mode
+- **THEN** the four column headers `Pod`, `PVC`, `NetApp aggregate`, `NetApp node` appear in order from left to right
 
-#### Scenario: 無 namespace 的 pod
+#### Scenario: An empty tier has no header
 
-- **WHEN** 某 pod 沒有 `namespace`
-- **THEN** 該 pod 不掛色條,且排在所有帶 namespace 的 pod 之後
+- **WHEN** no `pod-mounts-pvc` edge points at any pvc that carries a measurement, so the pod tier has no nodes
+- **THEN** the `Pod` column header is not drawn, and the other three lines are drawn as usual
 
-#### Scenario: namespace 不是節點
+### Requirement: Namespace grouping color bars and adjacent placement on the pod tier
 
-- **WHEN** pod tier 含兩個 namespace
-- **THEN** 圖上沒有任何代表 namespace 的盒卡或連線,分組只以相鄰排列與色條表達
+Within the pod tier, pods of the same `namespace` MUST be placed adjacently, and each carries a fixed-width rounded color bar on the left edge of its box card, the same color for the same namespace. The palette MUST assign colors in the **order of first appearance** of the namespace within the tier, cycling once exhausted, and MUST NOT be decided by hashing — with a limited palette, hash collisions are uncontrollable, and two adjacent groups sharing a color hurts readability more than colors being unstable across loads. The palette MUST be distinguishable from the read / write semantic colors. A pod without a `namespace` MUST NOT carry a color bar and is placed after all grouped pods.
 
-### Requirement: 圖外的數字摘要
+The order after grouping MUST still be deterministic: groups are ordered by "the maximum total flow among the group's nodes" descending, ties by namespace name lexicographically ascending; within a group by the rules of "Sorting within a tier". A namespace is not a node on the flow path: it MUST NOT be drawn as a box card and MUST NOT produce any link.
 
-圖形**下方** MUST 另有數字摘要,這些數字 MUST NOT 被塞進節點盒卡:
+#### Scenario: Same namespace adjacent and same color
 
-- **節點摘要表**:每個已繪製節點一列,欄位為 tier、`label`、當前模式下的總流入與總流出;`pvc` / `netapp-aggr` 另列 usage,`netapp-aggr` / `netapp-node` 另列 health。缺值 MUST 以缺值佔位符呈現,MUST NOT 顯示 `0`、`0 B` 或 `unknown`。
-- **namespace 小計表**:pod tier 每個 namespace 一列,欄位為 namespace、pod 數與當前模式下的總流量合計,依合計降序。pod tier 沒有任何帶 namespace 的 pod 時,整張表 MUST NOT 繪製。
+- **WHEN** the pod tier contains `mongo-0` and `mongo-1` of `prod` and `redis-0` of `staging`, and `redis-0`'s total flow is higher than both mongos
+- **THEN** the `staging` group is placed above the `prod` group; `mongo-0` and `mongo-1` are adjacent with the same left-edge bar color, different from `redis-0`'s bar color
 
-兩張表 MUST 隨 mode、估計 / root 選擇與 storage-graph 重新整理同步更新。表格過寬時 MUST 於其自身容器內橫向捲動,MUST NOT 使頁面出現橫向捲軸。空狀態(見「無 storage I/O metrics 時的空狀態」)顯示期間,兩張表 MUST NOT 繪製。
+#### Scenario: A pod without a namespace
 
-#### Scenario: 摘要表隨模式更新
+- **WHEN** some pod has no `namespace`
+- **THEN** that pod carries no color bar and is placed after all pods that carry a namespace
 
-- **WHEN** 使用者自 Both 切換為 Write
-- **THEN** 節點摘要表的總流入 / 總流出改為只計 write 方向,namespace 小計亦隨之改變
+#### Scenario: A namespace is not a node
 
-#### Scenario: 缺值不補零
+- **WHEN** the pod tier contains two namespaces
+- **THEN** the chart has no box card or link representing a namespace; grouping is expressed only through adjacent placement and color bars
 
-- **WHEN** `ontap-prod-01` 沒有 `usage`
-- **THEN** 其列的 usage 欄為缺值佔位符,不顯示 `0` 或 `0 B`
+### Requirement: Numeric summary outside the chart
 
-### Requirement: 節點與 link 的標籤與 tooltip
+**Below** the chart there MUST be a separate numeric summary; these numbers MUST NOT be stuffed into node box cards:
 
-每個節點 MUST 顯示其 `label`。hover 節點時 tooltip MUST 顯示:
+- **Node summary table**: one row per drawn node, with columns tier, `label`, total inflow and total outflow in the current mode; `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
+- **Namespace subtotal table**: one row per namespace on the pod tier, with columns namespace, pod count and total flow in the current mode, ordered by total descending. When the pod tier has no pod carrying a namespace, the whole table MUST NOT be drawn.
 
-- 節點 kind 與 `label`;`pod` / `pvc` 另顯示 `namespace`;`netapp-aggr` / `netapp-svm` / `netapp-node` 另顯示 `ontap_cluster`。
-- 當前模式下的總流入與總流出 bytes/sec(Both 模式下 read / write 各自列出)。
-- `pvc` / `netapp-aggr`:`usage` 存在時顯示 `used_bytes` / `capacity_bytes`;缺 `usage` 或任一欄位時不顯示該項,MUST NOT 補 `0`。
-- `netapp-aggr` / `netapp-node`:`health` 存在則原樣顯示;缺值時不顯示,MUST NOT 補 `unknown` 或 `degraded`。
-- `netapp-node`:`hardware` 存在時顯示其既有欄位(至少 `model`);`perf` 存在時顯示其既有欄位(`cpu_busy_pct` / `total_ops` / `total_latency_us` / `total_bytes_per_sec`)並標示為原始讀數。app MUST NOT 由 `perf` 推導健康判定、MUST NOT 依門檻上色或加警示圖示——門檻是機型與估計專屬的,判定經由 `alerts` 抵達。
-- 任一節點的 `alerts` 存在且非空時,MUST 顯示其告警(名稱與 severity),並以狀態色標示該節點。
-- 無流量的 root 節點:MUST 明示「此節點為所選 root,在此時間範圍內無流量」。
+Both tables MUST update in step with mode, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), neither table MUST be drawn.
 
-hover link 時 tooltip MUST 顯示 source `label`、target `label`、tier、方向(read / write)與權重值。`svm-pvc` link 另 MUST 在 `max_bytes_per_sec` / `max_iops` 存在時以資訊形式顯示(標示為 QoS ceiling),缺值時不顯示、MUST NOT 顯示 `0` 或「unlimited」;量測超過 ceiling 時 MUST NOT 上色、警示或改變 link 樣式。其他 tier 的 link MUST NOT 顯示 ceiling 或 latency 欄位(後端不會在該處提供)。`labels.attribution` 為 `"split"` 的 link MUST 標示「均分估計」。
+#### Scenario: Summary tables follow the mode
 
-#### Scenario: hover aggregate 節點
+- **WHEN** the user switches from Both to Write
+- **THEN** the node summary table's total inflow / total outflow count only the write direction, and the namespace subtotals change accordingly
 
-- **WHEN** 使用者於 Read 模式 hover `aggr1`
-- **THEN** tooltip 顯示 `netapp-aggr` / `aggr1` / `ontap_cluster: ontap-prod`、流入 `5.24 MB/s`、流出 `5.24 MB/s`、usage `700 GB / 1 TB`、health `online`
+#### Scenario: Missing values are not filled with zero
 
-#### Scenario: hover netapp-node 顯示硬體與效能讀數
+- **WHEN** `ontap-prod-01` has no `usage`
+- **THEN** its row's usage column is the missing-value placeholder, not `0` or `0 B`
 
-- **WHEN** 使用者 hover `ontap-prod-02`,其 `hardware: { model: "AFF-A400" }`、`perf: { cpu_busy_pct: 41.2 }`、`health: "degraded"`
-- **THEN** tooltip 顯示 model、標示為原始讀數的 `cpu_busy_pct`、health `degraded`,且不含 usage 項目;`cpu_busy_pct` 不觸發任何顏色或圖示變化
+### Requirement: Labels and tooltips for nodes and links
 
-#### Scenario: ceiling 只在 svm-pvc link
+Every node MUST show its `label`. On hovering a node the tooltip MUST show:
 
-- **WHEN** 使用者 hover `svm_shop → data-mongo-0` 的 read link,隨後 hover `ontap-prod-01 → aggr1` 的 read link
-- **THEN** 前者顯示 read `5.24 MB/s`、`max_bytes_per_sec` `105 MB/s`、`max_iops` `5000`,無任何警示樣式;後者只顯示 tier 與權重,不含 ceiling 或 latency 項目
+- The node kind and `label`; `pod` / `pvc` additionally show `namespace`; `netapp-aggr` / `netapp-svm` / `netapp-node` additionally show `ontap_cluster`.
+- Total inflow and total outflow in bytes/sec for the current mode (in Both mode read / write listed separately).
+- `pvc` / `netapp-aggr`: when `usage` is present, show `used_bytes` / `capacity_bytes`; when `usage` or either field is missing, omit the item, and MUST NOT fill in `0`.
+- `netapp-aggr` / `netapp-node`: when `health` is present, show it as-is; when missing, omit it, and MUST NOT fill in `unknown` or `degraded`.
+- `netapp-node`: when `hardware` is present, show the fields it has (at least `model`); when `perf` is present, show the fields it has (`cpu_busy_pct` / `total_ops` / `total_latency_us` / `total_bytes_per_sec`) marked as raw readings. The app MUST NOT derive a health verdict from `perf`, and MUST NOT color by threshold or add a warning icon — thresholds are model- and estate-specific, and verdicts arrive via `alerts`.
+- When any node's `alerts` is present and non-empty, its alerts (name and severity) MUST be shown, and the node marked with the status color.
+- A no-flow root node: MUST state explicitly "this node is a selected root with no flow in this time range".
 
-### Requirement: bytes/sec 數值格式化
+On hovering a link the tooltip MUST show the source `label`, target `label`, tier, direction (read / write) and weight value. An `svm-pvc` link additionally MUST show `max_bytes_per_sec` / `max_iops` informationally when present (marked as QoS ceiling); when missing they are omitted, and MUST NOT be shown as `0` or "unlimited"; when the measurement exceeds the ceiling the app MUST NOT color, warn or change the link's style. Links on other tiers MUST NOT show ceiling or latency fields (the backend does not provide them there). A link whose `labels.attribution` is `"split"` MUST be marked "split estimate".
 
-所有 bytes/sec 值(權重、tooltip 總量、`max_bytes_per_sec`)MUST 以 SI 單位(1000 進位:`B/s`、`KB/s`、`MB/s`、`GB/s`、`TB/s`)格式化,規則為:
+#### Scenario: Hovering an aggregate node
 
-- 選擇使縮放後數值 ≥ 1 的最大單位,並以 **3 位有效數字**呈現(例:`5242880` → `5.24 MB/s`;`104857600` → `105 MB/s`;`262144` → `262 KB/s`;`49152` → `49.2 KB/s`)。
-- 值為 `0` → `0 B/s`。
-- 非零但小於 `1 B/s` 的值 MUST 以指數表示法呈現 3 位有效數字(例:`3.86e-7` → `3.86e-7 B/s`),MUST NOT 顯示為 `0 B/s` 或 `0.00 B/s`。
-- 格式化 MUST NOT 使用固定小數位的截斷方式(如 `toFixed(2)`)處理任意量級的值。
+- **WHEN** the user hovers `aggr1` in Read mode
+- **THEN** the tooltip shows `netapp-aggr` / `aggr1` / `ontap_cluster: ontap-prod`, inflow `5.24 MB/s`, outflow `5.24 MB/s`, usage `700 GB / 1 TB`, health `online`
 
-`used_bytes` / `capacity_bytes` 與 `total_bytes_per_sec` MUST 以同一 SI 規則格式化(前者不含 `/s` 後綴)。
+#### Scenario: Hovering a netapp-node shows hardware and performance readings
 
-此階梯 MUST 與 Graph view 的 `usage` / throughput 列**共用同一個實作**(`shared/format/measurements`),不得在本 feature 內另建一份:同一個 tooltip 會同時渲染 link 的速率與節點的 `usage`,兩份階梯只要單位拼寫不同(`kB` 對 `KB`)就會在相鄰兩列同時出現。
+- **WHEN** the user hovers `ontap-prod-02`, which has `hardware: { model: "AFF-A400" }`, `perf: { cpu_busy_pct: 41.2 }`, `health: "degraded"`
+- **THEN** the tooltip shows the model, `cpu_busy_pct` marked as a raw reading, health `degraded`, and no usage item; `cpu_busy_pct` triggers no color or icon change
 
-#### Scenario: 一般量級
+#### Scenario: Ceiling only on svm-pvc links
 
-- **WHEN** 格式化 `5242880`、`104857600`、`49152`
-- **THEN** 分別得到 `5.24 MB/s`、`105 MB/s`、`49.2 KB/s`
+- **WHEN** the user hovers the read link of `svm_shop → data-mongo-0`, then hovers the read link of `ontap-prod-01 → aggr1`
+- **THEN** the former shows read `5.24 MB/s`, `max_bytes_per_sec` `105 MB/s`, `max_iops` `5000`, with no warning style; the latter shows only tier and weight, with no ceiling or latency items
 
-#### Scenario: 極小值與零
+### Requirement: bytes/sec value formatting
 
-- **WHEN** 格式化 `3.86e-7` 與 `0`
-- **THEN** 分別得到 `3.86e-7 B/s` 與 `0 B/s`;前者 MUST NOT 被截斷為零
+All bytes/sec values (weights, tooltip totals, `max_bytes_per_sec`) MUST be formatted in SI units (base 1000: `B/s`, `KB/s`, `MB/s`, `GB/s`, `TB/s`), by these rules:
 
-#### Scenario: tooltip 夾在視窗內
+- Choose the largest unit such that the scaled value is ≥ 1, and present it with **3 significant digits** (e.g. `5242880` → `5.24 MB/s`; `104857600` → `105 MB/s`; `262144` → `262 KB/s`; `49152` → `49.2 KB/s`).
+- The value `0` → `0 B/s`.
+- A non-zero value below `1 B/s` MUST be presented in exponential notation with 3 significant digits (e.g. `3.86e-7` → `3.86e-7 B/s`), and MUST NOT be shown as `0 B/s` or `0.00 B/s`.
+- Formatting MUST NOT use fixed-decimal truncation (such as `toFixed(2)`) on values of arbitrary magnitude.
 
-- **WHEN** 使用者 hover 位於視圖區最右緣、最下緣的節點
-- **THEN** tooltip 完整可見且不溢出視窗,頁面不出現捲軸
+`used_bytes` / `capacity_bytes` and `total_bytes_per_sec` MUST be formatted by the same SI rule (the former without the `/s` suffix).
 
-### Requirement: hover 高亮路徑
+This ladder MUST **share one implementation** with the Graph view's `usage` / throughput rows (`shared/format/measurements`); a separate copy must not be built inside this feature: the same tooltip renders a link's rate and a node's `usage` at the same time, and two ladders whose unit spellings differ (`kB` versus `KB`) would show up together on two adjacent rows.
 
-hover 某節點時,視圖 MUST 高亮所有經過該節點的路徑上的 link——即自該節點沿入邊方向可回溯到的所有 link(上游,朝儲存端)與沿出邊方向可到達的所有 link(下游,朝工作負載端)之聯集——並淡化(fade)其餘 link 與節點;Both 模式下 read / write 兩方向的 link 皆納入。不在任何經過該節點之路徑上的 link(例如同一 controller 下其他 aggregate 的出邊)MUST NOT 被高亮。滑鼠離開後 MUST 還原為全部正常顯示。hover 高亮 MUST 僅改變樣式,MUST NOT 觸發重新佈局。
+#### Scenario: Ordinary magnitudes
 
-#### Scenario: hover pvc 高亮上下游
+- **WHEN** formatting `5242880`, `104857600`, `49152`
+- **THEN** the results are `5.24 MB/s`, `105 MB/s`, `49.2 KB/s` respectively
 
-- **WHEN** 使用者於 Both 模式 hover `data-mongo-0`
-- **THEN** `ontap-prod-01→aggr1`、`aggr1→svm_shop`、`svm_shop→data-mongo-0`、`data-mongo-0→mongo-0`、`mongo-0→node-1` 的 read 與 write link 皆高亮;`aggr2` 一側的路徑被淡化
+#### Scenario: Tiny values and zero
 
-#### Scenario: 不高亮旁支
+- **WHEN** formatting `3.86e-7` and `0`
+- **THEN** the results are `3.86e-7 B/s` and `0 B/s` respectively; the former MUST NOT be truncated to zero
 
-- **WHEN** 兩個 aggregate(`aggrA`、`aggrB`)同屬一個 controller,使用者 hover `aggrA`
-- **THEN** `ontap-node→aggrA` 與 `aggrA` 的所有出邊高亮;`ontap-node→aggrB` 與 `aggrB` 的出邊被淡化
+#### Scenario: Tooltip clamped within the window
 
-#### Scenario: 離開後還原
+- **WHEN** the user hovers a node at the far right or bottom edge of the view area
+- **THEN** the tooltip is fully visible without overflowing the window, and the page shows no scrollbar
 
-- **WHEN** 使用者將滑鼠移出任何節點
-- **THEN** 所有 link 與節點還原為未淡化狀態,且佈局座標與 hover 前完全相同
+### Requirement: Hover highlights the path
 
-### Requirement: 點選節點跨視圖 Locate
+On hovering a node, the view MUST highlight all links on every path passing through that node — that is, the union of all links reachable by walking back along inbound edges (upstream, toward the storage side) and all links reachable by walking along outbound edges (downstream, toward the workload side) — and fade the remaining links and nodes; in Both mode links of both the read and write directions are included. A link not on any path passing through that node (for example the outbound edges of other aggregates under the same controller) MUST NOT be highlighted. After the mouse leaves, everything MUST revert to normal display. Hover highlighting MUST only change styles and MUST NOT trigger a re-layout.
 
-點選 Sankey 節點 MUST 導覽至 Graph 視圖並對同一 id 的節點執行 Locate(語意同 CONTEXT.md 的 **Locate**):展開其 collapsed 祖先容器鏈、選取該節點、將 viewport fit 至其 closed neighborhood、並清空搜尋輸入。Sankey 自身 MUST NOT 持有持久化的選取狀態——返回 Sankey 視圖時無任何節點處於選取態。
+#### Scenario: Hovering a pvc highlights upstream and downstream
 
-因為兩個視圖來自**兩個端點**,Sankey 中的節點不保證存在於 Graph 視圖當前的 body 中(不同的時間範圍解析、不同的篩選、`prune` 的投影,或該節點型別根本不由 `/v1/graph` 輸出)。視圖 MUST 依原因給出可辨識的提示,且在任一情況下 MUST NOT 靜默改寫使用者的篩選或 `prune` 設定:
+- **WHEN** the user hovers `data-mongo-0` in Both mode
+- **THEN** the read and write links of `ontap-prod-01→aggr1`, `aggr1→svm_shop`, `svm_shop→data-mongo-0`, `data-mongo-0→mongo-0`, `mongo-0→node-1` are all highlighted; the path on the `aggr2` side is faded
 
-- 節點在 Graph 視圖中為 **filter-hidden** → 提示該節點被過濾隱藏,不改變過濾器亦不選取。
-- 節點**不存在於** Graph 視圖當前的資料中 → 提示該節點不在目前的 graph 查詢結果內,並指出可能原因(篩選或 `prune` 不同);MUST NOT 顯示為錯誤。
-- `netapp-svm` 節點 **無對應的 graph 節點**(`/v1/graph` 不輸出該型別)→ 該 tier 的節點 MUST NOT 提供 Locate 互動(不呈現為可點選),而非點下去才報告失敗。
+#### Scenario: Side branches are not highlighted
 
-#### Scenario: 點選 aggregate 定位至 Graph 視圖
+- **WHEN** two aggregates (`aggrA`, `aggrB`) belong to the same controller, and the user hovers `aggrA`
+- **THEN** `ontap-node→aggrA` and all outbound edges of `aggrA` are highlighted; `ontap-node→aggrB` and the outbound edges of `aggrB` are faded
 
-- **WHEN** 使用者於 Sankey 點選 `aggr1`,且該節點存在於 Graph 視圖當前資料中
-- **THEN** app 路由切換至 Graph 視圖,`netapp/ontap-prod/aggr/aggr1` 成為選取節點、其 collapsed 祖先被展開、viewport fit 至其 closed neighborhood,搜尋輸入為空
+#### Scenario: Reverts after leaving
 
-#### Scenario: 目標為 filter-hidden
+- **WHEN** the user moves the mouse off any node
+- **THEN** all links and nodes revert to the un-faded state, and the layout coordinates are exactly the same as before the hover
 
-- **WHEN** Graph 視圖已隱藏 `pvc` kind,使用者於 Sankey 點選 `data-mongo-0`
-- **THEN** app 切換至 Graph 視圖並顯示「該節點目前被過濾隱藏」的提示;kind 過濾器維持不變且無節點被選取
+### Requirement: Clicking a node Locates across views
 
-#### Scenario: 目標不在 graph 查詢結果內
+Clicking a Sankey node MUST push-navigate to bare `/graph` (the Graph page mounts with its initial scope and fetches), passing the target node id to the Graph page via router navigation state (**not in the URL**); the Graph page MUST, after its **first successful load**, run Locate on the node with that id (semantics as **Locate** in CONTEXT.md): expand its chain of collapsed ancestor containers, select the node, fit the viewport to its closed neighborhood, and clear the search input. The target is retained until the first successful load; if the first load fails the page presents its error state, and when a subsequent manual reload succeeds it MUST still run that Locate. Locate is a one-off action: refreshing `/graph` MUST NOT run it again. The Sankey itself MUST NOT hold persisted selection state — returning to the Sankey via Back remounts the page with no node in the selected state.
 
-- **WHEN** Graph 視圖以 `prune: true` 載入,某 pod 因此不在其 body 中,使用者於 Sankey 點選該 pod
-- **THEN** app 切換至 Graph 視圖並提示該節點不在目前查詢結果內、可能因篩選或 Projection 設定;`prune` 與所有篩選維持不變
+Because the two views come from **two endpoints**, a node in the Sankey is not guaranteed to exist in the Graph page's body (the Graph page mounts with the default projection `prune=true` and no filters — the traffic graph keeps only pods on connectivity edges; or that node type is simply not emitted by `/v1/graph`). The view MUST give a recognisable hint according to the cause, and in no case MUST it silently rewrite the `prune` setting:
 
-#### Scenario: SVM 節點不提供 Locate
+- The node **does not exist** in the Graph view's current data → hint that the node is not in the current graph query result, and point out the possible causes (filters or a different `prune`); MUST NOT be shown as an error.
+- A `netapp-svm` node **has no corresponding graph node** (`/v1/graph` does not emit that type) → nodes on that tier MUST NOT offer the Locate interaction (not presented as clickable), rather than reporting failure only after a click.
 
-- **WHEN** 使用者將游標移到任一 `netapp-svm` 節點上
-- **THEN** 該節點不呈現為可點選(無指標游標、無點選效果),tooltip 正常顯示
+#### Scenario: Clicking an aggregate Locates into the Graph view
 
-#### Scenario: 返回 Sankey 無選取
+- **WHEN** the user clicks `aggr1` in the Sankey, and that node exists in the Graph view's current data
+- **THEN** the app push-navigates to `/graph` (query containing only `from` / `to`); after the Graph page finishes loading, `netapp/ontap-prod/aggr/aggr1` becomes the selected node, its collapsed ancestors are expanded, the viewport fits its closed neighborhood, and the search input is empty
 
-- **WHEN** 使用者 Locate 後切換回 Sankey 視圖
-- **THEN** Sankey 中無任何節點顯示選取樣式,mode selector 與所有選擇器保持離開前的值
+#### Scenario: Target not in the graph query result
 
-### Requirement: 主題支援與可區分的 read / write 配色
+- **WHEN** some pod sits on no connectivity edge and is therefore not in the `prune=true` body, and the user clicks that pod in the Sankey
+- **THEN** the app navigates to `/graph`; after loading it hints that the node is not in the current query result, possibly because the Projection is Traffic graph; `prune` and the filters stay at their defaults, and the user can change the projection themselves
 
-Sankey 視圖 MUST 讀取 app shell 的主題 token,在 dark 與 light 兩主題下皆正確渲染(背景、節點、link、文字、tooltip、legend 均使用主題 token,不得硬編顏色);主題切換時 MUST 即時重繪且不遺失 mode / hover 狀態,MUST NOT 重新取數。read 與 write 的 link 顏色在兩主題下 MUST 皆可區分,且區分 MUST NOT 僅依賴色相:兩者 MUST 同時以明度差異或填充圖樣(pattern)區分,並由 legend 的文字標籤說明。
+#### Scenario: Refresh does not repeat Locate
 
-#### Scenario: 主題切換
+- **WHEN** the user refreshes after Locating into `/graph`
+- **THEN** the Graph page loads normally, no node is selected, and the viewport is the initial fit
 
-- **WHEN** 使用者於 Sankey 視圖(Write 模式、hover 中)將主題自 dark 切為 light
-- **THEN** 圖形以 light 主題 token 重繪,mode selector 仍為 Write,hover 高亮狀態維持,且未發出任何請求
+#### Scenario: SVM nodes offer no Locate
 
-#### Scenario: read / write 不僅靠色相
+- **WHEN** the user moves the cursor over any `netapp-svm` node
+- **THEN** that node is not presented as clickable (no pointer cursor, no click effect), and the tooltip shows normally
 
-- **WHEN** 檢視 Both 模式的 legend 與 link
-- **THEN** read 與 write 除色相外另有明度差異或填充圖樣差異,且 legend 以文字標示 read / write
+#### Scenario: Returning to the Sankey has no selection
 
-#### Scenario: 新視覺元素隨主題重繪
+- **WHEN** the user presses Back to return to the Sankey after a Locate
+- **THEN** the Sankey page remounts, restores estate / roots / mode from the URL and fetches; no node shows the selected style
 
-- **WHEN** 使用者於 Sankey 視圖切換主題
-- **THEN** 盒卡、欄位標題、緞帶漸層、數值標籤的描邊光暈、namespace 色條與縮放控制列皆改用新主題的 token,無硬編顏色殘留
+### Requirement: Theme support and distinguishable read / write colors
 
-### Requirement: 尺寸與容器 resize
+The Sankey view MUST read the app shell's theme tokens and render correctly in both the dark and light themes (background, nodes, links, text, tooltip and legend all use theme tokens; colors must not be hardcoded); on a theme switch it MUST redraw immediately without losing mode / hover state, and MUST NOT refetch. The read and write link colors MUST be distinguishable in both themes, and the distinction MUST NOT rely on hue alone: the two MUST also be distinguished by a lightness difference or a fill pattern, and explained by the legend's text labels.
 
-Sankey 的 SVG MUST 填滿 app shell 提供的視圖區域(寬高皆隨容器),其 `viewBox` 為佈局算出的**內在座標**,並以 `preserveAspectRatio` 的 meet 語意等比置中適配。容器尺寸變化 MUST NOT 觸發重新佈局:節點與連線的內在座標 MUST 保持不變,只由 viewBox 重新適配;期間 MUST NOT 遺失 hover 高亮狀態、mode selector 值、`az` / `env` / root / `cluster` / `namespace` 的選擇與當前的縮放平移視角。內容不因尺寸變化而產生視圖區域外的水平捲動。
+#### Scenario: Theme switch
 
-**全部**節點(含無流量 root 的孤立卡片)MUST 落在佈局算出的內在座標框內:無流量節點掛在同一 tier 的流量圖之下,佈局 MUST 把它們計入內在高度,否則 viewBox 適配不到它們——一個框外的節點與「後端沒回傳該節點」無法區分。
+- **WHEN** the user switches the theme from dark to light while in the Sankey view (Write mode, mid-hover)
+- **THEN** the chart redraws with the light theme tokens, the mode selector is still Write, the hover highlight state is preserved, and no request is issued
 
-#### Scenario: 視窗縮放
+#### Scenario: read / write not by hue alone
 
-- **WHEN** 使用者將視窗寬度自 1400px 調整為 900px
-- **THEN** 圖形等比縮小並完整落於視圖區域內,佈局函式未被呼叫(節點內在座標與 hover 前完全相同),mode selector 與所有選擇器的值不變
+- **WHEN** viewing the legend and links in Both mode
+- **THEN** read and write differ by a lightness difference or a fill pattern in addition to hue, and the legend labels read / write in text
 
-#### Scenario: resize 期間的 hover
+#### Scenario: New visual elements redraw with the theme
 
-- **WHEN** 使用者 hover `aggr1` 期間容器尺寸改變
-- **THEN** `aggr1` 的路徑高亮仍維持,tooltip 位置隨新的螢幕座標更新
+- **WHEN** the user switches the theme while in the Sankey view
+- **THEN** the box cards, column headers, ribbon gradients, the stroke halos of the value labels, the namespace color bars and the zoom control bar all switch to the new theme's tokens, with no hardcoded color left behind
 
-### Requirement: 圖區的縮放與平移
+### Requirement: Sizing and container resize
 
-圖區 MUST 支援獨立於瀏覽器頁面縮放的圖內縮放與平移,且 MUST 只改變**單一**包住全部圖形的 `<g>` 的 `transform`;漸層等 `<defs>` MUST 留在該 `<g>` 之外。縮放為真幾何縮放:字級與線寬 MUST 隨之等比改變,MUST NOT 做反向補償。
+The Sankey's SVG MUST fill the view area the app shell provides (both width and height follow the container); its `viewBox` is the **intrinsic coordinates** computed by the layout, fitted proportionally and centred with the meet semantics of `preserveAspectRatio`. A container size change MUST NOT trigger a re-layout: the intrinsic coordinates of nodes and links MUST stay unchanged, refitted only by the viewBox; during it the app MUST NOT lose the hover highlight state, the mode selector value, the `az` / `env` / root / `cluster` / `namespace` selections or the current zoom / pan viewport. The content does not produce horizontal scrolling outside the view area because of a size change.
 
-- **滾輪 / 觸控板雙指**:以**指標位置為錨點**縮放 —— 錨點下的圖上座標在縮放前後 MUST 不變;該事件 MUST 被 `preventDefault`,MUST NOT 捲動頁面。
-- **按住拖曳**:平移。圖區游標在一般狀態 MUST 為 `grab`、拖曳中 MUST 為 `grabbing`。
-- 縮放倍率 MUST 有上下限,到達界限時 MUST 停住,MUST NOT 反彈或翻轉。
+**All** nodes (including the orphaned cards of no-flow roots) MUST fall within the intrinsic coordinate frame computed by the layout: no-flow nodes hang below the flow chart of the same tier, and the layout MUST count them into the intrinsic height, otherwise the viewBox cannot fit them — a node outside the frame is indistinguishable from "the backend did not return that node".
 
-初始視角 MUST 為「符合視窗但不放大超過 1:1」:圖形大於視圖區時縮到全圖可見,小於視圖區時維持原尺寸並置中。mode 切換、估計 / root 選擇變更、主題切換、容器 resize 與 storage-graph 重新整理 MUST 保留當前視角。視角 MUST NOT 寫入 URL(路由 MUST 維持精確的 `/sankey`),MUST NOT 持久化。
+#### Scenario: Window resize
 
-#### Scenario: 以指標為錨點縮放
+- **WHEN** the user resizes the window width from 1400px to 900px
+- **THEN** the chart shrinks proportionally and falls entirely within the view area, the layout function is not called (the nodes' intrinsic coordinates are exactly the same as before), and the values of the mode selector and all selectors are unchanged
 
-- **WHEN** 使用者將指標停在 `aggr1` 上滾動滾輪放大
-- **THEN** `aggr1` 停在指標下方不移動,頁面本身不捲動
+#### Scenario: Hover during resize
 
-#### Scenario: 開場不放大小圖
+- **WHEN** the container size changes while the user is hovering `aggr1`
+- **THEN** the path highlight of `aggr1` is preserved, and the tooltip position updates to the new screen coordinates
 
-- **WHEN** 圖形的內在尺寸小於視圖區
-- **THEN** 開場視角為 1:1 並置中,MUST NOT 被放大至填滿
+### Requirement: Zoom and pan of the chart area
 
-#### Scenario: 切換模式保留視角
+The chart area MUST support in-chart zoom and pan independent of browser page zoom, and MUST change only the `transform` of a **single** `<g>` wrapping the entire chart; `<defs>` such as gradients MUST stay outside that `<g>`. Zoom is true geometric scaling: font size and line width MUST scale proportionally with it, and MUST NOT be counter-compensated.
 
-- **WHEN** 使用者放大並平移至 `ontap-prod-02` 附近後,自 Both 切換為 Read
-- **THEN** 圖形以 Read 模式重繪,縮放倍率與平移位置不變
+- **Wheel / two-finger trackpad**: zoom **anchored at the pointer position** — the chart coordinate under the anchor MUST be unchanged before and after the zoom; the event MUST be `preventDefault`-ed and MUST NOT scroll the page.
+- **Press and drag**: pan. The chart-area cursor MUST be `grab` in the normal state and `grabbing` while dragging.
+- The zoom factor MUST have upper and lower bounds; on reaching a bound it MUST stop, and MUST NOT bounce back or flip.
 
-### Requirement: 縮放控制列與圖區鍵盤操作
+The initial viewport MUST be "fit to window but not enlarged beyond 1:1": when the chart is larger than the view area, shrink until the whole chart is visible; when smaller, keep the original size and centre it. Mode switches, estate / root selection changes, theme switches, container resize and storage-graph refresh MUST preserve the current viewport. The viewport MUST NOT be written to the URL (the query carries only estate / roots / narrowing / mode and the time range), and MUST NOT be persisted; after the page remounts it MUST return to the initial viewport.
 
-圖形繪製期間,圖區 MUST 於其右下角顯示一列縮放控制,含:縮小、目前倍率讀數(1:1 顯示為 `100%`,啟動它即回到 1:1)、放大、符合視窗、1:1、專注模式。每一項 MUST 為具可存取名稱且可鍵盤操作的按鈕。「符合視窗」(與按鍵 `0`)為完整 fit —— 全圖塞進視圖區,小圖**可以**因此被放大;這與開場視角的「符合視窗但不放大超過 1:1」不同,開場規則只適用於開場。空狀態、loading 與 error 期間 MUST NOT 顯示縮放控制列。
+#### Scenario: Zoom anchored at the pointer
 
-圖區容器 MUST 可取得焦點(`tabindex`)並具可存取名稱。下列按鍵 MUST 只在**圖區容器或其後代**具有焦點時作用:`+` / `-` 縮放一格、`0` 符合視窗、`1` 回到 1:1、`F` 進入專注模式、`Esc` 離開專注模式。這些監聽 MUST 註冊於圖區容器,MUST NOT 註冊於 `document` 或 `window`(見 `app-shell` 的「Shell 不註冊全域鍵盤快捷鍵」),且 MUST NOT 攔截送往 mode selector、估計 / root 選擇器或任何輸入元件的按鍵。
+- **WHEN** the user rests the pointer on `aggr1` and scrolls the wheel to zoom in
+- **THEN** `aggr1` stays under the pointer without moving, and the page itself does not scroll
 
-#### Scenario: 空狀態不顯示控制列
+#### Scenario: Small charts are not enlarged on open
 
-- **WHEN** Sankey 因 graph 無任何儲存量測而顯示空狀態
-- **THEN** 縮放控制列不顯示;mode selector 與所有估計 / root 選擇器仍可操作
+- **WHEN** the chart's intrinsic size is smaller than the view area
+- **THEN** the opening viewport is 1:1 and centred, and MUST NOT be enlarged to fill
 
-#### Scenario: 符合視窗可放大小圖
+#### Scenario: Switching mode preserves the viewport
 
-- **WHEN** 圖形的內在尺寸小於視圖區(開場為 1:1 置中),使用者按 `0` 或啟動「符合視窗」
-- **THEN** 圖形被放大至恰好塞滿視圖區
+- **WHEN** the user zooms in and pans to near `ontap-prod-02`, then switches from Both to Read
+- **THEN** the chart redraws in Read mode, with the zoom factor and pan position unchanged
 
-#### Scenario: 倍率讀數回到 1:1
+### Requirement: Zoom control bar and keyboard operation of the chart area
 
-- **WHEN** 使用者放大至 240% 後啟動倍率讀數
-- **THEN** 圖形回到 1:1,讀數顯示 `100%`
+While the chart is drawn, the chart area MUST show a row of zoom controls in its bottom-right corner, containing: zoom out, the current zoom factor readout (1:1 shown as `100%`; activating it returns to 1:1), zoom in, fit to window, 1:1, focus mode. Each MUST be a button with an accessible name that can be operated by keyboard. "Fit to window" (and the `0` key) is a full fit — the whole chart is fitted into the view area, and a small chart **may** be enlarged as a result; this differs from the opening viewport's "fit to window but not enlarged beyond 1:1", which applies only on open. During empty states, loading and error the zoom control bar MUST NOT be shown.
 
-#### Scenario: 焦點不在圖區時按鍵無效
+The chart-area container MUST be focusable (`tabindex`) and have an accessible name. The following keys MUST act only while **the chart-area container or one of its descendants** has focus: `+` / `-` zoom one step, `0` fit to window, `1` return to 1:1, `F` enter focus mode, `Esc` leave focus mode. These listeners MUST be registered on the chart-area container, MUST NOT be registered on `document` or `window` (see "Shell registers no global keyboard shortcuts" in `app-shell`), and MUST NOT intercept keys headed for the mode selector, the estate / root selectors or any input component.
 
-- **WHEN** 焦點在導覽列的主題切換上,使用者按 `0`
-- **THEN** Sankey 的視角不變,該按鍵未被 Sankey 攔截
+#### Scenario: Empty state shows no control bar
 
-### Requirement: 專注模式
+- **WHEN** the Sankey shows an empty state because the graph has no storage measurement
+- **THEN** the zoom control bar is not shown; the mode selector and all estate / root selectors remain operable
 
-專注模式 MUST 收起 app shell 的頂部導覽列與 Sankey 自身的控制項(mode selector、估計 / root 選擇列、legend 與圖外摘要表),使圖區填滿整個視窗。`Esc` 或再次啟動控制列的專注按鈕 MUST 離開。進入與離開 MUST 保留縮放平移視角、mode、估計 / root 選擇與 hover 狀態。專注模式 MUST 為暫時的 view state:MUST NOT 寫入 URL、MUST NOT 持久化;切離 Sankey 視圖或完整重新整理後 MUST 回到未啟用。
+#### Scenario: Fit to window may enlarge a small chart
 
-#### Scenario: 進出專注模式保留視角
+- **WHEN** the chart's intrinsic size is smaller than the view area (opened at 1:1, centred), and the user presses `0` or activates "fit to window"
+- **THEN** the chart is enlarged to exactly fill the view area
 
-- **WHEN** 使用者放大至 180% 後按 `F`,再按 `Esc`
-- **THEN** 進入時導覽列與控制項收起、圖填滿視窗;離開後兩者回復,縮放倍率仍為 180%
+#### Scenario: The factor readout returns to 1:1
 
-#### Scenario: 切走視圖即離開專注模式
+- **WHEN** the user zooms to 240% and then activates the factor readout
+- **THEN** the chart returns to 1:1 and the readout shows `100%`
 
-- **WHEN** 使用者於專注模式按 `Esc` 離開後切換至 Graph 視圖再切回 Sankey
-- **THEN** 專注模式為未啟用,導覽列可見,縮放平移視角仍為切走前的值
+#### Scenario: Keys have no effect while focus is outside the chart area
 
-### Requirement: 重新整理時就地更新
+- **WHEN** focus is on the theme toggle in the nav bar and the user presses `0`
+- **THEN** the Sankey's viewport is unchanged, and the key was not intercepted by the Sankey
 
-當 storage-graph 資料因重新整理(手動或自動)而更新時,Sankey MUST 就地重新推導並更新圖形(新增 / 移除節點與 link、更新權重),MUST NOT 重置為初始狀態;mode selector 與所有選擇器的值 MUST 保留。已消失節點的 tooltip 與 hover 高亮 MUST 被清除;仍存在節點的 hover 高亮 MUST 依新拓樸重算。刷新期間與刷新失敗後,先前成功繪製的圖 MUST 維持可見(見 `graph-data-source` 的刷新語意)。
+### Requirement: Focus mode
 
-#### Scenario: 權重更新
+Focus mode MUST collapse the app shell's top nav bar and the Sankey's own controls (mode selector, estate / root selector row, legend and the summary tables outside the chart), so that the chart area fills the whole window. `Esc` or activating the control bar's focus button again MUST leave it. Entering and leaving MUST preserve the zoom / pan viewport, mode, estate / root selection and hover state. Focus mode MUST be transient view state: it MUST NOT be written to the URL and MUST NOT be persisted; after navigating away from the Sankey view or a full refresh it MUST return to inactive.
 
-- **WHEN** 於 Write 模式,重新整理後 `svm_shop → data-mongo-0` 的 `write_bytes_per_sec` 自 `1048576` 變為 `2097152`
-- **THEN** 該 link 與其上游 `aggr1 → svm_shop`、`ontap-prod-01 → aggr1` 的權重依**新回應所給的值**更新(而非由客戶端加總推導),mode selector 仍為 Write
+#### Scenario: Entering and leaving focus mode preserves the viewport
 
-#### Scenario: 節點新增與消失
+- **WHEN** the user zooms to 180%, presses `F`, then presses `Esc`
+- **THEN** on entering, the nav bar and controls collapse and the chart fills the window; after leaving, both are restored and the zoom factor is still 180%
 
-- **WHEN** 重新整理後新增一條完整路徑、同時 `data-mongo-1` 的路徑消失
-- **THEN** 新路徑的節點出現於對應 tier,`data-mongo-1`、`mongo-1` 與只服務它的節點消失;若當時 hover 的是 `data-mongo-1` 則 tooltip 關閉且無殘留高亮
+#### Scenario: Leaving the route ends focus mode
 
-#### Scenario: 刷新失敗保留既有圖
+- **WHEN** the user, while in focus mode, presses the browser's Back to leave `/sankey`, then returns with Forward
+- **THEN** the Sankey page remounts: focus mode is inactive, the nav bar is visible, the viewport is the initial one; the estate / roots / mode carried by the URL are restored
 
-- **WHEN** 自動刷新的 storage-graph 請求回應 HTTP 500
-- **THEN** 既有圖形維持可見,狀態指示器呈現錯誤,MUST NOT 清空為空狀態
+### Requirement: In-place update on refresh
 
-### Requirement: 與 Graph 視圖的控制完全獨立
+When the storage-graph data updates because of a refresh (manual or automatic), the Sankey MUST re-derive and update the chart in place (add / remove nodes and links, update weights), and MUST NOT reset to the initial state; the values of the mode selector and all selectors MUST be retained. The tooltip and hover highlight of a node that has disappeared MUST be cleared; the hover highlight of a node that still exists MUST be recomputed against the new topology. During a refresh and after a failed refresh, the previously successfully drawn chart MUST stay visible (see the refresh semantics of `graph-data-source`).
 
-Sankey 的資料 MUST 完全獨立於 Graph 視圖的 kind / edge-type 過濾器、ingress visibility toggle、搜尋查詢、pod-parent mode、collapse 狀態、`prune` 設定,以及 filter bar 的多值 `cluster` / `az` / `env` / `namespace` 選擇——上述任何變更 MUST NOT 改變 Sankey 的節點、link、權重,亦 MUST NOT 觸發 storage-graph 重新取數。
+#### Scenario: Weight update
 
-反向亦然:Sankey 的 `az` / `env` / root / `cluster` / `namespace` 變更 MUST NOT 改變 Graph 視圖的任何狀態或觸發其重新取數。
+- **WHEN** in Write mode, after a refresh the `write_bytes_per_sec` of `svm_shop → data-mongo-0` changes from `1048576` to `2097152`
+- **THEN** that link and its upstream `aggr1 → svm_shop`, `ontap-prod-01 → aggr1` update their weights to **the values given by the new response** (not derived by client-side summing), and the mode selector is still Write
 
-兩視圖唯一共享的輸入是**檢視時間範圍**(見 `app-shell`):其變更 MUST 使兩個來源在各自下次取數時使用新的 `start` / `end`。
+#### Scenario: Nodes appear and disappear
 
-#### Scenario: Graph 視圖控制不影響 Sankey
+- **WHEN** after a refresh a new complete path is added while the path of `data-mongo-1` disappears
+- **THEN** the new path's nodes appear on their tiers; `data-mongo-1`, `mongo-1` and the nodes serving only it disappear; if `data-mongo-1` was being hovered at the time, the tooltip closes with no residual highlight
 
-- **WHEN** 使用者於 Graph 視圖隱藏 `pvc` kind、輸入搜尋 `nats`、切換 pod-parent mode 為 `node`、將 Projection 切為 `Full inventory`,再切換至 Sankey 視圖
-- **THEN** Sankey 的節點、link 與權重不變,且期間未對 `endpoints.storageGraph` 發出任何請求
+#### Scenario: A failed refresh keeps the existing chart
 
-#### Scenario: Sankey 控制不影響 Graph 視圖
+- **WHEN** an auto-refresh storage-graph request responds with HTTP 500
+- **THEN** the existing chart stays visible, the status indicator shows the error, and the view MUST NOT be cleared to an empty state
 
-- **WHEN** 使用者於 Sankey 加入 root `aggr: aggr1` 並改選 `env`
-- **THEN** Graph 視圖的篩選、選取、collapse 與資料皆不變,且未對 `endpoints.graph` 發出請求
+### Requirement: Fully independent of the Graph view's controls
 
-### Requirement: 效能界限
+The Sankey's data MUST be fully independent of the Graph view's kind / edge-type filters, ingress visibility toggle, search query, pod-parent mode, collapse state, `prune` setting, and the filter bar's multi-value `cluster` / `az` / `env` / `namespace` selections — any change to those MUST NOT change the Sankey's nodes, links or weights, and MUST NOT trigger a storage-graph refetch.
 
-以下界限 MUST 在 e2e 測試套件所用的開發機 / CI 等級硬體上成立:
+The reverse also holds: changes to the Sankey's `az` / `env` / roots / `cluster` / `namespace` / mode are written only to the `/sankey` query, MUST NOT rewrite the `/graph` query, and MUST NOT make the Graph page carry the Sankey's selections on its next mount.
 
-- 對一個含 3000 條 `storage-flow` edge(500 個 pvc、1000 個 pod、25 個 aggregate、10 個 SVM、5 個 controller、50 個 Kubernetes node,每條 edge 皆帶 `read_bytes_per_sec` 與 `write_bytes_per_sec`)的合成 body,自取得正規化結果至 Sankey 首次完成繪製(Both 模式)MUST 在 **1000 ms** 內。
-- 切換 mode 後的重繪 MUST 在 500 ms 內。
-- hover 與離開 MUST 只更新樣式,MUST NOT 觸發佈局重算(以佈局函式呼叫次數為 0 驗證),且樣式更新 MUST 在一個 animation frame 內完成。
-- 縮放與平移 MUST 只更新單一 `<g>` 的 `transform`,MUST NOT 觸發佈局重算(同樣以佈局函式呼叫次數為 0 驗證),且每次更新 MUST 在一個 animation frame 內完成。
+The only input the two pages share is the **view time range** (see `app-shell`; passed via the URL and the browser-local saved value): a change to it MUST make the current page refetch, and the other page uses the new `start` / `end` on its next mount.
 
-#### Scenario: 3000 條 storage-flow edge 首次繪製
+#### Scenario: Graph view controls do not affect the Sankey
 
-- **WHEN** 以上述合成 body 開啟 Sankey 視圖
-- **THEN** 自資料可用至圖形首次繪製完成的耗時 ≤ 1000 ms,且六個 tier 的節點數分別為 5 / 25 / 10 / 500 / 1000 / 50
+- **WHEN** the user, on `/graph`, hides the `pvc` kind, enters the search `nats`, switches the pod-parent mode to `node`, switches the Projection to `Full inventory`, then presses Back to return to `/sankey?az=zone-a&env=prod`
+- **THEN** the storage-graph request's query string is the same as before (without `prune` / `edge_type` / the Graph's filters), and the Sankey's nodes, links and weights are the same as before
 
-#### Scenario: hover 不重算佈局
+#### Scenario: Sankey controls do not affect the Graph view
 
-- **WHEN** 於上述合成 body 連續 hover 與離開 100 個不同節點
-- **THEN** 佈局函式被呼叫的次數為 0,每次 hover 的樣式更新於一個 animation frame 內完成,且節點座標全程不變
+- **WHEN** the user, on `/sankey`, adds root `aggr: aggr1` and changes `env`, then clicks the Graph link in the nav bar
+- **THEN** the address bar is `/graph` (with only `from` / `to` filled in), the filter bar has nothing selected, and the graph request contains no `aggr` / `az` / `env`
 
-#### Scenario: 縮放平移不重算佈局
+### Requirement: Performance bounds
 
-- **WHEN** 於上述合成 graph 連續縮放與平移 100 次
-- **THEN** 佈局函式被呼叫的次數為 0,每次更新於一個 animation frame 內完成,節點的內在座標全程不變
+The following bounds MUST hold on developer-machine / CI-grade hardware as used by the e2e test suite:
+
+- For a synthetic body containing 3000 `storage-flow` edges (500 pvcs, 1000 pods, 25 aggregates, 10 SVMs, 5 controllers, 50 Kubernetes nodes, every edge carrying both `read_bytes_per_sec` and `write_bytes_per_sec`), the time from obtaining the normalized result to the Sankey's first completed draw (Both mode) MUST be within **1000 ms**.
+- The redraw after a mode switch MUST be within 500 ms.
+- Hover and leave MUST only update styles, MUST NOT trigger a layout recomputation (verified by a layout function call count of 0), and the style update MUST complete within one animation frame.
+- Zoom and pan MUST only update the `transform` of the single `<g>`, MUST NOT trigger a layout recomputation (likewise verified by a layout function call count of 0), and each update MUST complete within one animation frame.
+
+#### Scenario: First draw of 3000 storage-flow edges
+
+- **WHEN** the Sankey view is opened with the synthetic body above
+- **THEN** the elapsed time from data availability to the chart's first completed draw is ≤ 1000 ms, and the node counts of the six tiers are respectively 5 / 25 / 10 / 500 / 1000 / 50
+
+#### Scenario: Hover does not recompute the layout
+
+- **WHEN** 100 different nodes are hovered and left in succession on the synthetic body above
+- **THEN** the layout function is called 0 times, each hover's style update completes within one animation frame, and the node coordinates stay unchanged throughout
+
+#### Scenario: Zoom and pan do not recompute the layout
+
+- **WHEN** zoom and pan are performed 100 times in succession on the synthetic graph above
+- **THEN** the layout function is called 0 times, each update completes within one animation frame, and the nodes' intrinsic coordinates stay unchanged throughout

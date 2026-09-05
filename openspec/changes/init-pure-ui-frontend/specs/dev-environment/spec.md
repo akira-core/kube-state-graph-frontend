@@ -1,248 +1,248 @@
 ## Purpose
 
-定義 kube-state-graph-frontend 的本機開發環境契約:Vite + TypeScript + React SPA 專案結構、Node 22、lint / format / typecheck / 單元測試 / e2e 工具鏈、版本控管的 git hooks、fixture 單一來源與漂移檢查,以及 clean checkout 不需任何後端即可開發、驗證與建置靜態 `dist/` 的保證。
+Defines the local development environment contract for kube-state-graph-frontend: the Vite + TypeScript + React SPA project structure, Node 22, the lint / format / typecheck / unit test / e2e toolchain, version-controlled git hooks, the single source of fixtures and their drift check, and the guarantee that a clean checkout can develop, verify, and build the static `dist/` without any backend.
 
 ## ADDED Requirements
 
-### Requirement: SPA 專案骨架
+### Requirement: SPA project scaffold
 
-專案 SHALL 為以 Vite 為建置工具的單頁應用程式(SPA),語言為 TypeScript,框架為 React 18(或更高),入口為 repo 根目錄的 `index.html` 與 `vite.config.ts`。專案 MUST NOT 依賴任何 `@grafana/*` 套件,MUST NOT 含 `.config/` webpack 目錄、`plugin.json`、`provisioning/` 或其他 Grafana plugin scaffold 產物。
+The project SHALL be a single-page application (SPA) built with Vite, in TypeScript, on React 18 (or higher), with `index.html` and `vite.config.ts` at the repo root as entry points. The project MUST NOT depend on any `@grafana/*` package, and MUST NOT contain a `.config/` webpack directory, `plugin.json`, `provisioning/`, or any other Grafana plugin scaffold artifact.
 
-`.nvmrc` SHALL 記載 `22`,`package.json` 的 `engines.node` SHALL 為 `>=22`;所有 npm script MUST 可在 Node 22 LTS 上執行。Node 22 是硬性下限而非建議值:fixture generator 依賴 Node 原生的 TypeScript type stripping 直接匯入 `.ts` fixture,不另設編譯步驟或額外相依。
+`.nvmrc` SHALL record `22`, and `engines.node` in `package.json` SHALL be `>=22`; every npm script MUST run on Node 22 LTS. Node 22 is a hard floor, not a recommendation: the fixture generator relies on Node's native TypeScript type stripping to import the `.ts` fixture directly, with no separate compile step or extra dependency.
 
-#### Scenario: 無 Grafana 相依
+#### Scenario: No Grafana dependency
 
-- **WHEN** 檢視 `package.json` 的 `dependencies` 與 `devDependencies`,並列出 repo 根目錄
-- **THEN** 不存在任何名稱以 `@grafana/` 開頭的套件,且 `.config/`、`plugin.json`、`provisioning/` 皆不存在
+- **WHEN** inspecting `dependencies` and `devDependencies` in `package.json` and listing the repo root
+- **THEN** no package whose name starts with `@grafana/` exists, and `.config/`, `plugin.json`, `provisioning/` do not exist
 
-#### Scenario: Node 版本鎖定
+#### Scenario: Node version pinned
 
-- **WHEN** 開發者於 repo 根目錄執行 `nvm use`(或讀取 `.nvmrc` 的等效工具)後執行 `npm install`
-- **THEN** 啟用的 Node 主版本為 22,`npm install` 成功,且 `package.json` 內每一個 script 皆可在此版本執行
+- **WHEN** a developer runs `nvm use` (or an equivalent tool that reads `.nvmrc`) at the repo root and then runs `npm install`
+- **THEN** the activated Node major version is 22, `npm install` succeeds, and every script in `package.json` runs on this version
 
-### Requirement: 本機 demo 模式開發伺服器
+### Requirement: Local demo-mode development server
 
-`npm run dev` SHALL 啟動 Vite dev server,並於 clean checkout 上不需任何後端、Kubernetes 叢集、metrics store、Docker 或憑證即可在瀏覽器看到完整 showcase graph。
+`npm run dev` SHALL start the Vite dev server, and on a clean checkout show the complete showcase graph in the browser without any backend, Kubernetes cluster, metrics store, Docker, or credentials.
 
-dev server SHALL 於 `<base>/config.json` 提供版本控管的 `dev/config.json`(內容為 `demoMode: true`);當 `.gitignore` 所列的 `dev/config.local.json` 存在時,SHALL 改以該檔案回應,讓開發者在不改動版本控管檔案的前提下切換到真實後端。兩個檔案皆位於 `public/` 之外,MUST NOT 出現在 `dist/`。
+The dev server SHALL serve the version-controlled `dev/config.json` (whose content is `demoMode: true`) at `<base>/config.json`; when the `.gitignore`-listed `dev/config.local.json` exists, it SHALL respond with that file instead, letting developers switch to a real backend without touching version-controlled files. Both files live outside `public/` and MUST NOT appear in `dist/`.
 
-#### Scenario: Clean checkout 直接看到 showcase graph
+#### Scenario: Clean checkout shows the showcase graph directly
 
-- **WHEN** 於 clean checkout 執行 `npm install` 後 `npm run dev`,並以瀏覽器開啟終端印出的 URL
-- **THEN** 頁面以 demo 模式渲染 `SHOWCASE_GRAPH` 的完整圖
-- **AND** 瀏覽器 network 面板中沒有任何對 dev server 以外 origin 的請求
+- **WHEN** `npm install` then `npm run dev` are run on a clean checkout, and the URL printed to the terminal is opened in a browser
+- **THEN** the page renders the complete graph of `SHOWCASE_GRAPH` in demo mode
+- **AND** the browser network panel shows no request to any origin other than the dev server
 
-#### Scenario: 本機覆寫檔優先於版本控管的 dev config
+#### Scenario: Local override file takes precedence over the version-controlled dev config
 
-- **WHEN** 開發者建立 `dev/config.local.json` 後(重新)啟動 `npm run dev`,並請求 `GET /config.json`
-- **THEN** 回應內容等於 `dev/config.local.json`,且 `git status` 未顯示任何被修改的追蹤檔案
+- **WHEN** a developer creates `dev/config.local.json`, then (re)starts `npm run dev` and requests `GET /config.json`
+- **THEN** the response content equals `dev/config.local.json`, and `git status` shows no modified tracked file
 
-### Requirement: 連接真實後端的 dev proxy
+### Requirement: Dev proxy for connecting to a real backend
 
-`npm run dev` SHALL 支援以環境變數 `KSG_DEV_PROXY_TARGET`(例如 `http://localhost:8080`)啟用 dev proxy:設定時,dev server MUST 將 `/api/` 前綴下的請求轉發至該目標並去除 `/api` 前綴(`/api/v1/graph` → `<target>/v1/graph`,query string 原樣保留),使 `dev/config.local.json` 得以使用 root-relative 端點(如 `endpoints.graph: "/api/v1/graph"`)而不觸發 CORS。
+`npm run dev` SHALL support enabling a dev proxy via the environment variable `KSG_DEV_PROXY_TARGET` (for example `http://localhost:8080`): when set, the dev server MUST forward requests under the `/api/` prefix to that target with the `/api` prefix stripped (`/api/v1/graph` → `<target>/v1/graph`, query string preserved as-is), so that `dev/config.local.json` can use root-relative endpoints (such as `endpoints.graph: "/api/v1/graph"`) without triggering CORS.
 
-`/api/` 前綴與去前綴規則 MUST 與 `container-deployment` capability 的同源反向代理一致,使同一份 `config.json` 在本機與叢集中皆可用。
+The `/api/` prefix and the prefix-stripping rule MUST be consistent with the same-origin reverse proxy of the `container-deployment` capability, so the same `config.json` works both locally and in the cluster.
 
-#### Scenario: 以 proxy 連接本機後端
+#### Scenario: Connect to a local backend via the proxy
 
-- **WHEN** 後端於 `http://localhost:8080` 提供 `GET /v1/graph`,開發者以 `KSG_DEV_PROXY_TARGET=http://localhost:8080 npm run dev` 啟動,並在 `dev/config.local.json` 設定 `demoMode: false`、`endpoints.graph: "/api/v1/graph"`
-- **THEN** 瀏覽器對 `/api/v1/graph` 的請求由 dev server 轉發至 `http://localhost:8080/v1/graph`,回應以同 origin 回到 app
-- **AND** 瀏覽器 console 無 CORS 錯誤,畫面渲染後端回傳的圖
+- **WHEN** the backend serves `GET /v1/graph` at `http://localhost:8080`, the developer starts with `KSG_DEV_PROXY_TARGET=http://localhost:8080 npm run dev`, and sets `demoMode: false`, `endpoints.graph: "/api/v1/graph"` in `dev/config.local.json`
+- **THEN** the browser's request to `/api/v1/graph` is forwarded by the dev server to `http://localhost:8080/v1/graph`, and the response returns to the app on the same origin
+- **AND** the browser console shows no CORS error, and the screen renders the graph returned by the backend
 
-### Requirement: 熱模組替換(HMR)
+### Requirement: Hot module replacement (HMR)
 
-`npm run dev` 執行中,修改 `src/` 下任一 TypeScript / React 檔案並儲存後,瀏覽器 SHALL 於 5 秒內反映變更,且 MUST NOT 需要重新啟動 dev server。
+While `npm run dev` is running, after editing and saving any TypeScript / React file under `src/`, the browser SHALL reflect the change within 5 seconds, and MUST NOT require restarting the dev server.
 
-#### Scenario: 修改 component 後瀏覽器即時更新
+#### Scenario: Browser updates immediately after editing a component
 
-- **WHEN** dev server 執行中,開發者修改 `src/` 下任一 React component 並儲存
-- **THEN** 瀏覽器在 5 秒內顯示新版畫面,終端未重新執行 `npm run dev`
+- **WHEN** the dev server is running and a developer edits and saves any React component under `src/`
+- **THEN** the browser shows the new screen within 5 seconds, and the terminal has not re-run `npm run dev`
 
-### Requirement: 正式建置產出靜態 dist/
+### Requirement: Production build produces a static dist/
 
-`npm run build` SHALL 先執行 TypeScript 型別檢查(等同 `npm run typecheck`)再以 Vite 建置;任一 type error MUST 使指令以非零結束且不寫出 `dist/`。成功時 SHALL 輸出 `dist/`,內含 `index.html`、以內容雜湊命名的資產(`dist/assets/*`)以及 `public/` 下的靜態檔(含 `demo/graph.json` 與 `demo/storage-graph.json`)。
+`npm run build` SHALL first run TypeScript type checking (equivalent to `npm run typecheck`) and then build with Vite; any type error MUST make the command exit non-zero without writing `dist/`. On success it SHALL output `dist/`, containing `index.html`, content-hash-named assets (`dist/assets/*`), and the static files under `public/` (including `demo/graph.json` and `demo/storage-graph.json`).
 
-`dist/` MUST 為純靜態檔案,可由任何靜態 web server 提供;MUST NOT 含 `config.json`,MUST NOT 內嵌任何後端 URL 或環境專屬值 —— 執行期設定一律由部署時提供的 `config.json` 供給,同一份 `dist/` 服務所有環境。
+`dist/` MUST be purely static files, servable by any static web server; it MUST NOT contain `config.json`, and MUST NOT embed any backend URL or environment-specific value — runtime config is always supplied by the `config.json` provided at deployment, and the same `dist/` serves every environment.
 
-#### Scenario: Build 產物結構
+#### Scenario: Build output structure
 
-- **WHEN** 執行 `npm run build`
-- **THEN** `dist/index.html`、`dist/assets/`、`dist/demo/graph.json` 與 `dist/demo/storage-graph.json` 存在,`dist/config.json` 不存在
+- **WHEN** `npm run build` is run
+- **THEN** `dist/index.html`, `dist/assets/`, `dist/demo/graph.json`, and `dist/demo/storage-graph.json` exist, and `dist/config.json` does not exist
 
-#### Scenario: Type error 阻擋 build
+#### Scenario: Type error blocks the build
 
-- **WHEN** `src/` 中含 type error 時執行 `npm run build`
-- **THEN** 指令以非零結束,終端顯示該 type error,且未產生或更新 `dist/`
+- **WHEN** `npm run build` is run while `src/` contains a type error
+- **THEN** the command exits non-zero, the terminal shows that type error, and `dist/` is neither produced nor updated
 
-#### Scenario: 同一份 dist/ 可離線以 demo 模式提供
+#### Scenario: The same dist/ can be served offline in demo mode
 
-- **WHEN** 以任一靜態檔案伺服器提供 `dist/`,並在其根目錄另放一個 `demoMode: true` 的 `config.json`
-- **THEN** 瀏覽器開啟後渲染 showcase graph,無任何對其他 origin 的請求
+- **WHEN** `dist/` is served by any static file server, with a separate `config.json` containing `demoMode: true` placed at its root
+- **THEN** the browser renders the showcase graph after opening, with no request to any other origin
 
-### Requirement: ESLint 基線(精簡版)
+### Requirement: ESLint baseline (trimmed edition)
 
-專案 SHALL 採用 ESLint v9 flat config(`eslint.config.mjs`),整合下列 plugin 為必裝:`typescript-eslint`(`recommendedTypeChecked`)、`eslint-plugin-react`、`eslint-plugin-react-hooks`、`eslint-plugin-import-x`、`eslint-config-prettier`;`npm run lint` MUST 以 `--max-warnings=0` 執行,並涵蓋 `src/`、`tests/`、`dev/` 與根目錄設定檔。
+The project SHALL adopt ESLint v9 flat config (`eslint.config.mjs`), integrating the following plugins as mandatory: `typescript-eslint` (`recommendedTypeChecked`), `eslint-plugin-react`, `eslint-plugin-react-hooks`, `eslint-plugin-import-x`, `eslint-config-prettier`; `npm run lint` MUST run with `--max-warnings=0`, and cover `src/`, `tests/`, `dev/`, and the root configuration files.
 
-**精簡版:沿用 panel 的取捨 —— 不採用 `@grafana/eslint-config`(無 Grafana 相依),亦不採用 sonarjs、unicorn、promise、eslint-comments、jsx-a11y、knip、`import-x/no-restricted-paths`;對小型 SPA 噪音 > 訊號,真正的邊界由 code review + barrel 慣例維持。**
+**Trimmed edition: carries over the panel's trade-off — does not adopt `@grafana/eslint-config` (no Grafana dependency), nor sonarjs, unicorn, promise, eslint-comments, jsx-a11y, knip, `import-x/no-restricted-paths`; for a small SPA, noise > signal, and the real boundaries are maintained by code review + the barrel convention.**
 
-#### Scenario: Lint 通過為零警告
+#### Scenario: Lint passes with zero warnings
 
-- **WHEN** CI 執行 `npm run lint`
-- **THEN** 結束代碼為 0,輸出顯示 `0 errors, 0 warnings`
+- **WHEN** CI runs `npm run lint`
+- **THEN** the exit code is 0, and the output shows `0 errors, 0 warnings`
 
-### Requirement: TypeScript 嚴格設定
+### Requirement: TypeScript strict configuration
 
-`tsconfig.json` SHALL 啟用 `strict: true`、`noUncheckedIndexedAccess: true`、`exactOptionalPropertyTypes: true`、`noImplicitOverride: true`、`noFallthroughCasesInSwitch: true`、`isolatedModules: true`;`npm run typecheck` 對應 `tsc --noEmit` MUST 通過,且涵蓋 `src/`、`tests/`、`dev/` 與 `vite.config.ts` 等根目錄 TypeScript 檔案。
+`tsconfig.json` SHALL enable `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, `noImplicitOverride: true`, `noFallthroughCasesInSwitch: true`, `isolatedModules: true`; `npm run typecheck`, corresponding to `tsc --noEmit`, MUST pass, and cover `src/`, `tests/`, `dev/`, and root TypeScript files such as `vite.config.ts`.
 
-#### Scenario: Typecheck 通過
+#### Scenario: Typecheck passes
 
-- **WHEN** CI 執行 `npm run typecheck`
-- **THEN** 結束代碼為 0,無 type error 輸出
+- **WHEN** CI runs `npm run typecheck`
+- **THEN** the exit code is 0, with no type error output
 
-### Requirement: Prettier 格式化
+### Requirement: Prettier formatting
 
-專案 SHALL 採用 `prettier` 作為唯一格式化工具,設定檔進版本控管;`eslint-config-prettier` MUST 關閉所有與 prettier 衝突的 ESLint 規則。`npm run format` SHALL 一鍵格式化全 repo。`.prettierignore` MUST 列入 `dist/`、`coverage/`、Playwright 輸出目錄、lock 檔,以及 `public/demo/graph.json` 與 `public/demo/storage-graph.json`(generated 檔案,理由見 hook 需求)。
+The project SHALL adopt `prettier` as the sole formatting tool, with its configuration file under version control; `eslint-config-prettier` MUST disable every ESLint rule that conflicts with prettier. `npm run format` SHALL format the whole repo in one step. `.prettierignore` MUST list `dist/`, `coverage/`, the Playwright output directories, lock files, and `public/demo/graph.json` and `public/demo/storage-graph.json` (generated files; see the hook requirement for the reason).
 
-#### Scenario: Format 一致
+#### Scenario: Format is consistent
 
-- **WHEN** 開發者執行 `npm run format`
-- **THEN** Prettier 對全 repo 重寫格式,後續再執行 `prettier --check .` 結束代碼為 0
+- **WHEN** a developer runs `npm run format`
+- **THEN** Prettier rewrites the formatting of the whole repo, and a subsequent `prettier --check .` exits with code 0
 
-### Requirement: 單元測試(Vitest)
+### Requirement: Unit tests (Vitest)
 
-單元與 component 測試 SHALL 以 Vitest 執行:`npm run test` 為 watch 模式,`npm run test:ci` 為一次性、非互動執行並以結束代碼回報結果。component 測試 SHALL 於 DOM 模擬環境執行;測試檔以 `*.test.ts` / `*.test.tsx` 與被測程式碼並置。`npm run test:ci` MUST 不需後端、網路連線或真實瀏覽器。
+Unit and component tests SHALL run with Vitest: `npm run test` is watch mode, and `npm run test:ci` is a one-shot, non-interactive run that reports the result via exit code. Component tests SHALL run in a simulated DOM environment; test files are named `*.test.ts` / `*.test.tsx` and colocated with the code under test. `npm run test:ci` MUST require no backend, network connection, or real browser.
 
-#### Scenario: 離線通過單元測試
+#### Scenario: Unit tests pass offline
 
-- **WHEN** CI 於無外部網路的環境執行 `npm run test:ci`
-- **THEN** 結束代碼為 0,且輸出列出 `src/shared/fixtures/showcaseGraph.test.ts` 通過
+- **WHEN** CI runs `npm run test:ci` in an environment with no external network
+- **THEN** the exit code is 0, and the output lists `src/shared/fixtures/showcaseGraph.test.ts` as passing
 
-### Requirement: E2E 測試(Playwright)
+### Requirement: E2E tests (Playwright)
 
-E2E 測試 SHALL 以 Playwright 撰寫並置於 `tests/`;`npm run e2e` SHALL 自行啟動 dev server(webServer)並於結束時關閉,clean checkout 上不需另開終端、後端或 Docker 即可執行。
+E2E tests SHALL be written with Playwright and placed in `tests/`; `npm run e2e` SHALL start the dev server itself (webServer) and shut it down on exit, runnable on a clean checkout without opening another terminal, a backend, or Docker.
 
-倉庫 SHALL 至少包含三個 spec:
+The repository SHALL contain at least three specs:
 
-1. **Demo 模式 showcase smoke**:開啟 `/`,斷言 `[data-testid="graph-canvas"]` 掛載,並斷言依 fixture 內容而存在的 legend 控制項(如 `ingress-toggle`、`edge-legend-row-network-hop`)出現。
-2. **Fetch 路徑 round trip**:以 Playwright route 將 `config.json` 回應為 `demoMode: false` 且 `endpoints.graph` 指向 `/demo/graph.json` 的設定,斷言同一組元素出現。此 spec 證明單元測試無法證明的事:generated payload 經 HTTP 取回、通過 `normalizeGraph`、到 cytoscape 掛載的完整資料路徑。
-3. **兩個端點各自取數**:以 Playwright route 同時提供 `endpoints.graph: "/demo/graph.json"` 與 `endpoints.storageGraph: "/demo/storage-graph.json"`,斷言停留在 Graph 視圖期間 `/demo/storage-graph.json` 的請求數為 0、切到 Sankey 並選定 `az` / `env` 後恰好發出一次,且 Sankey 繪出的 tier 來自 storage fixture 而非 graph fixture。此 spec 守住本 change 的核心分界——兩個視圖走兩個端點,且 Sankey 是 lazy 的。
+1. **Demo-mode showcase smoke**: open `/`, assert `[data-testid="graph-canvas"]` mounts, and assert the legend controls that exist because of the fixture content (such as `ingress-toggle`, `edge-legend-row-network-hop`) appear.
+2. **Fetch path round trip**: with a Playwright route, respond to `config.json` with a configuration of `demoMode: false` and `endpoints.graph` pointing at `/demo/graph.json`, and assert the same set of elements appears. This spec proves what unit tests cannot: the complete data path of the generated payload fetched over HTTP, passing through `normalizeGraph`, to the cytoscape mount.
+3. **Two endpoints each fetch on their own**: with a Playwright route, serve both `endpoints.graph: "/demo/graph.json"` and `endpoints.storageGraph: "/demo/storage-graph.json"`, assert the request count for `/demo/storage-graph.json` is 0 while staying on the Graph view, that exactly one is issued after switching to Sankey and selecting `az` / `env`, and that the tiers the Sankey draws come from the storage fixture rather than the graph fixture. This spec guards the core boundary of this change — two views go through two endpoints, and the Sankey is lazy.
 
-E2E MUST 可由開發者本機以單一指令觸發(`npm run e2e`),且兩個 spec 已穩定,因此**同時列入 CI 必要 gate**(見「CI Workflow(精簡版)」)。兩者跑的是同一個 `npm run e2e`:CI 不得擁有一條本機無法重現的 e2e 路徑。
+E2E MUST be triggerable by a developer locally with a single command (`npm run e2e`), and since both specs are stable, they are **also included as a required CI gate** (see "CI workflow (trimmed edition)"). Both run the same `npm run e2e`: CI must not own an e2e path that cannot be reproduced locally.
 
-#### Scenario: Clean checkout 上一個指令跑完 e2e
+#### Scenario: One command runs e2e to completion on a clean checkout
 
-- **WHEN** 開發者於 clean checkout 執行 `npm install`、`npx playwright install` 後執行 `npm run e2e`
-- **THEN** 兩個 spec 皆通過,期間沒有任何後端程序在執行
+- **WHEN** a developer runs `npm install`, `npx playwright install`, and then `npm run e2e` on a clean checkout
+- **THEN** both specs pass, with no backend process running in the meantime
 
-### Requirement: Pre-commit 與 Pre-push Hook
+### Requirement: Pre-commit and pre-push hooks
 
-專案 SHALL 以**版本控管的** `.githooks/` 腳本設定 git hook,由 `prepare` npm script 於 `npm install` 時把 `core.hooksPath` 指向該目錄(亦可手動 `npm run init-hooks`);MUST NOT 使用 `husky` —— hook 進版本庫即可被 review、跨機一致,且少一個相依。
+The project SHALL configure git hooks with **version-controlled** `.githooks/` scripts, with the `prepare` npm script pointing `core.hooksPath` at that directory during `npm install` (or manually via `npm run init-hooks`); it MUST NOT use `husky` — hooks in the repository can be reviewed, are consistent across machines, and are one dependency fewer.
 
-`pre-commit` SHALL 對 staged 檔案執行 `lint-staged`(設定於 `.lintstagedrc.json`:`eslint --cache --fix` + `prettier --write`);`pre-push` SHALL 依序執行 `npm run lint`、`npm run typecheck`、`npm run fixture:check`、`npm run test:ci`;任一失敗 MUST 阻擋 commit / push。
+`pre-commit` SHALL run `lint-staged` on staged files (configured in `.lintstagedrc.json`: `eslint --cache --fix` + `prettier --write`); `pre-push` SHALL run `npm run lint`, `npm run typecheck`, `npm run fixture:check`, `npm run test:ci` in order; any failure MUST block the commit / push.
 
-`fixture:check` MUST 在 hook 鏈中,因為 `public/demo/graph.json` 與 `public/demo/storage-graph.json` 都是 generated output:改了 fixture 卻忘記 `npm run fixture:build`,若不在此攔下就要等到 CI 才會發現。**generated 檔案 MUST 列入 `.prettierignore`** —— `pre-commit` 的 prettier 與 generator 的輸出格式若不一致(prettier 會把短陣列收成一行,`JSON.stringify(…, null, 2)` 一律展開),兩者會在每次 commit 互相覆寫,使 `fixture:check` 永遠失敗。
+`fixture:check` MUST be in the hook chain, because `public/demo/graph.json` and `public/demo/storage-graph.json` are both generated output: editing the fixture but forgetting `npm run fixture:build` would not be discovered until CI if not caught here. **Generated files MUST be listed in `.prettierignore`** — if the output format of `pre-commit`'s prettier and the generator disagree (prettier collapses short arrays onto one line, `JSON.stringify(…, null, 2)` always expands them), the two overwrite each other on every commit, making `fixture:check` fail forever.
 
-#### Scenario: Pre-commit 阻擋 lint error
+#### Scenario: Pre-commit blocks a lint error
 
-- **WHEN** 開發者 commit 一個含 ESLint error 的 staged 變更
-- **THEN** hook 執行 `lint-staged`,失敗並阻擋 commit,終端顯示 ESLint 錯誤訊息
+- **WHEN** a developer commits a staged change containing an ESLint error
+- **THEN** the hook runs `lint-staged`, fails and blocks the commit, and the terminal shows the ESLint error message
 
-#### Scenario: Pre-push 攔下未重新產生的 fixture 變更
+#### Scenario: Pre-push catches a fixture change that was not regenerated
 
-- **WHEN** 開發者改了 `src/shared/fixtures/showcaseGraph.ts` 卻未執行 `npm run fixture:build` 便 push
-- **THEN** `pre-push` 於 `fixture:check` 失敗並阻擋 push,訊息指出補救指令
+- **WHEN** a developer edits `src/shared/fixtures/showcaseGraph.ts` and pushes without running `npm run fixture:build`
+- **THEN** `pre-push` fails at `fixture:check` and blocks the push, with a message naming the remedy command
 
-### Requirement: CI Workflow(精簡版)
+### Requirement: CI workflow (trimmed edition)
 
-GitHub Actions CI workflow SHALL 於 pull request 與 push 到 `main` 時提供單一 job,依序執行 `npm ci` → `typecheck` → `lint` → `fixture:check` → `test:ci` → `e2e` → `build`;任一步失敗 MUST 標記 PR check failed,阻擋 merge。Node 版本 MUST 讀自 `.nvmrc`,不得在 workflow 內另行硬編。`e2e` 之前 MUST 於 job 內安裝 Playwright 的 Chromium(`npx playwright install --with-deps chromium`);瀏覽器安裝是 CI 的環境準備,不列入上述 gate 鏈的語意。
+The GitHub Actions CI workflow SHALL provide a single job on pull requests and pushes to `main`, running `npm ci` → `typecheck` → `lint` → `fixture:check` → `test:ci` → `e2e` → `build` in order; any step failing MUST mark the PR check failed, blocking merge. The Node version MUST be read from `.nvmrc`, and must not be separately hardcoded inside the workflow. Before `e2e`, Playwright's Chromium MUST be installed inside the job (`npx playwright install --with-deps chromium`); browser installation is CI environment preparation and is not part of the semantics of the gate chain above.
 
-**精簡版:單一 job,無平行矩陣、無獨立 E2E workflow。** E2E 與其餘檢查同在這一個 job 內依序執行(見「E2E 測試(Playwright)」)。Container image 的建置與推送由 `container-deployment` capability 另行規範,不在此 job 內。
+**Trimmed edition: a single job, no parallel matrix, no separate E2E workflow.** E2E runs in order within this same job alongside the other checks (see "E2E tests (Playwright)"). Container image build and push are governed separately by the `container-deployment` capability and are not in this job.
 
-#### Scenario: CI 通過所有檢查
+#### Scenario: CI passes every check
 
-- **WHEN** PR 被推送
-- **THEN** GitHub Actions「Checks」清單顯示一個 `ci` job,typecheck / lint / fixture:check / test:ci / e2e / build 六步皆通過
+- **WHEN** a PR is pushed
+- **THEN** the GitHub Actions "Checks" list shows one `ci` job, with all six steps typecheck / lint / fixture:check / test:ci / e2e / build passing
 
-### Requirement: Makefile 捷徑
+### Requirement: Makefile shortcuts
 
-repo 根目錄 SHALL 提供 `Makefile`,預設目標 `help` 列出所有目標與一行說明;至少包含 `install`、`dev`、`lint`、`typecheck`、`test`、`e2e`、`build`、`fixture-build`、`fixture-check`、`check`(等同 `pre-push` 的完整 gate 鏈)。每個目標 MUST 為對應 npm script 的薄包裝,不得含 npm script 沒有的額外邏輯;`container-deployment` capability 定義的 image / deploy 目標 SHALL 收錄於同一份 `Makefile`。
+The repo root SHALL provide a `Makefile` whose default target `help` lists every target with a one-line description; it includes at least `install`, `dev`, `lint`, `typecheck`, `test`, `e2e`, `build`, `fixture-build`, `fixture-check`, `check` (equivalent to the full `pre-push` gate chain). Each target MUST be a thin wrapper around the corresponding npm script, and must not contain extra logic the npm script does not have; the image / deploy targets defined by the `container-deployment` capability SHALL be collected in the same `Makefile`.
 
-#### Scenario: make help 列出目標
+#### Scenario: make help lists the targets
 
-- **WHEN** 於 clean checkout 執行 `make`(無參數)
-- **THEN** 輸出列出上述每個目標及其說明,且 `make check` 的執行結果與 `pre-push` hook 一致
+- **WHEN** `make` (no arguments) is run on a clean checkout
+- **THEN** the output lists each of the targets above with its description, and the result of running `make check` is consistent with the `pre-push` hook
 
-### Requirement: 開發者文件
+### Requirement: Developer documentation
 
-`README.md` SHALL 包含:Prerequisites(僅 Node 22+;Docker 只在建置 container image 時需要)、Quick Start(`npm install` → `npm run dev` → 開啟瀏覽器看到 showcase graph)、Demo data(fixture 位置、如何修改、`npm run fixture:build` / `fixture:check`)、Connecting to a backend(`dev/config.local.json` + `KSG_DEV_PROXY_TARGET`)、Architecture overview、Linting & testing、Build & deploy(指向 `deploy/` 文件)、Troubleshooting。
+`README.md` SHALL include: Prerequisites (only Node 22+; Docker is needed only when building the container image), Quick Start (`npm install` → `npm run dev` → open a browser and see the showcase graph), Demo data (fixture location, how to edit it, `npm run fixture:build` / `fixture:check`), Connecting to a backend (`dev/config.local.json` + `KSG_DEV_PROXY_TARGET`), Architecture overview, Linting & testing, Build & deploy (pointing to the `deploy/` documentation), Troubleshooting.
 
-Quick Start MUST 可在 clean checkout 上完成,且 MUST NOT 提及任何後端服務、metrics store、Kubernetes 叢集、Docker、image tag 或憑證。文件 SHALL 說明 demo 資料來源與修改方式。
+Quick Start MUST be completable on a clean checkout, and MUST NOT mention any backend service, metrics store, Kubernetes cluster, Docker, image tag, or credential. The documentation SHALL explain the source of the demo data and how to edit it.
 
-Troubleshooting SHALL 涵蓋:dev server port 衝突、`public/demo/graph.json` 過期(`fixture:check` 失敗)、使用絕對後端 URL 時的 CORS 錯誤(改用 dev proxy 或後端允許前端 origin)、`config.json` 缺少必要端點時的錯誤畫面。
+Troubleshooting SHALL cover: dev server port conflicts, a stale `public/demo/graph.json` (`fixture:check` failing), CORS errors when using an absolute backend URL (switch to the dev proxy or have the backend allow the frontend origin), and the error screen when `config.json` is missing a required endpoint.
 
-#### Scenario: Quick Start 不依賴任何外部服務
+#### Scenario: Quick Start depends on no external service
 
-- **WHEN** 新進開發者於 clean checkout 依 Quick Start 逐步操作
-- **THEN** 瀏覽器渲染完整 showcase graph,且沒有任何步驟提及後端、Docker 或叢集
+- **WHEN** a new developer follows Quick Start step by step on a clean checkout
+- **THEN** the browser renders the complete showcase graph, and no step mentions a backend, Docker, or a cluster
 
-### Requirement: 型別化 fixture 是 demo 資料的單一來源
+### Requirement: Typed fixture is the single source of demo data
 
-`src/shared/fixtures/showcaseGraph.ts` SHALL 匯出以 `src/shared/types/wire.ts` 的 `WireGraph` 型別標註的 `SHOWCASE_GRAPH`,作為 demo 模式、Vitest 測試、Playwright spec 與 fixture 覆蓋測試**唯一**讀取的圖。demo 模式 SHALL 直接以模組匯入方式讀取此 fixture。
+`src/shared/fixtures/showcaseGraph.ts` SHALL export `SHOWCASE_GRAPH`, annotated with the `WireGraph` type from `src/shared/types/wire.ts`, as the **only** graph read by demo mode, Vitest tests, Playwright specs, and the fixture coverage test. Demo mode SHALL read this fixture directly via module import.
 
-因為兩個後端端點是兩份 body,fixture 亦 SHALL 為**兩份**:同一模組另匯出同樣以 `WireGraph` 標註的 `SHOWCASE_STORAGE_GRAPH`,即 `GET /v1/storage-graph` 形狀的 showcase——只含 `storage-flow` edge(五個 tier 齊全,含一條帶 `labels.attribution: "split"` 的 `pvc-pod` edge 與一條自 `svm-pvc` 起始的 FlexGroup 路徑)、`netapp-svm` 節點,以及 `netapp-node` 的 `hardware` / `perf`。兩份 fixture MUST 描述**同一個估計**:同一組 pod / pvc / netapp 節點 id 與名稱,使「於 Sankey 點選節點跳到 Graph 定位」在 demo 模式下真的找得到目標。兩份的 `storage-flow` 權重 MUST 逐 tier 守恆,否則 demo 會示範一個後端不會產生的形狀。倉庫 MUST NOT 含任何需要連線到執行中的 kube-state-graph 伺服器、Prometheus 相容儲存或 Kubernetes 叢集才能運作的腳本、測試或開發流程。
+Because the two backend endpoints are two bodies, the fixture SHALL also be **two**: the same module also exports `SHOWCASE_STORAGE_GRAPH`, likewise annotated with `WireGraph`, the showcase in the shape of `GET /v1/storage-graph` — containing only `storage-flow` edges (all five tiers present, including one `pvc-pod` edge carrying `labels.attribution: "split"` and one FlexGroup path starting from `svm-pvc`), `netapp-svm` nodes, and the `hardware` / `perf` of `netapp-node`. The two fixtures MUST describe **the same estate**: the same set of pod / pvc / netapp node ids and names, so that "click a node in the Sankey to jump to Graph and Locate" actually finds its target in demo mode. The `storage-flow` weights of both MUST be conserved per tier, otherwise the demo demonstrates a shape the backend never produces. The repository MUST NOT contain any script, test, or development flow that requires a connection to a running kube-state-graph server, Prometheus-compatible store, or Kubernetes cluster to work.
 
-`WireGraph` 標註是機制而非裝飾:`normalizeGraph` 接受 `unknown` 並於執行期驗證,app 新學會讀取的欄位在編譯期原本不可見;為 fixture 標型別,讓「教 normalize 認得新欄位卻忘了 demo」成為 `npm run typecheck` 失敗,而非無人重看的空白。
+The `WireGraph` annotation is a mechanism, not decoration: `normalizeGraph` accepts `unknown` and validates at runtime, so a field the app newly learns to read is invisible at compile time; typing the fixture makes "taught normalize a new field but forgot the demo" an `npm run typecheck` failure, rather than a blank nobody looks at again.
 
-Fixture SHALL 帶完整的後端回應 envelope —— `apiVersion`、`clusters`、`elements` —— 而非只有 `elements`,使 demo 演練的 body 形狀與部署時收到的一致。`clusters` SHALL 只列 Kubernetes cluster 名稱;ONTAP cluster 名稱 MUST NOT 出現其中。
+The fixture SHALL carry the complete backend response envelope — `apiVersion`, `clusters`, `elements` — rather than only `elements`, so the body shape the demo exercises is consistent with what is received in deployment. `clusters` SHALL list only Kubernetes cluster names; ONTAP cluster names MUST NOT appear in it.
 
-Fixture 帶有任何後端版本皆不會發出的欄位時(`status`、`alerts`、`time_records`,以及 `switch` / `network` kind 與其 `switch-to-switch` / `node-to-switch` edge —— 這些是前端自有的擴充面),fixture 與 wire 型別 MUST 以註解記錄該來源,使讀者不會把前端專屬欄位誤認為後端契約而「修正」後端。
+Where the fixture carries fields no backend version will ever emit (`status`, `alerts`, `time_records`, and the `switch` / `network` kinds with their `switch-to-switch` / `node-to-switch` edges — these are the frontend's own extension surface), the fixture and the wire types MUST record that origin in comments, so a reader does not mistake frontend-only fields for the backend contract and "fix" the backend.
 
-#### Scenario: 倉庫內無任何後端相依
+#### Scenario: No backend dependency anywhere in the repository
 
-- **WHEN** 檢視 `dev/`、`tests/`、`.github/workflows/` 下每一個檔案與 `package.json` 的每個 script
-- **THEN** 沒有任何檔案或 script 需要可連線的 kube-state-graph、VictoriaMetrics 或 Kubernetes 端點才能成功執行
+- **WHEN** inspecting every file under `dev/`, `tests/`, `.github/workflows/` and every script in `package.json`
+- **THEN** no file or script requires a reachable kube-state-graph, VictoriaMetrics, or Kubernetes endpoint to run successfully
 
-#### Scenario: normalize 新增 wire 欄位但 fixture 未覆蓋時 typecheck 失敗
+#### Scenario: Typecheck fails when normalize adds a wire field the fixture does not cover
 
-- **WHEN** `WireGraph` 新增一個必要欄位,而 `SHOWCASE_GRAPH` 未同步更新
-- **THEN** `npm run typecheck` 失敗
+- **WHEN** `WireGraph` adds a required field and `SHOWCASE_GRAPH` is not updated in step
+- **THEN** `npm run typecheck` fails
 
-### Requirement: 範例 payload 由 fixture 產生,漂移即失敗
+### Requirement: Example payloads are generated from the fixture; drift is a failure
 
-`public/demo/graph.json` 與 `public/demo/storage-graph.json` SHALL 分別為 `SHOWCASE_GRAPH` 與 `SHOWCASE_STORAGE_GRAPH` 序列化後的完整 `GET /v1/graph` / `GET /v1/storage-graph` 回應 body,由 `npm run fixture:build` **產生**且永不手改。兩者的角色各有二:(1) 唯一的範例 payload —— 後端開發者與運維者可拿它與真實回應比對;(2) 由 dev server 與 container image 以 `<base>/demo/<name>.json` 提供,使 `endpoints.graph` / `endpoints.storageGraph` 指向它即可在**沒有後端**的情況下走完真實的 fetch 路徑。
+`public/demo/graph.json` and `public/demo/storage-graph.json` SHALL be, respectively, the complete `GET /v1/graph` / `GET /v1/storage-graph` response bodies serialized from `SHOWCASE_GRAPH` and `SHOWCASE_STORAGE_GRAPH`, **generated** by `npm run fixture:build` and never hand-edited. Each has two roles: (1) the only example payload — backend developers and operators can compare it against a real response; (2) served by the dev server and the container image at `<base>/demo/<name>.json`, so that pointing `endpoints.graph` / `endpoints.storageGraph` at it walks the real fetch path **without a backend**.
 
-- `npm run fixture:build` SHALL 以 Node 原生 type stripping 匯入 TS fixture,以 `JSON.stringify(…, null, 2)` 加結尾換行寫出**兩個**檔案;內容相同時 MUST NOT 改動檔案。
-- `npm run fixture:check` SHALL 於任一已提交檔案與 fixture 現況不一致時以非零結束,並點名 `npm run fixture:build` 為補救指令。
-- 該檢查 SHALL 於 CI 與 `pre-push` hook 中執行。
+- `npm run fixture:build` SHALL import the TS fixture with Node's native type stripping and write out **both** files with `JSON.stringify(…, null, 2)` plus a trailing newline; when the content is identical it MUST NOT touch the files.
+- `npm run fixture:check` SHALL exit non-zero when any committed file is inconsistent with the current fixture, and name `npm run fixture:build` as the remedy command.
+- That check SHALL run in CI and in the `pre-push` hook.
 
-#### Scenario: 對已同步的樹重新產生為 no-op
+#### Scenario: Regenerating an already-synced tree is a no-op
 
-- **WHEN** fixture 與 `public/demo/graph.json` 一致時執行 `npm run fixture:build`
-- **THEN** 檔案內容不變,`git status` 無變更,且 `npm run fixture:check` 結束代碼為 0
+- **WHEN** `npm run fixture:build` is run while the fixture and `public/demo/graph.json` are consistent
+- **THEN** the file content is unchanged, `git status` shows no changes, and `npm run fixture:check` exits with code 0
 
-#### Scenario: 未重新產生的 fixture 修改使 CI 失敗
+#### Scenario: A fixture change that was not regenerated fails CI
 
-- **WHEN** `SHOWCASE_GRAPH` 被修改而 `public/demo/graph.json` 未更新
-- **THEN** `npm run fixture:check` 以非零結束並印出 `npm run fixture:build` 補救指令
+- **WHEN** `SHOWCASE_GRAPH` is modified and `public/demo/graph.json` is not updated
+- **THEN** `npm run fixture:check` exits non-zero and prints the `npm run fixture:build` remedy command
 
-#### Scenario: 範例 payload 走真實 fetch 路徑
+#### Scenario: Example payload walks the real fetch path
 
-- **WHEN** `config.json` 設定 `demoMode: false`、`endpoints.graph: "/demo/graph.json"`,以 `npm run dev` 提供 app 並開啟瀏覽器
-- **THEN** app 以 HTTP 取得 `/demo/graph.json`,經 `normalizeGraph` 後渲染出與 demo 模式相同的圖
+- **WHEN** `config.json` sets `demoMode: false`, `endpoints.graph: "/demo/graph.json"`, the app is served with `npm run dev`, and a browser is opened
+- **THEN** the app fetches `/demo/graph.json` over HTTP and, after `normalizeGraph`, renders the same graph as in demo mode
 
-### Requirement: Fixture 覆蓋 app 能畫出的每種 kind 與 edge type
+### Requirement: Fixture covers every kind and edge type the app can draw
 
-`src/shared/fixtures/showcaseGraph.test.ts` SHALL 斷言 `normalizeGraph(SHOWCASE_GRAPH)` 產生:
+`src/shared/fixtures/showcaseGraph.test.ts` SHALL assert that `normalizeGraph(SHOWCASE_GRAPH)` produces:
 
-- 空的 `errors` 陣列 —— partial-parse 通道是為真實後端出狀況而設,任何落入其中的都是本倉庫自己的錯;
-- 沒有任何 edge 的 `source` 或 `target` 不在 fixture 自身的節點中,也沒有任何 node 的 `parent` 不在;
-- `ICON_SVG_BY_KIND` 的**每一個** key 與 `EDGE_STYLE_BY_TYPE` 的**每一個** key 至少各有一個元素。
+- an empty `errors` array — the partial-parse channel exists for a real backend misbehaving, and anything landing in it is this repository's own mistake;
+- no edge whose `source` or `target` is not among the fixture's own nodes, and no node whose `parent` is not;
+- at least one element for **every** key of `ICON_SVG_BY_KIND` and **every** key of `EDGE_STYLE_BY_TYPE`.
 
-覆蓋 SHALL 以這兩張標準 map 為基準而非可過濾的子集,使虛擬的 `network` wrapper 也算數;錨定於此讓「把 kind 加進 map」與「在 demo 中展示它」成為同一件被強制的事。
+Coverage SHALL be measured against these two canonical maps rather than a filterable subset, so the virtual `network` wrapper counts too; anchoring here makes "adding a kind to the map" and "showing it in the demo" the same enforced thing.
 
-測試套件 SHALL 額外釘住那些為了「被看見」而非僅「可解析」而存在的 demo 案例:全部三種 `ready_status` 值、一個加入 aggregate 的 claim 與一個未加入的並列、一條 QoS 上限的 storage edge 與一條無上限的並列、一個量測到的錯誤率與一個量測為零與一條未量測的 edge 並列、一個合法的極小速率且不得四捨五入為零、兩種 `labels.role` 的 ingress 形狀及其不同的 dash 與 visibility 行為;以及為 Sankey 視圖而設的:至少一條 `pvc-to-netapp-aggr` edge 同時帶 `read_bytes_per_sec` 與 `write_bytes_per_sec`,並有一條完全不帶儲存 throughput metrics(absent ≠ 0)。
+The test suite SHALL additionally pin the demo cases that exist to be "seen" rather than merely "parseable": all three `ready_status` values, a claim that joined an aggregate alongside one that did not, a QoS-capped storage edge alongside one without a cap, a measured error rate alongside a measured-zero and an unmeasured edge, a valid tiny rate that must not round to zero, both `labels.role` ingress shapes and their differing dash and visibility behavior; and, for the Sankey view: at least one `pvc-to-netapp-aggr` edge carrying both `read_bytes_per_sec` and `write_bytes_per_sec`, and one carrying no storage throughput metrics at all (absent ≠ 0).
 
-#### Scenario: 新增可繪製 kind 卻無對應 fixture 元素時失敗
+#### Scenario: Fails when a drawable kind is added without a corresponding fixture element
 
-- **WHEN** `ICON_SVG_BY_KIND` 新增一個 key,而沒有任何 fixture 節點帶該 kind
-- **THEN** `showcaseGraph.test.ts` 失敗,並點名未被覆蓋的 kind
+- **WHEN** a key is added to `ICON_SVG_BY_KIND` and no fixture node carries that kind
+- **THEN** `showcaseGraph.test.ts` fails, naming the uncovered kind
