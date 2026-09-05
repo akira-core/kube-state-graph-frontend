@@ -21,6 +21,7 @@ export const CATEGORY_BY_KIND: Record<NodeKind, NodeCategory> = {
   pvc: 'Storage',
   'netapp-aggr': 'Storage',
   'netapp-node': 'Storage',
+  'netapp-svm': 'Storage',
   node: 'Cluster',
   external: 'Other',
 };

@@ -35,6 +35,9 @@ export const EDGE_ENDPOINTS_BY_TYPE: Record<EdgeType, EdgeEndpoints> = {
   'pvc-to-netapp-aggr': { from: 'pvc', to: 'netapp-aggr' },
   'switch-to-switch': { from: 'switch', to: 'switch' },
   'node-to-switch': { from: 'node', to: 'switch' },
+  // Spans the whole storage → workload chain; individual hops are named by
+  // `labels.tier` rather than by a distinct edge type.
+  'storage-flow': { from: 'netapp-node', to: 'node' },
 };
 
 // Which edge types carry REQUEST TRAFFIC (as opposed to placement, storage or
@@ -57,6 +60,7 @@ export const EDGE_IS_TRAFFIC_BY_TYPE: Record<EdgeType, boolean> = {
   'pvc-to-netapp-aggr': false,
   'switch-to-switch': false,
   'node-to-switch': false,
+  'storage-flow': false,
 };
 
 // The safe read of the map above: an unmapped backend type (GraphEdgeType widens to
@@ -117,6 +121,7 @@ export const EDGE_STYLE_BY_TYPE: Record<EdgeType, EdgeStyle> = {
   // confusion without benefit now that direction is already conveyed by arrowhead.
   'switch-to-switch': { color: DARK_TOKENS.edge['switch-to-switch'], lineStyle: 'solid', routing: 'taxi' },
   'node-to-switch': { color: DARK_TOKENS.edge['node-to-switch'], lineStyle: 'solid', routing: 'taxi' },
+  'storage-flow': { color: DARK_TOKENS.edge['storage-flow'], lineStyle: 'solid', routing: 'bezier' },
 };
 
 export const FALLBACK_EDGE_STYLE: EdgeStyle = {

@@ -47,10 +47,11 @@ function nodeCard(
       key={node.id}
       data-testid={`sankey-node-${node.label}`}
       data-kind={node.kind}
+      data-locatable={node.locatable ? 'true' : 'false'}
       onMouseEnter={(evt) => onEnter(node.id, evt)}
       onMouseLeave={onLeave}
-      onClick={() => onClick(node.id)}
-      className="cursor-pointer"
+      onClick={node.locatable ? () => onClick(node.id) : undefined}
+      className={node.locatable ? 'cursor-pointer' : 'cursor-default'}
       style={{ opacity: faded ? 0.3 : 1 }}
     >
       {node.namespaceColor !== undefined && (

@@ -1,0 +1,314 @@
+import type { WireGraph } from '../types/wire';
+
+/**
+ * Showcase payload shaped as `GET /v1/storage-graph`.
+ *
+ * Node ids for pods, pvcs, k8s nodes and NetApp controllers/aggregates match
+ * `SHOWCASE_GRAPH` so a demo-mode Locate can find them. `netapp-svm` is the
+ * exception: `/v1/graph` never emits that kind.
+ *
+ * Weights are conserved per intermediate node (in = out per direction), with a
+ * FlexGroup path that starts at `svm-pvc` and a `pvc-pod` hop marked
+ * `attribution: "split"`.
+ */
+export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
+  apiVersion: 'v1',
+  clusters: ['prod'],
+  elements: {
+    nodes: [
+      { data: { id: 'storage-cluster/ontap-prod', name: 'ontap-prod', type: 'storage-cluster' } },
+      {
+        data: {
+          id: 'netapp/ontap-prod/ontap-prod-01',
+          name: 'ontap-prod-01',
+          type: 'netapp-node',
+          parent: 'storage-cluster/ontap-prod',
+          health: 'online',
+          hardware: { model: 'AFF-A400', vendor: 'NetApp' },
+          labels: { ontap_cluster: 'ontap-prod' },
+        },
+      },
+      {
+        data: {
+          id: 'netapp/ontap-prod/ontap-prod-02',
+          name: 'ontap-prod-02',
+          type: 'netapp-node',
+          parent: 'storage-cluster/ontap-prod',
+          health: 'degraded',
+          hardware: { model: 'AFF-A400' },
+          perf: { cpu_busy_pct: 41.2, total_ops: 18200, total_latency_us: 640, total_bytes_per_sec: 5767168 },
+          alerts: [{ name: 'NodeDegraded', severity: 'warning', time: 1748692200 }],
+          labels: { ontap_cluster: 'ontap-prod' },
+        },
+      },
+      {
+        data: {
+          id: 'netapp/ontap-prod/aggr/aggr1',
+          name: 'aggr1',
+          type: 'netapp-aggr',
+          parent: 'netapp/ontap-prod/ontap-prod-01',
+          health: 'online',
+          usage: { used_bytes: 700000000000, capacity_bytes: 1000000000000 },
+          labels: { ontap_cluster: 'ontap-prod', node: 'ontap-prod-01' },
+        },
+      },
+      {
+        data: {
+          id: 'netapp/ontap-prod/aggr/aggr2',
+          name: 'aggr2',
+          type: 'netapp-aggr',
+          parent: 'netapp/ontap-prod/ontap-prod-02',
+          health: 'online',
+          usage: { used_bytes: 400000000000, capacity_bytes: 2000000000000 },
+          labels: { ontap_cluster: 'ontap-prod', node: 'ontap-prod-02' },
+        },
+      },
+      {
+        data: {
+          id: 'netapp/ontap-prod/svm/svm_shop',
+          name: 'svm_shop',
+          type: 'netapp-svm',
+          parent: 'storage-cluster/ontap-prod',
+          labels: { ontap_cluster: 'ontap-prod' },
+        },
+      },
+      {
+        data: {
+          id: 'netapp/ontap-prod/svm/svm_dr',
+          name: 'svm_dr',
+          type: 'netapp-svm',
+          parent: 'storage-cluster/ontap-prod',
+          labels: { ontap_cluster: 'ontap-prod' },
+        },
+      },
+      { data: { id: 'cluster/prod', name: 'prod', type: 'cluster' } },
+      { data: { id: 'prod/ns/prod', name: 'prod', type: 'namespace', parent: 'cluster/prod' } },
+      { data: { id: 'prod/app/mongodb', name: 'mongodb', type: 'application', parent: 'prod/ns/prod' } },
+      {
+        data: {
+          id: 'prod/ctrl/StatefulSet/mongodb',
+          name: 'mongodb',
+          type: 'controller',
+          parent: 'prod/app/mongodb',
+        },
+      },
+      {
+        data: {
+          id: 'node/worker-0',
+          name: 'worker-0',
+          type: 'node',
+          parent: 'cluster/prod',
+          labels: { cluster: 'prod' },
+        },
+      },
+      {
+        data: {
+          id: 'node/worker-1',
+          name: 'worker-1',
+          type: 'node',
+          parent: 'cluster/prod',
+          labels: { cluster: 'prod' },
+        },
+      },
+      {
+        data: {
+          id: 'pod/mongo-0',
+          name: 'mongo-0',
+          type: 'pod',
+          parent: 'prod/ctrl/StatefulSet/mongodb',
+          labels: { namespace: 'prod', cluster: 'prod', node: 'node/worker-0' },
+        },
+      },
+      {
+        data: {
+          id: 'pod/mongo-1',
+          name: 'mongo-1',
+          type: 'pod',
+          parent: 'prod/ctrl/StatefulSet/mongodb',
+          labels: { namespace: 'prod', cluster: 'prod', node: 'node/worker-1' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-mongo-0',
+          name: 'data-mongo-0',
+          type: 'pvc',
+          parent: 'prod/app/mongodb',
+          storageclass: 'netapp-nas',
+          usage: { used_bytes: 7516192768, capacity_bytes: 10737418240 },
+          labels: { namespace: 'prod', volumename: 'pvc-9f3a1b2c', svm: 'svm_shop' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-mongo-1',
+          name: 'data-mongo-1',
+          type: 'pvc',
+          parent: 'prod/app/mongodb',
+          storageclass: 'netapp-nas',
+          usage: { used_bytes: 2147483648, capacity_bytes: 10737418240 },
+          labels: { namespace: 'prod', volumename: 'pvc-7e5d4c3b', svm: 'svm_dr' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-scratch',
+          name: 'data-scratch',
+          type: 'pvc',
+          parent: 'prod/app/mongodb',
+          storageclass: 'netapp-nas',
+          labels: { namespace: 'prod', volumename: 'pvc-scratch', svm: 'svm_shop' },
+        },
+      },
+    ],
+    edges: [
+      {
+        data: {
+          id: 'sf-na-1',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/ontap-prod-01',
+          target: 'netapp/ontap-prod/aggr/aggr1',
+          labels: { tier: 'node-aggr' },
+          metrics: { read_bytes_per_sec: 5505024, write_bytes_per_sec: 1048576 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-as-1',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/aggr/aggr1',
+          target: 'netapp/ontap-prod/svm/svm_shop',
+          labels: { tier: 'aggr-svm' },
+          metrics: { read_bytes_per_sec: 5505024, write_bytes_per_sec: 1048576 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-sp-1',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/svm/svm_shop',
+          target: 'pvc/data-mongo-0',
+          labels: { tier: 'svm-pvc' },
+          metrics: {
+            read_ops: 150,
+            write_ops: 40,
+            read_latency_us: 830,
+            write_latency_us: 1200,
+            read_bytes_per_sec: 5242880,
+            write_bytes_per_sec: 1048576,
+            max_iops: 5000,
+            max_bytes_per_sec: 104857600,
+          },
+        },
+      },
+      {
+        data: {
+          id: 'sf-sp-fg',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/svm/svm_shop',
+          target: 'pvc/data-scratch',
+          labels: { tier: 'svm-pvc' },
+          metrics: { read_bytes_per_sec: 262144 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pp-1',
+          type: 'storage-flow',
+          source: 'pvc/data-mongo-0',
+          target: 'pod/mongo-0',
+          labels: { tier: 'pvc-pod' },
+          metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pp-fg-0',
+          type: 'storage-flow',
+          source: 'pvc/data-scratch',
+          target: 'pod/mongo-0',
+          labels: { tier: 'pvc-pod', attribution: 'split' },
+          metrics: { read_bytes_per_sec: 131072 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pp-fg-1',
+          type: 'storage-flow',
+          source: 'pvc/data-scratch',
+          target: 'pod/mongo-1',
+          labels: { tier: 'pvc-pod', attribution: 'split' },
+          metrics: { read_bytes_per_sec: 131072 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pn-0',
+          type: 'storage-flow',
+          source: 'pod/mongo-0',
+          target: 'node/worker-0',
+          labels: { tier: 'pod-node' },
+          metrics: { read_bytes_per_sec: 5373952, write_bytes_per_sec: 1048576 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-na-2',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/ontap-prod-02',
+          target: 'netapp/ontap-prod/aggr/aggr2',
+          labels: { tier: 'node-aggr' },
+          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-as-2',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/aggr/aggr2',
+          target: 'netapp/ontap-prod/svm/svm_dr',
+          labels: { tier: 'aggr-svm' },
+          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-sp-2',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/svm/svm_dr',
+          target: 'pvc/data-mongo-1',
+          labels: { tier: 'svm-pvc' },
+          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pp-2',
+          type: 'storage-flow',
+          source: 'pvc/data-mongo-1',
+          target: 'pod/mongo-1',
+          labels: { tier: 'pvc-pod' },
+          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pn-1',
+          type: 'storage-flow',
+          source: 'pod/mongo-1',
+          target: 'node/worker-1',
+          labels: { tier: 'pod-node' },
+          metrics: { read_bytes_per_sec: 393216, write_bytes_per_sec: 49152 },
+        },
+      },
+    ],
+  },
+};
+
+/** Identity options offered in demo mode, where `endpoints.labelValues` is ignored. */
+export const DEMO_IDENTITY_OPTIONS = {
+  az: ['local-a'],
+  env: ['demo'],
+  cluster: ['prod', 'dr'],
+  namespace: ['prod', 'dr'],
+};

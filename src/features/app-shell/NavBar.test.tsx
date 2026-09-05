@@ -59,6 +59,11 @@ describe('NavBar', () => {
     expect(to - from).toBe(24 * 3600);
   });
 
+  it('disables reload when reloadDisabled is set', () => {
+    renderNav({ reloadDisabled: true });
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  });
+
   it('renders from/to inputs for an absolute range', () => {
     const { onAbsolute } = renderNav({
       viewRange: { kind: 'absolute', window: { fromUnixSeconds: 1_700_000_000, toUnixSeconds: 1_700_003_600 } },

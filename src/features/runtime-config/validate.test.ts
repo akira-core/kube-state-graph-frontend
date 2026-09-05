@@ -79,6 +79,48 @@ describe('validateConfig', () => {
     expect(missingGraph.ok).toBe(false);
   });
 
+  it('treats a missing storageGraph as absent, not a config error', () => {
+    const result = validateConfig({ endpoints: { graph: 'https://ksg.example/v1/graph' } });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.endpoints.storageGraph).toBeUndefined();
+  });
+
+  it('treats an empty storageGraph as absent, not a config error', () => {
+    const result = validateConfig({
+      endpoints: { graph: 'https://ksg.example/v1/graph', storageGraph: '' },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.endpoints.storageGraph).toBeUndefined();
+  });
+
+  it('accepts an absolute or root-relative storageGraph URL', () => {
+    const abs = validateConfig({
+      endpoints: { graph: '/api/v1/graph', storageGraph: 'https://ksg.example/v1/storage-graph' },
+    });
+    expect(abs.ok && abs.config.endpoints.storageGraph).toBe('https://ksg.example/v1/storage-graph');
+
+    const rel = validateConfig({
+      endpoints: { graph: '/api/v1/graph', storageGraph: '/api/v1/storage-graph' },
+    });
+    expect(rel.ok && rel.config.endpoints.storageGraph).toBe('/api/v1/storage-graph');
+  });
+
+  it('rejects a non-http(s) or non-string storageGraph', () => {
+    expect(
+      validateConfig({ endpoints: { graph: '/api/v1/graph', storageGraph: 'ftp://ksg.example/v1/storage-graph' } }).ok
+    ).toBe(false);
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', storageGraph: '//ksg.example/sg' } }).ok).toBe(false);
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', storageGraph: 1 } }).ok).toBe(false);
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', storageGraph: null } }).ok).toBe(false);
+  });
+
+  it('does not warn about storageGraph as an unknown endpoint key', () => {
+    const result = validateConfig({
+      endpoints: { graph: '/api/v1/graph', storageGraph: '/api/v1/storage-graph' },
+    });
+    expect(result.ok && result.warnings).toEqual([]);
+  });
+
   it('accepts a root-relative label-values base', () => {
     const result = validateConfig({
       endpoints: { graph: '/api/v1/graph', labelValues: '/metrics-api' },

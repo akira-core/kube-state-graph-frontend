@@ -1,17 +1,38 @@
 import type cytoscape from 'cytoscape';
 
+import { formatBytes } from '../../shared/format/measurements';
+import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
+
 export type SankeyMode = 'read' | 'write' | 'both';
-export type SankeyKind = 'pod' | 'pvc' | 'netapp-aggr' | 'netapp-node';
+export type SankeyKind = 'netapp-node' | 'netapp-aggr' | 'netapp-svm' | 'pvc' | 'pod' | 'node';
 export type SankeyDirection = 'read' | 'write';
+export type StorageFlowTier = 'node-aggr' | 'aggr-svm' | 'svm-pvc' | 'pvc-pod' | 'pod-node';
+
+export const SANKEY_KIND_ORDER: readonly SankeyKind[] = [
+  'netapp-node',
+  'netapp-aggr',
+  'netapp-svm',
+  'pvc',
+  'pod',
+  'node',
+];
+
+const KIND_SET = new Set<string>(SANKEY_KIND_ORDER);
+
+const TIERS = new Set<string>(['node-aggr', 'aggr-svm', 'svm-pvc', 'pvc-pod', 'pod-node']);
 
 export interface SankeyNode {
   id: string;
   label: string;
   kind: SankeyKind;
-  cluster?: string;
   namespace?: string;
+  ontapCluster?: string;
   usage?: { usedBytes?: number; capacityBytes?: number };
   health?: string;
+  hardware?: cytoscape.NodeDataDefinition['hardware'];
+  perf?: cytoscape.NodeDataDefinition['perf'];
+  alerts?: cytoscape.NodeDataDefinition['alerts'];
+  noFlow?: boolean;
 }
 
 export interface SankeyLink {
@@ -19,30 +40,32 @@ export interface SankeyLink {
   target: string;
   direction: SankeyDirection;
   value: number;
-  splitAmong?: number;
+  tier: StorageFlowTier;
+  attribution?: string;
   maxBytesPerSec?: number;
   maxIops?: number;
+  readLatencyUs?: number;
+  writeLatencyUs?: number;
 }
 
 export interface SankeyGraph {
   nodes: SankeyNode[];
   links: SankeyLink[];
-  hasAnyMeasurement: boolean;
+  hasStorageFlowEdges: boolean;
+  hasCurrentDirectionMeasurement: boolean;
 }
 
 interface NodeRec {
   id: string;
   label: string;
   kind: string;
-  parent?: string;
-  cluster?: string;
   namespace?: string;
+  ontapCluster?: string;
   usage?: { usedBytes?: number; capacityBytes?: number };
   health?: string;
-}
-
-function nodeKind(d: cytoscape.NodeDataDefinition): string | undefined {
-  return typeof d.kind === 'string' ? d.kind : undefined;
+  hardware?: cytoscape.NodeDataDefinition['hardware'];
+  perf?: cytoscape.NodeDataDefinition['perf'];
+  alerts?: cytoscape.NodeDataDefinition['alerts'];
 }
 
 function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<string, NodeRec> {
@@ -55,41 +78,27 @@ function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<strin
     if (typeof d.id !== 'string') {
       continue;
     }
-    const clusterLabel = d.labels?.cluster;
     const namespace =
       typeof d.namespace === 'string' && d.namespace.length > 0
         ? d.namespace
         : typeof d.labels?.namespace === 'string'
           ? d.labels.namespace
           : undefined;
+    const ontapCluster = typeof d.labels?.ontap_cluster === 'string' ? d.labels.ontap_cluster : undefined;
     map.set(d.id, {
       id: d.id,
       label: typeof d.label === 'string' ? d.label : d.id,
-      kind: nodeKind(d) ?? '',
-      ...(typeof d.parent === 'string' ? { parent: d.parent } : {}),
-      ...(typeof clusterLabel === 'string' && clusterLabel.length > 0 ? { cluster: clusterLabel } : {}),
+      kind: typeof d.kind === 'string' ? d.kind : '',
       ...(namespace !== undefined ? { namespace } : {}),
+      ...(ontapCluster !== undefined ? { ontapCluster } : {}),
       ...(d.usage !== undefined ? { usage: d.usage } : {}),
       ...(typeof d.health === 'string' ? { health: d.health } : {}),
+      ...(d.hardware !== undefined ? { hardware: d.hardware } : {}),
+      ...(d.perf !== undefined ? { perf: d.perf } : {}),
+      ...(d.alerts !== undefined ? { alerts: d.alerts } : {}),
     });
   }
   return map;
-}
-
-function resolveCluster(nodes: Map<string, NodeRec>, id: string): string | undefined {
-  let cur = nodes.get(id);
-  let hops = 0;
-  while (cur !== undefined && hops <= nodes.size) {
-    if (cur.cluster !== undefined) {
-      return cur.cluster;
-    }
-    if (cur.parent === undefined) {
-      return undefined;
-    }
-    cur = nodes.get(cur.parent);
-    hops += 1;
-  }
-  return undefined;
 }
 
 function metricOf(
@@ -111,198 +120,209 @@ function ioMetrics(data: cytoscape.EdgeDataDefinition): cytoscape.EdgeIoMetrics 
   return metrics;
 }
 
+function asSankeyKind(kind: string): SankeyKind | undefined {
+  return KIND_SET.has(kind) ? (kind as SankeyKind) : undefined;
+}
+
+function asTier(value: string | undefined): StorageFlowTier | undefined {
+  return value !== undefined && TIERS.has(value) ? (value as StorageFlowTier) : undefined;
+}
+
+/**
+ * Does this node answer one of the roots the request asked for?
+ *
+ * The wire carries no root marker, so the ONLY local evidence that the backend
+ * materialised a node as a root is the selection the request was built from. Matching is
+ * by name, exactly as the backend matches: `node` deliberately hits both a NetApp
+ * controller and a Kubernetes node (the operator often does not know which side a name
+ * belongs to), `ontap_cluster` claims every controller / aggregate / SVM inside it, and a
+ * pod root is `<namespace>/<pod>`. `pvc` is not a root kind, so a claim is never one.
+ *
+ * This is NOT a client-side filter on the response — it only ever KEEPS a node the
+ * projection already contains, so it cannot break the backend's weight conservation.
+ */
+function isRequestedRoot(rec: NodeRec, roots: StorageGraphRoots): boolean {
+  const inOntapCluster = rec.ontapCluster !== undefined && roots.ontap_cluster.includes(rec.ontapCluster);
+  switch (rec.kind) {
+    case 'netapp-node':
+      return inOntapCluster || roots.node.includes(rec.label);
+    case 'netapp-aggr':
+      return inOntapCluster || roots.aggr.includes(rec.label);
+    case 'netapp-svm':
+      return inOntapCluster || roots.svm.includes(rec.label);
+    case 'node':
+      return roots.node.includes(rec.label);
+    case 'pod':
+      return rec.namespace !== undefined && roots.pod.includes(`${rec.namespace}/${rec.label}`);
+    default:
+      return false;
+  }
+}
+
+function toSankeyNode(rec: NodeRec, noFlow: boolean): SankeyNode | undefined {
+  const kind = asSankeyKind(rec.kind);
+  if (kind === undefined) {
+    return undefined;
+  }
+  return {
+    id: rec.id,
+    label: rec.label,
+    kind,
+    ...(rec.namespace !== undefined ? { namespace: rec.namespace } : {}),
+    ...(rec.ontapCluster !== undefined ? { ontapCluster: rec.ontapCluster } : {}),
+    ...(rec.usage !== undefined ? { usage: rec.usage } : {}),
+    ...(rec.health !== undefined ? { health: rec.health } : {}),
+    ...(rec.hardware !== undefined ? { hardware: rec.hardware } : {}),
+    ...(rec.perf !== undefined ? { perf: rec.perf } : {}),
+    ...(rec.alerts !== undefined ? { alerts: rec.alerts } : {}),
+    ...(noFlow ? { noFlow: true } : {}),
+  };
+}
+
+/**
+ * Derive a Sankey from a storage-graph body.
+ *
+ * Weights come from each `storage-flow` edge's metrics as-is. The function does not
+ * aggregate, split, or rewrite the input — the returned graph is a projection.
+ */
 export function deriveSankey(
   elements: readonly cytoscape.ElementDefinition[],
   mode: SankeyMode,
-  clusterFilter?: string
+  roots: StorageGraphRoots = EMPTY_STORAGE_GRAPH_ROOTS
 ): SankeyGraph {
   const nodes = indexNodes(elements);
   const directions: SankeyDirection[] = mode === 'both' ? ['read', 'write'] : [mode];
 
-  const pvcAggr: Array<{
+  const flowEdges: Array<{
     source: string;
     target: string;
+    tier: StorageFlowTier;
+    attribution?: string;
     metrics: cytoscape.EdgeIoMetrics | undefined;
   }> = [];
-  const podPvc: Array<{ source: string; target: string }> = [];
+  const incident = new Set<string>();
 
   for (const el of elements) {
     if (el.group !== 'edges') {
       continue;
     }
     const d = el.data as cytoscape.EdgeDataDefinition;
-    const source = typeof d.source === 'string' ? nodes.get(d.source) : undefined;
-    const target = typeof d.target === 'string' ? nodes.get(d.target) : undefined;
-    if (source === undefined || target === undefined) {
+    if (d.edgeType !== 'storage-flow') {
       continue;
     }
-    if (d.edgeType === 'pvc-to-netapp-aggr' && source.kind === 'pvc' && target.kind === 'netapp-aggr') {
-      pvcAggr.push({ source: source.id, target: target.id, metrics: ioMetrics(d) });
+    const sourceId = typeof d.source === 'string' ? d.source : undefined;
+    const targetId = typeof d.target === 'string' ? d.target : undefined;
+    if (sourceId === undefined || targetId === undefined) {
+      continue;
     }
-    if (d.edgeType === 'pod-mounts-pvc' && source.kind === 'pod' && target.kind === 'pvc') {
-      podPvc.push({ source: source.id, target: target.id });
+    if (!nodes.has(sourceId) || !nodes.has(targetId)) {
+      continue;
     }
+    const tier = asTier(d.labels?.tier);
+    if (tier === undefined) {
+      continue;
+    }
+    incident.add(sourceId);
+    incident.add(targetId);
+    flowEdges.push({
+      source: sourceId,
+      target: targetId,
+      tier,
+      ...(d.labels?.attribution !== undefined ? { attribution: d.labels.attribution } : {}),
+      metrics: ioMetrics(d),
+    });
   }
-
-  let hasAnyMeasurement = false;
-  for (const edge of pvcAggr) {
-    if (metricOf(edge.metrics, 'read') !== undefined || metricOf(edge.metrics, 'write') !== undefined) {
-      hasAnyMeasurement = true;
-    }
-  }
-
-  // `hasAnyMeasurement` above is deliberately measured over ALL pvc→aggr edges, before the
-  // cluster narrowing below: the view tells "this graph has no storage I/O at all" apart
-  // from "the selected cluster has none", and a scoped count would collapse the two.
-  //
-  // The cluster filter applies HERE, before any aggregation — not to the finished graph.
-  // Storage tiers are not cluster-owned (netapp-aggr / netapp-node MUST NOT be filtered by
-  // cluster), so narrowing afterwards can only either keep an out-of-scope branch alive or
-  // delete a legitimately shared one. Scoping the pvc edges instead makes every downstream
-  // total — the aggr→node weight, the pod split — fall out of the in-scope links alone,
-  // and leaves an aggr with nothing in scope flowing to it unreferenced, hence undrawn.
-  const inScope = (id: string): boolean => clusterFilter === undefined || resolveCluster(nodes, id) === clusterFilter;
-  const scopedPvcAggr = pvcAggr.filter((edge) => inScope(edge.source));
-  const scopedPodPvc = podPvc.filter((edge) => inScope(edge.source) && inScope(edge.target));
 
   const links: SankeyLink[] = [];
   const used = new Set<string>();
+  let hasCurrentDirectionMeasurement = false;
 
-  const mountsByPvc = new Map<string, string[]>();
-  for (const edge of scopedPodPvc) {
-    const list = mountsByPvc.get(edge.target) ?? [];
-    list.push(edge.source);
-    mountsByPvc.set(edge.target, list);
-  }
-
-  for (const edge of scopedPvcAggr) {
+  for (const edge of flowEdges) {
     for (const direction of directions) {
       const value = metricOf(edge.metrics, direction);
       if (value === undefined) {
         continue;
       }
+      hasCurrentDirectionMeasurement = true;
       const io = edge.metrics;
       links.push({
         source: edge.source,
         target: edge.target,
         direction,
         value,
+        tier: edge.tier,
+        ...(edge.attribution !== undefined ? { attribution: edge.attribution } : {}),
         ...(io?.maxBytesPerSec !== undefined ? { maxBytesPerSec: io.maxBytesPerSec } : {}),
         ...(io?.maxIops !== undefined ? { maxIops: io.maxIops } : {}),
+        ...(io?.readLatencyUs !== undefined ? { readLatencyUs: io.readLatencyUs } : {}),
+        ...(io?.writeLatencyUs !== undefined ? { writeLatencyUs: io.writeLatencyUs } : {}),
       });
       used.add(edge.source);
       used.add(edge.target);
     }
   }
 
-  const aggrIn = new Map<string, { read: number; write: number }>();
-  for (const link of links) {
-    const cur = aggrIn.get(link.target) ?? { read: 0, write: 0 };
-    if (link.direction === 'read') {
-      cur.read += link.value;
-    } else {
-      cur.write += link.value;
-    }
-    aggrIn.set(link.target, cur);
-  }
-
-  for (const [aggrId, totals] of aggrIn) {
-    const aggr = nodes.get(aggrId);
-    if (aggr === undefined || aggr.parent === undefined) {
+  const kept: SankeyNode[] = [];
+  for (const rec of nodes.values()) {
+    const kind = asSankeyKind(rec.kind);
+    if (kind === undefined) {
       continue;
     }
-    const parent = nodes.get(aggr.parent);
-    if (parent === undefined || parent.kind !== 'netapp-node') {
-      continue;
-    }
-    for (const direction of directions) {
-      const value = direction === 'read' ? totals.read : totals.write;
-      if (!Object.hasOwn(totals, direction === 'read' ? 'read' : 'write')) {
-        continue;
+    if (used.has(rec.id)) {
+      const node = toSankeyNode(rec, false);
+      if (node !== undefined) {
+        kept.push(node);
       }
-      const present = links.some((l) => l.target === aggrId && l.direction === direction);
-      if (!present) {
-        continue;
-      }
-      links.push({ source: aggrId, target: parent.id, direction, value });
-      used.add(parent.id);
-    }
-  }
-
-  const pvcTotals = new Map<string, { read?: number; write?: number }>();
-  for (const link of links) {
-    if (!scopedPvcAggr.some((e) => e.source === link.source && e.target === link.target)) {
       continue;
     }
-    const cur = pvcTotals.get(link.source) ?? {};
-    if (link.direction === 'read') {
-      cur.read = (cur.read ?? 0) + link.value;
-    } else {
-      cur.write = (cur.write ?? 0) + link.value;
-    }
-    pvcTotals.set(link.source, cur);
-  }
-
-  for (const [pvcId, totals] of pvcTotals) {
-    const mounts = mountsByPvc.get(pvcId) ?? [];
-    const n = mounts.length;
-    if (n === 0) {
-      continue;
-    }
-    for (const direction of directions) {
-      const total = direction === 'read' ? totals.read : totals.write;
-      if (total === undefined) {
-        continue;
-      }
-      const share = total / n;
-      for (const podId of mounts) {
-        const pod = nodes.get(podId);
-        if (pod === undefined || pod.kind !== 'pod') {
-          continue;
-        }
-        links.push({ source: podId, target: pvcId, direction, value: share, splitAmong: n });
-        used.add(podId);
+    // Materialised root. Two shapes, one meaning — the backend answered with this node and
+    // it carries no drawn flow:
+    //   - no storage-flow edge at all (a degraded aggregate holding no claim), and
+    //   - edges that exist but went entirely unmeasured, which is a real path the backend
+    //     deliberately returns without `metrics`. Its non-root nodes are dropped above;
+    //     its roots must survive, and rootness is only knowable from the request.
+    if (!incident.has(rec.id) || isRequestedRoot(rec, roots)) {
+      const node = toSankeyNode(rec, true);
+      if (node !== undefined) {
+        kept.push(node);
       }
     }
   }
 
-  const toNode = (id: string): SankeyNode | undefined => {
-    const rec = nodes.get(id);
-    if (rec === undefined) {
-      return undefined;
-    }
-    if (rec.kind !== 'pod' && rec.kind !== 'pvc' && rec.kind !== 'netapp-aggr' && rec.kind !== 'netapp-node') {
-      return undefined;
-    }
-    const cluster = resolveCluster(nodes, id);
-    return {
-      id: rec.id,
-      label: rec.label,
-      kind: rec.kind,
-      ...(cluster !== undefined ? { cluster } : {}),
-      ...(rec.namespace !== undefined ? { namespace: rec.namespace } : {}),
-      ...(rec.usage !== undefined ? { usage: rec.usage } : {}),
-      ...(rec.health !== undefined ? { health: rec.health } : {}),
-    };
-  };
-
-  const keptNodes = [...used].map(toNode).filter((n): n is SankeyNode => n !== undefined);
-
-  const nodeIds = new Set(keptNodes.map((n) => n.id));
+  const nodeIds = new Set(kept.map((n) => n.id));
   const keptLinks = links.filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target));
-  return sortSankey({ nodes: keptNodes, links: keptLinks, hasAnyMeasurement });
+  return sortSankey({
+    nodes: kept,
+    links: keptLinks,
+    hasStorageFlowEdges: flowEdges.length > 0,
+    hasCurrentDirectionMeasurement,
+  });
+}
+
+function nodeFlow(graph: SankeyGraph, id: string): number {
+  let inbound = 0;
+  let outbound = 0;
+  for (const link of graph.links) {
+    if (link.source === id) {
+      outbound += link.value;
+    }
+    if (link.target === id) {
+      inbound += link.value;
+    }
+  }
+  return Math.max(inbound, outbound);
 }
 
 function sortSankey(graph: SankeyGraph): SankeyGraph {
   const flow = new Map<string, number>();
-  for (const link of graph.links) {
-    flow.set(link.source, (flow.get(link.source) ?? 0) + link.value);
-    flow.set(link.target, (flow.get(link.target) ?? 0) + link.value);
+  for (const node of graph.nodes) {
+    flow.set(node.id, node.noFlow === true ? 0 : nodeFlow(graph, node.id));
   }
   const nodes = [...graph.nodes].sort((a, b) => {
-    if (a.kind !== b.kind) {
-      const order: SankeyKind[] = ['pod', 'pvc', 'netapp-aggr', 'netapp-node'];
-      return order.indexOf(a.kind) - order.indexOf(b.kind);
+    const ka = SANKEY_KIND_ORDER.indexOf(a.kind);
+    const kb = SANKEY_KIND_ORDER.indexOf(b.kind);
+    if (ka !== kb) {
+      return ka - kb;
     }
     const fa = flow.get(a.id) ?? 0;
     const fb = flow.get(b.id) ?? 0;
@@ -323,22 +343,12 @@ function sortSankey(graph: SankeyGraph): SankeyGraph {
   return { ...graph, nodes, links };
 }
 
+// Rates ride the SAME SI ladder as every other byte count in the app — a tooltip renders a
+// link's rate next to the node's `usage` and `total_bytes_per_sec`, and a second local ladder
+// would let one row read `262 kB/s` beside another reading `262 KB`. `formatBytes` owns the
+// unit table and the round-then-promote rule; this only appends the `/s`.
 export function formatBytesPerSec(value: number): string {
-  return `${formatSiBytes(value)}/s`;
-}
-
-function formatSiBytes(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'] as const;
-  let value = bytes;
-  let unit = 0;
-  // Promote against the ROUNDED value (see shared/format/measurements formatBytes):
-  // 999999 rounds to 3 significant digits as 1000, so a bare `>= 1000` test would render
-  // "1000 KB/s" instead of "1 MB/s".
-  while (Number(value.toPrecision(3)) >= 1000 && unit < units.length - 1) {
-    value /= 1000;
-    unit += 1;
-  }
-  return `${String(Number(value.toPrecision(3)))} ${units[unit]}`;
+  return `${formatBytes(value)}/s`;
 }
 
 export function hoverPathLinks(graph: SankeyGraph, nodeId: string): SankeyLink[] {

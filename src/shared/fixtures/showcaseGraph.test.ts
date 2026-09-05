@@ -40,13 +40,16 @@ describe('SHOWCASE_GRAPH', () => {
     // the virtual `network` wrapper counts too. Add a kind to that map without fixture
     // coverage and this fails — which is the point: an uncovered kind is one nobody would
     // notice the panel had stopped drawing.
+    // `netapp-svm` is storage-graph-only (`/v1/graph` never emits it) and is covered by
+    // SHOWCASE_STORAGE_GRAPH instead.
     const drawn = new Set(nodes.map((data) => data.kind));
-    expect(Object.keys(ICON_SVG_BY_KIND).filter((kind) => !drawn.has(kind))).toEqual([]);
+    expect(Object.keys(ICON_SVG_BY_KIND).filter((kind) => kind !== 'netapp-svm' && !drawn.has(kind))).toEqual([]);
   });
 
   it('covers every edge type the panel can draw', () => {
     const drawn = new Set(edges.map((data) => data.edgeType));
-    expect(Object.keys(EDGE_STYLE_BY_TYPE).filter((type) => !drawn.has(type))).toEqual([]);
+    // `storage-flow` is storage-graph-only and is covered by SHOWCASE_STORAGE_GRAPH.
+    expect(Object.keys(EDGE_STYLE_BY_TYPE).filter((type) => type !== 'storage-flow' && !drawn.has(type))).toEqual([]);
   });
 
   describe('typed node attributes', () => {

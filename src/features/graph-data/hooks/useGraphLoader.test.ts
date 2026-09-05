@@ -49,6 +49,46 @@ describe('useGraphLoader', () => {
     expect(result.current.state.elements.length).toBeGreaterThan(0);
   });
 
+  it('does not fetch when disabled, even if a URL is available', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() =>
+      useGraphLoader({
+        demoMode: false,
+        enabled: false,
+        makeUrl: () => 'https://ksg.example/v1/storage-graph',
+        requestKey: 'https://ksg.example/v1/storage-graph',
+        refreshIntervalSeconds: 0,
+      })
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.state.status).toBe('idle');
+    act(() => {
+      result.current.reload();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('loads a custom demo payload without fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const payload = { elements: { nodes: [{ data: { id: 'n', name: 'n', type: 'pod' } }], edges: [] } };
+    const { result } = renderHook(() =>
+      useGraphLoader({
+        demoMode: true,
+        demoPayload: payload,
+        makeUrl: () => 'https://ksg.example/v1/storage-graph',
+        requestKey: 'storage-demo',
+        refreshIntervalSeconds: 0,
+      })
+    );
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('ready');
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.state.elements.some((el) => el.data.id === 'n')).toBe(true);
+  });
+
   it('does not fetch when the graph endpoint is unset', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

@@ -20,6 +20,17 @@ export interface GraphDataState {
 export interface UseGraphLoaderOptions {
   demoMode: boolean;
   /**
+   * Fixture fed to the same normalize boundary in demo mode. Graph uses SHOWCASE_GRAPH;
+   * storage-graph uses SHOWCASE_STORAGE_GRAPH.
+   */
+  demoPayload?: unknown;
+  /**
+   * When false the loader neither fetches nor starts its auto-refresh timer. Used to
+   * keep storage-graph lazy until Sankey has been visited (and az/env are ready).
+   * Default true so the graph loader is unchanged.
+   */
+  enabled?: boolean;
+  /**
    * Builds the request URL, called at REQUEST time rather than at render time.
    *
    * The window has to be resolved per request: the backend takes absolute timestamps
@@ -68,7 +79,14 @@ function describeLoadError(url: string, err: unknown): string {
   return `GET ${url} failed: network error`;
 }
 
-export function useGraphLoader({ demoMode, makeUrl, requestKey, refreshIntervalSeconds }: UseGraphLoaderOptions): {
+export function useGraphLoader({
+  demoMode,
+  demoPayload = SHOWCASE_GRAPH,
+  enabled = true,
+  makeUrl,
+  requestKey,
+  refreshIntervalSeconds,
+}: UseGraphLoaderOptions): {
   state: GraphDataState;
   reload: () => void;
 } {
@@ -80,9 +98,11 @@ export function useGraphLoader({ demoMode, makeUrl, requestKey, refreshIntervalS
   // counting as a new request. What counts as a new request is requestKey.
   const makeUrlRef = useRef(makeUrl);
   makeUrlRef.current = makeUrl;
+  const demoPayloadRef = useRef(demoPayload);
+  demoPayloadRef.current = demoPayload;
 
   const loadDemo = useCallback(() => {
-    const next = normalizePayload(SHOWCASE_GRAPH);
+    const next = normalizePayload(demoPayloadRef.current);
     setState({
       status: next.error !== undefined ? 'error' : 'ready',
       elements: next.elements,
@@ -166,12 +186,15 @@ export function useGraphLoader({ demoMode, makeUrl, requestKey, refreshIntervalS
   }, []);
 
   const reload = useCallback(() => {
+    if (!enabled) {
+      return;
+    }
     if (demoMode) {
       loadDemo();
       return;
     }
     void loadRemote();
-  }, [demoMode, loadDemo, loadRemote]);
+  }, [enabled, demoMode, loadDemo, loadRemote]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -183,8 +206,14 @@ export function useGraphLoader({ demoMode, makeUrl, requestKey, refreshIntervalS
   useEffect(() => {
     // requestKey is this effect's identity: a new selection is a new request.
     void requestKey;
+    // Bump the generation BEFORE the enabled guard: a request already in flight when the
+    // loader is disabled must not commit its response afterwards. Returning first would
+    // leave that fetch on the current generation and let it land into a disabled loader.
     generationRef.current += 1;
     inflightRef.current = false;
+    if (!enabled) {
+      return;
+    }
     if (demoMode) {
       loadDemo();
       return;
@@ -195,17 +224,17 @@ export function useGraphLoader({ demoMode, makeUrl, requestKey, refreshIntervalS
       return;
     }
     void loadRemote();
-  }, [demoMode, requestKey, loadDemo, loadRemote]);
+  }, [demoMode, requestKey, enabled, loadDemo, loadRemote]);
 
   useEffect(() => {
-    if (demoMode || refreshIntervalSeconds <= 0) {
+    if (!enabled || demoMode || refreshIntervalSeconds <= 0) {
       return;
     }
     const id = window.setInterval(() => {
       void loadRemote();
     }, refreshIntervalSeconds * 1000);
     return () => window.clearInterval(id);
-  }, [demoMode, requestKey, refreshIntervalSeconds, loadRemote, state.lastLoadedAt]);
+  }, [enabled, demoMode, requestKey, refreshIntervalSeconds, loadRemote, state.lastLoadedAt]);
 
   return { state, reload };
 }

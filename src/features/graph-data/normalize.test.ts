@@ -782,6 +782,170 @@ describe('normalizeGraph', () => {
       const pvc = byId(raw).get('prod/db/x') as Record<string, unknown> | undefined;
       expect(pvc !== undefined && 'storageclass' in pvc).toBe(false);
     });
+
+    it('maps hardware and perf field-by-field and does not pad absence', () => {
+      const partial = byId(
+        netappGraph(
+          {},
+          {
+            hardware: { model: 'AFF-A400' },
+            perf: { cpu_busy_pct: 41.2 },
+            health: 'degraded',
+          }
+        )
+      ).get('netapp/ontap-prod/ontap-prod-01') as Record<string, unknown> | undefined;
+      expect(partial?.hardware).toEqual({ model: 'AFF-A400' });
+      expect(partial?.perf).toEqual({ cpuBusyPct: 41.2 });
+      expect(partial?.health).toBe('degraded');
+      expect(partial !== undefined && 'serial' in (partial.hardware as object)).toBe(false);
+
+      const absent = byId(netappGraph({})).get('netapp/ontap-prod/ontap-prod-01') as
+        Record<string, unknown> | undefined;
+      expect(absent !== undefined && 'hardware' in absent).toBe(false);
+      expect(absent !== undefined && 'perf' in absent).toBe(false);
+      expect(absent !== undefined && 'health' in absent).toBe(false);
+    });
+
+    it('does not let perf readings change health or status', () => {
+      const withPerf = byId(netappGraph({}, { health: 'online', perf: { cpu_busy_pct: 99.9, total_ops: 1e6 } })).get(
+        'netapp/ontap-prod/ontap-prod-01'
+      ) as Record<string, unknown> | undefined;
+      const without = byId(netappGraph({}, { health: 'online' })).get('netapp/ontap-prod/ontap-prod-01') as
+        Record<string, unknown> | undefined;
+      expect(withPerf?.health).toBe(without?.health);
+      expect(withPerf?.status).toBe(without?.status);
+      expect(withPerf?.worstStatus).toBe(without?.worstStatus);
+    });
+
+    it('drops invalid hardware / perf fields without inventing placeholders', () => {
+      const node = byId(
+        netappGraph(
+          {},
+          {
+            hardware: { model: 'AFF-A400', serial: 12 },
+            perf: { cpu_busy_pct: 'hot', total_ops: 10 },
+          }
+        )
+      ).get('netapp/ontap-prod/ontap-prod-01') as Record<string, unknown> | undefined;
+      expect(node?.hardware).toEqual({ model: 'AFF-A400' });
+      expect(node?.perf).toEqual({ totalOps: 10 });
+    });
+  });
+
+  describe('storage-flow edges and netapp-svm', () => {
+    const payload = {
+      elements: {
+        nodes: [
+          { data: { id: 'storage-cluster/ontap-prod', type: 'storage-cluster', name: 'ontap-prod' } },
+          {
+            data: {
+              id: 'netapp/ontap-prod/svm/svm_shop',
+              name: 'svm_shop',
+              type: 'netapp-svm',
+              parent: 'storage-cluster/ontap-prod',
+              labels: { ontap_cluster: 'ontap-prod' },
+            },
+          },
+          { data: { id: 'netapp/ontap-prod/ontap-prod-01', name: 'ontap-prod-01', type: 'netapp-node' } },
+          { data: { id: 'netapp/ontap-prod/aggr/aggr1', name: 'aggr1', type: 'netapp-aggr' } },
+          { data: { id: 'pvc/data-mongo-0', name: 'data-mongo-0', type: 'pvc' } },
+          { data: { id: 'pod/mongo-0', name: 'mongo-0', type: 'pod' } },
+          { data: { id: 'node/worker-0', name: 'worker-0', type: 'node' } },
+        ],
+        edges: [
+          {
+            data: {
+              id: 'sf-na',
+              type: 'storage-flow',
+              source: 'netapp/ontap-prod/ontap-prod-01',
+              target: 'netapp/ontap-prod/aggr/aggr1',
+              labels: { tier: 'node-aggr' },
+              metrics: { read_bytes_per_sec: 6000000, write_bytes_per_sec: 1048576 },
+            },
+          },
+          {
+            data: {
+              id: 'sf-as',
+              type: 'storage-flow',
+              source: 'netapp/ontap-prod/aggr/aggr1',
+              target: 'netapp/ontap-prod/svm/svm_shop',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 5999999, write_bytes_per_sec: 1048576 },
+            },
+          },
+          {
+            data: {
+              id: 'sf-sp',
+              type: 'storage-flow',
+              source: 'netapp/ontap-prod/svm/svm_shop',
+              target: 'pvc/data-mongo-0',
+              labels: { tier: 'svm-pvc' },
+              metrics: {
+                read_bytes_per_sec: 5242880,
+                write_bytes_per_sec: 1048576,
+                read_latency_us: 830,
+                max_iops: 5000,
+              },
+            },
+          },
+          {
+            data: {
+              id: 'sf-pp',
+              type: 'storage-flow',
+              source: 'pvc/data-mongo-0',
+              target: 'pod/mongo-0',
+              labels: { tier: 'pvc-pod', attribution: 'split' },
+              metrics: { read_ops: 100, read_bytes_per_sec: 5242880 },
+            },
+          },
+          {
+            data: {
+              id: 'sf-pn',
+              type: 'storage-flow',
+              source: 'pod/mongo-0',
+              target: 'node/worker-0',
+              labels: { tier: 'pod-node' },
+              metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
+            },
+          },
+        ],
+      },
+    };
+
+    it('maps netapp-svm and all five storage-flow tiers without falling into unknown-type', () => {
+      const { elements, errors } = normalizeGraph(payload);
+      expect(errors).toEqual([]);
+      const svm = elements.find((e) => e.data.id === 'netapp/ontap-prod/svm/svm_shop')?.data as
+        cytoscape.NodeDataDefinition | undefined;
+      expect(svm?.kind).toBe('netapp-svm');
+      expect(svm?.parent).toBe('storage-cluster/ontap-prod');
+      const edges = elements.filter((e) => e.group === 'edges').map((e) => e.data as cytoscape.EdgeDataDefinition);
+      expect(edges.map((e) => e.labels?.tier).sort()).toEqual(
+        ['aggr-svm', 'node-aggr', 'pod-node', 'pvc-pod', 'svm-pvc'].sort()
+      );
+      expect(edges.every((e) => e.edgeType === 'storage-flow')).toBe(true);
+    });
+
+    it('keeps attribution=split and the measured value as-is', () => {
+      const { elements } = normalizeGraph(payload);
+      const split = elements.find((e) => e.data.id === 'sf-pp')?.data as cytoscape.EdgeDataDefinition | undefined;
+      expect(split?.labels?.attribution).toBe('split');
+      expect(split?.metrics && !('rate' in split.metrics) ? split.metrics.readOps : undefined).toBe(100);
+      expect(split?.metrics && !('rate' in split.metrics) ? split.metrics.readBytesPerSec : undefined).toBe(5242880);
+    });
+
+    it('does not invent latency or ceiling on non-svm-pvc tiers', () => {
+      const { elements } = normalizeGraph(payload);
+      const hop = (id: string): cytoscape.EdgeIoMetrics | undefined => {
+        const metrics = (elements.find((e) => e.data.id === id)?.data as cytoscape.EdgeDataDefinition).metrics;
+        return metrics !== undefined && !('rate' in metrics) ? metrics : undefined;
+      };
+      expect(hop('sf-sp')?.readLatencyUs).toBe(830);
+      expect(hop('sf-sp')?.maxIops).toBe(5000);
+      expect(hop('sf-na')?.readLatencyUs).toBeUndefined();
+      expect(hop('sf-na')?.maxIops).toBeUndefined();
+      expect(hop('sf-pn')?.maxIops).toBeUndefined();
+    });
   });
 
   // The K8s node's Ready condition — a THIRD status axis, independent of the panel's own

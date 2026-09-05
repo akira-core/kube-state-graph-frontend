@@ -10,14 +10,14 @@ import {
   type MouseEvent,
 } from 'react';
 
-import { formatUsage } from '../../shared/format/measurements';
+import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
-import { Select } from '../../shared/ui/Select';
+import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
 import { useThemeTokens } from '../theme';
 
-import { deriveSankey, formatBytesPerSec, hoverPathLinks, type SankeyMode } from './deriveSankey';
-import { layoutSankey, TIER_LABEL, type LayoutLink } from './layoutSankey';
+import { deriveSankey, formatBytesPerSec, hoverPathLinks, type SankeyMode, type SankeyNode } from './deriveSankey';
+import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink } from './layoutSankey';
 import { SankeyChart, type HoverLit } from './SankeyChart';
 import { SankeyControlBar } from './SankeyControlBar';
 import { SankeySummary, type NamespaceSubtotalRow, type NodeSummaryRow } from './SankeySummary';
@@ -38,6 +38,16 @@ export interface SankeyViewProps {
   visible: boolean;
   focusMode: boolean;
   onFocusModeChange: (next: boolean) => void;
+  /** `endpoints.storageGraph` is configured (or demo mode supplies a fixture). */
+  endpointConfigured: boolean;
+  /** Both halves of the required scope are chosen, so a request has been sent. */
+  azEnvReady: boolean;
+  /**
+   * The root selection the current payload was requested with. Only used to keep a
+   * materialised root drawn when its whole path came back unmeasured — the wire carries
+   * no root marker, so the request is the only thing that knows.
+   */
+  roots?: StorageGraphRoots;
   onLocateNode: (id: string) => void;
 }
 
@@ -45,6 +55,73 @@ interface Tip {
   x: number;
   y: number;
   text: string[];
+}
+
+function emptyCopy(kind: 1 | 2 | 3 | 4, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
+  if (kind === 1) {
+    return {
+      testId: 'sankey-empty-unconfigured',
+      text: 'Storage graph endpoint is not configured. Graph view is unaffected.',
+    };
+  }
+  if (kind === 2) {
+    return {
+      testId: 'sankey-empty-scope',
+      text: 'Select one az and one env to load storage flow. No request has been sent yet.',
+    };
+  }
+  if (kind === 3) {
+    return {
+      testId: 'sankey-empty-response',
+      text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
+    };
+  }
+  return {
+    testId: 'sankey-empty-mode',
+    text:
+      mode === 'read'
+        ? 'Read direction has no measurements. Switch to Write or Both.'
+        : mode === 'write'
+          ? 'Write direction has no measurements. Switch to Read or Both.'
+          : 'The current direction has no measurements. Switch to Read, Write, or Both.',
+  };
+}
+
+/**
+ * Node tooltip lines for a storage-graph node.
+ *
+ * The hardware and perf readings are shown RAW and uncoloured on purpose: `cpu_busy_pct`
+ * is a reading, not a threshold, and colouring it would invent a health judgement the
+ * backend never made. `health` is the only field that carries one.
+ */
+function nodeTooltip(node: SankeyNode | undefined, id: string, flowLines: readonly string[]): string[] {
+  if (node === undefined) {
+    return [id, ...flowLines];
+  }
+  const isNetapp = node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm';
+  const usage =
+    node.kind === 'pvc' || node.kind === 'netapp-aggr'
+      ? formatUsage(node.usage?.usedBytes, node.usage?.capacityBytes)
+      : undefined;
+  const raw = (label: string, value: number | undefined, format: (v: number) => string): string[] =>
+    value === undefined ? [] : [`${label} ${format(value)} (raw)`];
+  return [
+    `${node.kind} / ${node.label}`,
+    ...((node.kind === 'pod' || node.kind === 'pvc') && node.namespace !== undefined
+      ? [`namespace ${node.namespace}`]
+      : []),
+    ...(isNetapp && node.ontapCluster !== undefined ? [`ontap_cluster: ${node.ontapCluster}`] : []),
+    ...flowLines,
+    ...(usage !== undefined && usage.length > 0 ? [usage] : []),
+    ...(node.health !== undefined ? [`health ${node.health}`] : []),
+    ...(node.hardware?.model !== undefined ? [`model ${node.hardware.model}`] : []),
+    ...raw('cpu_busy_pct', node.perf?.cpuBusyPct, String),
+    ...raw('total_ops', node.perf?.totalOps, String),
+    ...raw('total_latency_us', node.perf?.totalLatencyUs, String),
+    ...raw('total_bytes_per_sec', node.perf?.totalBytesPerSec, formatBytes),
+    ...(node.alerts ?? []).map((alert) => `${alert.severity} ${alert.name}`),
+    ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
+  ];
 }
 
 export function SankeyView({
@@ -56,11 +133,13 @@ export function SankeyView({
   visible,
   focusMode,
   onFocusModeChange,
+  endpointConfigured,
+  azEnvReady,
+  roots = EMPTY_STORAGE_GRAPH_ROOTS,
   onLocateNode,
 }: Readonly<SankeyViewProps>): JSX.Element {
   const tokens = useThemeTokens();
   const [mode, setMode] = useState<SankeyMode>('both');
-  const [cluster, setCluster] = useState<string | undefined>(undefined);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
@@ -95,21 +174,10 @@ export function SankeyView({
     return () => ro.disconnect();
   }, [visible, status, hasPayload]);
 
-  const clusters = useMemo(() => {
-    const names = new Set<string>();
-    for (const el of elements) {
-      if (el.group !== 'nodes') {
-        continue;
-      }
-      const d = el.data as cytoscape.NodeDataDefinition;
-      if (d.isCluster === true && typeof d.cluster === 'string') {
-        names.add(d.cluster);
-      }
-    }
-    return [...names].sort();
-  }, [elements]);
-
-  const graph = useMemo(() => deriveSankey(elements, mode, cluster), [elements, mode, cluster]);
+  // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
+  // projection arrives already scoped. Re-filtering it here would break the backend's
+  // weight conservation, which is why this view has no cluster selector of its own.
+  const graph = useMemo(() => deriveSankey(elements, mode, roots), [elements, mode, roots]);
   // Layout depends only on the derived graph and the theme's namespace palette — never on
   // container size or the pan/zoom viewport, so a resize or a drag can never re-run it
   // (see storage-flow-sankey "尺寸與容器 resize" / "圖區的縮放與平移").
@@ -162,7 +230,7 @@ export function SankeyView({
       return null;
     }
     const pathLinks = hoverPathLinks(graph, hoverId);
-    const keys = new Set(pathLinks.map((l) => `${l.source}|${l.target}|${l.direction}`));
+    const keys = new Set(pathLinks.map((l) => linkKey(l.source, l.target, l.direction, l.tier)));
     const nodeIds = new Set<string>([hoverId]);
     for (const l of pathLinks) {
       nodeIds.add(l.source);
@@ -210,9 +278,7 @@ export function SankeyView({
         inbound: inbound.get(ln.id) ?? 0,
         outbound: outbound.get(ln.id) ?? 0,
         ...(usageText !== undefined ? { usage: usageText } : {}),
-        ...((ln.kind === 'netapp-aggr' || ln.kind === 'netapp-node') && gn?.health !== undefined
-          ? { health: gn.health }
-          : {}),
+        ...(gn?.health !== undefined ? { health: gn.health } : {}),
       };
     });
     const nsAgg = new Map<string, { count: number; total: number }>();
@@ -242,10 +308,24 @@ export function SankeyView({
     );
   }
 
-  const emptyAll = !graph.hasAnyMeasurement;
-  const emptyCluster = cluster !== undefined && graph.hasAnyMeasurement && graph.nodes.length === 0;
-  const emptyMode = graph.hasAnyMeasurement && graph.links.length === 0 && !emptyCluster;
-  const chartReady = !emptyAll && !emptyMode && !emptyCluster;
+  // Four causes, four sentences. They are not interchangeable: an unfinished selection that
+  // reads as "no storage flow" makes a working pipeline look broken, and vice versa.
+  const emptyKind: 1 | 2 | 3 | 4 | null = (() => {
+    if (!demoMode && !endpointConfigured) {
+      return 1;
+    }
+    if (!azEnvReady) {
+      return 2;
+    }
+    if (graph.links.length === 0 && graph.hasStorageFlowEdges && !graph.hasCurrentDirectionMeasurement) {
+      return 4;
+    }
+    if (graph.nodes.length === 0) {
+      return 3;
+    }
+    return null;
+  })();
+  const chartReady = emptyKind === null;
 
   const onNodeEnter = (id: string, evt: MouseEvent): void => {
     if (zoom.dragging) {
@@ -266,22 +346,7 @@ export function SankeyView({
             `out write ${formatBytesPerSec(sum(outboundLinks, 'write'))}`,
           ]
         : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
-    const usage =
-      node !== undefined && (node.kind === 'pvc' || node.kind === 'netapp-aggr')
-        ? formatUsage(node.usage?.usedBytes, node.usage?.capacityBytes)
-        : undefined;
-    const lines = [
-      `${node?.kind ?? ''} / ${node?.label ?? id}`,
-      ...(node?.kind === 'pod' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
-      ...flowLines,
-      ...(usage !== undefined && usage.length > 0 ? [usage] : []),
-      ...(node !== undefined &&
-      (node.kind === 'netapp-aggr' || node.kind === 'netapp-node') &&
-      node.health !== undefined
-        ? [`health ${node.health}`]
-        : []),
-    ];
-    setTip({ x: evt.clientX, y: evt.clientY, text: lines });
+    setTip({ x: evt.clientX, y: evt.clientY, text: nodeTooltip(node, id, flowLines) });
   };
 
   const onLinkEnter = (link: LayoutLink, evt: MouseEvent): void => {
@@ -290,12 +355,26 @@ export function SankeyView({
     }
     const src = graph.nodes.find((g) => g.id === link.source);
     const dst = graph.nodes.find((g) => g.id === link.target);
+    const ceilingTier = link.tier === 'svm-pvc';
     const lines = [
       `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
+      `tier ${link.tier}`,
       `${link.direction}: ${formatBytesPerSec(link.value)}`,
-      ...(link.splitAmong !== undefined ? [`evenly split estimate across ${String(link.splitAmong)} pods`] : []),
-      ...(link.maxBytesPerSec !== undefined ? [`QoS ceiling ${formatBytesPerSec(link.maxBytesPerSec)}`] : []),
-      ...(link.maxIops !== undefined ? [`QoS ceiling ${String(link.maxIops)} IOPS`] : []),
+      // The backend flags a weight it split evenly rather than measured. Saying so is the
+      // difference between a reading and an estimate that happens to be a number.
+      ...(link.attribution === 'split' ? ['evenly split estimate'] : []),
+      // A QoS policy group hangs off the volume, so a ceiling is only meaningful on the
+      // svm→pvc hop; showing it on an aggregate hop would attribute it to the wrong thing.
+      ...(ceilingTier && link.maxBytesPerSec !== undefined
+        ? [`QoS ceiling ${formatBytesPerSec(link.maxBytesPerSec)}`]
+        : []),
+      ...(ceilingTier && link.maxIops !== undefined ? [`QoS ceiling ${String(link.maxIops)} IOPS`] : []),
+      ...(ceilingTier && link.direction === 'read' && link.readLatencyUs !== undefined
+        ? [`latency ${String(link.readLatencyUs)} µs`]
+        : []),
+      ...(ceilingTier && link.direction === 'write' && link.writeLatencyUs !== undefined
+        ? [`latency ${String(link.writeLatencyUs)} µs`]
+        : []),
     ];
     setTip({ x: evt.clientX, y: evt.clientY, text: lines });
   };
@@ -354,22 +433,6 @@ export function SankeyView({
             options={MODE_OPTIONS}
             onChange={setMode}
           />
-          {clusters.length >= 2 && (
-            <label className="flex items-center gap-1.5">
-              <span className={eyebrowClass}>Cluster</span>
-              <Select
-                value={cluster ?? ''}
-                onChange={(e) => setCluster(e.target.value === '' ? undefined : e.target.value)}
-              >
-                <option value="">All</option>
-                {clusters.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          )}
           <div className="ml-auto flex items-center gap-3">
             {(mode === 'both' || mode === 'read') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
@@ -391,34 +454,15 @@ export function SankeyView({
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1 flex-col" ref={boxRef}>
-        {emptyAll && (
+      {/* The chart keeps a floor. Six tiers make the summary tall enough to take the whole
+          column otherwise, and a zero-height chart host renders its nodes outside the SVG. */}
+      <div className="relative flex min-h-[220px] flex-1 flex-col" ref={boxRef}>
+        {emptyKind !== null && (
           <div
             className="flex flex-1 items-center justify-center p-6 text-center text-sm text-secondary"
-            data-testid="sankey-empty"
+            data-testid={emptyCopy(emptyKind, demoMode, mode).testId}
           >
-            This graph contains no storage I/O metrics.
-            {demoMode ? ' Currently showing demo fixture data.' : ''}
-          </div>
-        )}
-        {emptyCluster && (
-          <div
-            className="flex flex-1 items-center justify-center p-6 text-center text-sm text-secondary"
-            data-testid="sankey-empty-cluster"
-          >
-            The selected cluster has no storage flow.
-          </div>
-        )}
-        {emptyMode && (
-          <div
-            className="flex flex-1 items-center justify-center p-6 text-center text-sm text-secondary"
-            data-testid="sankey-empty-mode"
-          >
-            {mode === 'read'
-              ? 'Read direction has no measurements. Switch to Write or Both.'
-              : mode === 'write'
-                ? 'Write direction has no measurements. Switch to Read or Both.'
-                : 'No measurements for the current direction. Try switching Read / Write / Both.'}
+            {emptyCopy(emptyKind, demoMode, mode).text}
           </div>
         )}
         {chartReady && (

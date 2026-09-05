@@ -60,14 +60,14 @@ dev server SHALL 於 `<base>/config.json` 提供版本控管的 `dev/config.json
 
 ### Requirement: 正式建置產出靜態 dist/
 
-`npm run build` SHALL 先執行 TypeScript 型別檢查(等同 `npm run typecheck`)再以 Vite 建置;任一 type error MUST 使指令以非零結束且不寫出 `dist/`。成功時 SHALL 輸出 `dist/`,內含 `index.html`、以內容雜湊命名的資產(`dist/assets/*`)以及 `public/` 下的靜態檔(含 `demo/graph.json`)。
+`npm run build` SHALL 先執行 TypeScript 型別檢查(等同 `npm run typecheck`)再以 Vite 建置;任一 type error MUST 使指令以非零結束且不寫出 `dist/`。成功時 SHALL 輸出 `dist/`,內含 `index.html`、以內容雜湊命名的資產(`dist/assets/*`)以及 `public/` 下的靜態檔(含 `demo/graph.json` 與 `demo/storage-graph.json`)。
 
 `dist/` MUST 為純靜態檔案,可由任何靜態 web server 提供;MUST NOT 含 `config.json`,MUST NOT 內嵌任何後端 URL 或環境專屬值 —— 執行期設定一律由部署時提供的 `config.json` 供給,同一份 `dist/` 服務所有環境。
 
 #### Scenario: Build 產物結構
 
 - **WHEN** 執行 `npm run build`
-- **THEN** `dist/index.html`、`dist/assets/` 與 `dist/demo/graph.json` 存在,`dist/config.json` 不存在
+- **THEN** `dist/index.html`、`dist/assets/`、`dist/demo/graph.json` 與 `dist/demo/storage-graph.json` 存在,`dist/config.json` 不存在
 
 #### Scenario: Type error 阻擋 build
 
@@ -101,7 +101,7 @@ dev server SHALL 於 `<base>/config.json` 提供版本控管的 `dev/config.json
 
 ### Requirement: Prettier 格式化
 
-專案 SHALL 採用 `prettier` 作為唯一格式化工具,設定檔進版本控管;`eslint-config-prettier` MUST 關閉所有與 prettier 衝突的 ESLint 規則。`npm run format` SHALL 一鍵格式化全 repo。`.prettierignore` MUST 列入 `dist/`、`coverage/`、Playwright 輸出目錄、lock 檔,以及 `public/demo/graph.json`(generated 檔案,理由見 hook 需求)。
+專案 SHALL 採用 `prettier` 作為唯一格式化工具,設定檔進版本控管;`eslint-config-prettier` MUST 關閉所有與 prettier 衝突的 ESLint 規則。`npm run format` SHALL 一鍵格式化全 repo。`.prettierignore` MUST 列入 `dist/`、`coverage/`、Playwright 輸出目錄、lock 檔,以及 `public/demo/graph.json` 與 `public/demo/storage-graph.json`(generated 檔案,理由見 hook 需求)。
 
 #### Scenario: Format 一致
 
@@ -121,10 +121,11 @@ dev server SHALL 於 `<base>/config.json` 提供版本控管的 `dev/config.json
 
 E2E 測試 SHALL 以 Playwright 撰寫並置於 `tests/`;`npm run e2e` SHALL 自行啟動 dev server(webServer)並於結束時關閉,clean checkout 上不需另開終端、後端或 Docker 即可執行。
 
-倉庫 SHALL 至少包含兩個 spec:
+倉庫 SHALL 至少包含三個 spec:
 
 1. **Demo 模式 showcase smoke**:開啟 `/`,斷言 `[data-testid="graph-canvas"]` 掛載,並斷言依 fixture 內容而存在的 legend 控制項(如 `ingress-toggle`、`edge-legend-row-network-hop`)出現。
 2. **Fetch 路徑 round trip**:以 Playwright route 將 `config.json` 回應為 `demoMode: false` 且 `endpoints.graph` 指向 `/demo/graph.json` 的設定,斷言同一組元素出現。此 spec 證明單元測試無法證明的事:generated payload 經 HTTP 取回、通過 `normalizeGraph`、到 cytoscape 掛載的完整資料路徑。
+3. **兩個端點各自取數**:以 Playwright route 同時提供 `endpoints.graph: "/demo/graph.json"` 與 `endpoints.storageGraph: "/demo/storage-graph.json"`,斷言停留在 Graph 視圖期間 `/demo/storage-graph.json` 的請求數為 0、切到 Sankey 並選定 `az` / `env` 後恰好發出一次,且 Sankey 繪出的 tier 來自 storage fixture 而非 graph fixture。此 spec 守住本 change 的核心分界——兩個視圖走兩個端點,且 Sankey 是 lazy 的。
 
 E2E MUST 可由開發者本機以單一指令觸發(`npm run e2e`),且兩個 spec 已穩定,因此**同時列入 CI 必要 gate**(見「CI Workflow(精簡版)」)。兩者跑的是同一個 `npm run e2e`:CI 不得擁有一條本機無法重現的 e2e 路徑。
 
@@ -139,7 +140,7 @@ E2E MUST 可由開發者本機以單一指令觸發(`npm run e2e`),且兩個 spe
 
 `pre-commit` SHALL 對 staged 檔案執行 `lint-staged`(設定於 `.lintstagedrc.json`:`eslint --cache --fix` + `prettier --write`);`pre-push` SHALL 依序執行 `npm run lint`、`npm run typecheck`、`npm run fixture:check`、`npm run test:ci`;任一失敗 MUST 阻擋 commit / push。
 
-`fixture:check` MUST 在 hook 鏈中,因為 `public/demo/graph.json` 是 generated output:改了 fixture 卻忘記 `npm run fixture:build`,若不在此攔下就要等到 CI 才會發現。**generated 檔案 MUST 列入 `.prettierignore`** —— `pre-commit` 的 prettier 與 generator 的輸出格式若不一致(prettier 會把短陣列收成一行,`JSON.stringify(…, null, 2)` 一律展開),兩者會在每次 commit 互相覆寫,使 `fixture:check` 永遠失敗。
+`fixture:check` MUST 在 hook 鏈中,因為 `public/demo/graph.json` 與 `public/demo/storage-graph.json` 都是 generated output:改了 fixture 卻忘記 `npm run fixture:build`,若不在此攔下就要等到 CI 才會發現。**generated 檔案 MUST 列入 `.prettierignore`** —— `pre-commit` 的 prettier 與 generator 的輸出格式若不一致(prettier 會把短陣列收成一行,`JSON.stringify(…, null, 2)` 一律展開),兩者會在每次 commit 互相覆寫,使 `fixture:check` 永遠失敗。
 
 #### Scenario: Pre-commit 阻擋 lint error
 
@@ -186,7 +187,9 @@ Troubleshooting SHALL 涵蓋:dev server port 衝突、`public/demo/graph.json` �
 
 ### Requirement: 型別化 fixture 是 demo 資料的單一來源
 
-`src/shared/fixtures/showcaseGraph.ts` SHALL 匯出以 `src/shared/types/wire.ts` 的 `WireGraph` 型別標註的 `SHOWCASE_GRAPH`,作為 demo 模式、Vitest 測試、Playwright spec 與 fixture 覆蓋測試**唯一**讀取的圖。demo 模式 SHALL 直接以模組匯入方式讀取此 fixture。倉庫 MUST NOT 含任何需要連線到執行中的 kube-state-graph 伺服器、Prometheus 相容儲存或 Kubernetes 叢集才能運作的腳本、測試或開發流程。
+`src/shared/fixtures/showcaseGraph.ts` SHALL 匯出以 `src/shared/types/wire.ts` 的 `WireGraph` 型別標註的 `SHOWCASE_GRAPH`,作為 demo 模式、Vitest 測試、Playwright spec 與 fixture 覆蓋測試**唯一**讀取的圖。demo 模式 SHALL 直接以模組匯入方式讀取此 fixture。
+
+因為兩個後端端點是兩份 body,fixture 亦 SHALL 為**兩份**:同一模組另匯出同樣以 `WireGraph` 標註的 `SHOWCASE_STORAGE_GRAPH`,即 `GET /v1/storage-graph` 形狀的 showcase——只含 `storage-flow` edge(五個 tier 齊全,含一條帶 `labels.attribution: "split"` 的 `pvc-pod` edge 與一條自 `svm-pvc` 起始的 FlexGroup 路徑)、`netapp-svm` 節點,以及 `netapp-node` 的 `hardware` / `perf`。兩份 fixture MUST 描述**同一個估計**:同一組 pod / pvc / netapp 節點 id 與名稱,使「於 Sankey 點選節點跳到 Graph 定位」在 demo 模式下真的找得到目標。兩份的 `storage-flow` 權重 MUST 逐 tier 守恆,否則 demo 會示範一個後端不會產生的形狀。倉庫 MUST NOT 含任何需要連線到執行中的 kube-state-graph 伺服器、Prometheus 相容儲存或 Kubernetes 叢集才能運作的腳本、測試或開發流程。
 
 `WireGraph` 標註是機制而非裝飾:`normalizeGraph` 接受 `unknown` 並於執行期驗證,app 新學會讀取的欄位在編譯期原本不可見;為 fixture 標型別,讓「教 normalize 認得新欄位卻忘了 demo」成為 `npm run typecheck` 失敗,而非無人重看的空白。
 
@@ -206,10 +209,10 @@ Fixture 帶有任何後端版本皆不會發出的欄位時(`status`、`alerts`�
 
 ### Requirement: 範例 payload 由 fixture 產生,漂移即失敗
 
-`public/demo/graph.json` SHALL 為 `SHOWCASE_GRAPH` 序列化後的完整 `GET /v1/graph` 回應 body,由 `npm run fixture:build` **產生**且永不手改。此檔案的角色有二:(1) 唯一的範例 payload —— 後端開發者與運維者可拿它與真實 `GET /v1/graph` 回應比對;(2) 由 dev server 與 container image 以 `<base>/demo/graph.json` 提供,使 `endpoints.graph` 指向它即可在**沒有後端**的情況下走完真實的 fetch 路徑。
+`public/demo/graph.json` 與 `public/demo/storage-graph.json` SHALL 分別為 `SHOWCASE_GRAPH` 與 `SHOWCASE_STORAGE_GRAPH` 序列化後的完整 `GET /v1/graph` / `GET /v1/storage-graph` 回應 body,由 `npm run fixture:build` **產生**且永不手改。兩者的角色各有二:(1) 唯一的範例 payload —— 後端開發者與運維者可拿它與真實回應比對;(2) 由 dev server 與 container image 以 `<base>/demo/<name>.json` 提供,使 `endpoints.graph` / `endpoints.storageGraph` 指向它即可在**沒有後端**的情況下走完真實的 fetch 路徑。
 
-- `npm run fixture:build` SHALL 以 Node 原生 type stripping 匯入 TS fixture,以 `JSON.stringify(…, null, 2)` 加結尾換行寫出該檔案;內容相同時 MUST NOT 改動檔案。
-- `npm run fixture:check` SHALL 於已提交檔案與 fixture 現況不一致時以非零結束,並點名 `npm run fixture:build` 為補救指令。
+- `npm run fixture:build` SHALL 以 Node 原生 type stripping 匯入 TS fixture,以 `JSON.stringify(…, null, 2)` 加結尾換行寫出**兩個**檔案;內容相同時 MUST NOT 改動檔案。
+- `npm run fixture:check` SHALL 於任一已提交檔案與 fixture 現況不一致時以非零結束,並點名 `npm run fixture:build` 為補救指令。
 - 該檢查 SHALL 於 CI 與 `pre-push` hook 中執行。
 
 #### Scenario: 對已同步的樹重新產生為 no-op

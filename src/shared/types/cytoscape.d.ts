@@ -42,6 +42,24 @@ declare module 'cytoscape' {
     // serve them. Each field is independently optional; the object is omitted when
     // neither resolved. Never a placeholder 0.
     usage?: { usedBytes?: number; capacityBytes?: number };
+    // Harvest hardware identity on a `netapp-node`. Each field independently optional;
+    // the object is omitted when none survive. Absence is NOT "unknown".
+    hardware?: {
+      model?: string;
+      serial?: string;
+      version?: string;
+      vendor?: string;
+      location?: string;
+    };
+    // Raw Harvest readings on a `netapp-node`. Independently optional; omitted when
+    // none survive. MUST NOT drive health, status, or any colour/alert — those arrive
+    // via `health` and `alerts`.
+    perf?: {
+      cpuBusyPct?: number;
+      totalOps?: number;
+      totalLatencyUs?: number;
+      totalBytesPerSec?: number;
+    };
     // usedBytes / capacityBytes, clamped to [0,1], derived by normalize ONLY when both
     // are valid and capacity > 0. Flattened out of `usage` because cytoscape cannot
     // compute a ratio in a mapper's data() call either — the icon mapper reads this
@@ -124,7 +142,8 @@ declare module 'cytoscape' {
     p90ServerMs?: number; // server-observed p90 request duration, in milliseconds
   }
 
-  // Storage I/O measurements, carried ONLY on `pvc-to-netapp-aggr` edges. Read verbatim
+  // Storage I/O measurements, carried on `pvc-to-netapp-aggr` edges and on
+  // storage-graph `storage-flow` edges. Read verbatim
   // from NetApp Harvest — the ops are already per-second and the latencies already
   // averaged, so nothing here is a counter. Each field rides its own upstream series
   // family, hence each is independently optional and absence ≠ 0.

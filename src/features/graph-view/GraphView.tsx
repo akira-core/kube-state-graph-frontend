@@ -47,6 +47,7 @@ import { deriveLegendEntries } from './deriveLegendEntries';
 import { deriveContainers } from './deriveNodeContainers';
 import { describeGraphOutcome } from './describeGraphOutcome';
 import { ALL_EDGE_TYPES, ALL_KINDS } from './kinds';
+import { locateOutcome } from './locateOutcome';
 import { resolveSelectedNode } from './resolveSelectedNode';
 import { useCollapseGroup } from './useCollapseGroup';
 
@@ -94,6 +95,7 @@ export function GraphView({
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [filterHiddenNotice, setFilterHiddenNotice] = useState<string | null>(null);
+  const [missingNotice, setMissingNotice] = useState<string | null>(null);
 
   const viewportApiRef = useRef<GraphViewportApi | null>(null);
   const handleViewportApi = useCallback((api: GraphViewportApi | null) => {
@@ -209,18 +211,29 @@ export function GraphView({
     if (locateNodeId === undefined || locateNodeId === null) {
       return;
     }
-    const exists = elements.some(
-      (el) => el.group === 'nodes' && (el.data as cytoscape.NodeDataDefinition).id === locateNodeId
-    );
-    if (exists && !visibleNodeIds.has(locateNodeId)) {
+    const outcome = locateOutcome(locateNodeId, elements, visibleNodeIds);
+    if (outcome === 'missing' && !hasPayload) {
+      // No graph body has landed yet (first load still in flight, or the load failed).
+      // "Not in the current graph result" would be a claim about a result that does not
+      // exist. Leave the request pending — `elements` is a dep, so this re-runs on arrival.
+      return;
+    }
+    if (outcome === 'missing') {
+      setFilterHiddenNotice(null);
+      setMissingNotice(locateNodeId);
+      onLocateConsumed?.();
+      return;
+    }
+    if (outcome === 'filter-hidden') {
+      setMissingNotice(null);
       setFilterHiddenNotice(locateNodeId);
       onLocateConsumed?.();
       return;
     }
-    // A locate supersedes any earlier filter-hidden rejection; without this the banner
-    // sticks around forever (only Dismiss clears it), telling the user their successful
-    // locate was refused.
+    // A locate supersedes any earlier rejection; without this the banner sticks around
+    // forever (only Dismiss clears it), telling the user their successful locate was refused.
     setFilterHiddenNotice(null);
+    setMissingNotice(null);
     // The query the user left in the box before switching views is still there, and its
     // fade would dim the very node this locate brought them here to see. Locating from the
     // in-view result list keeps its query on purpose — that click is a step inside a search.
@@ -228,7 +241,7 @@ export function GraphView({
     const hit = { id: locateNodeId, label: locateNodeId } as SearchResult;
     handleLocate(hit);
     onLocateConsumed?.();
-  }, [locateNodeId, handleLocate, onLocateConsumed, elements, visibleNodeIds]);
+  }, [locateNodeId, handleLocate, onLocateConsumed, elements, visibleNodeIds, hasPayload]);
 
   const selectedNode = useMemo(
     () => resolveSelectedNode(elements, selectedNodeId, visibleNodeIds, collapsedIds),
@@ -602,6 +615,18 @@ export function GraphView({
             <Button variant="ghost" size="sm" className="-mr-1 ml-auto" onClick={() => setFilterHiddenNotice(null)}>
               Dismiss
             </Button>
+          </div>
+        )}
+        {missingNotice !== null && (
+          <div
+            className="absolute left-2 right-[380px] top-8 z-[4] rounded border border-medium bg-surface px-2 py-1 text-sm text-primary"
+            data-testid="locate-missing"
+            role="status"
+          >
+            Node is not in the current graph result. Filters or Projection may differ; they were not changed.
+            <button type="button" className="ml-2 underline" onClick={() => setMissingNotice(null)}>
+              Dismiss
+            </button>
           </div>
         )}
         {emptyMessage !== null && (

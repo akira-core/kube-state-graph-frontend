@@ -17,6 +17,7 @@ export interface NavBarProps {
   error: string | undefined;
   refreshIntervalSeconds: number;
   onReload: () => void;
+  reloadDisabled?: boolean;
   viewRange: ViewTimeRange;
   onRelative: (window: RelativeWindow) => void;
   onAbsolute: (fromUnixSeconds: number, toUnixSeconds: number) => void;
@@ -67,6 +68,7 @@ export function NavBar({
   error,
   refreshIntervalSeconds,
   onReload,
+  reloadDisabled = false,
   viewRange,
   onRelative,
   onAbsolute,
@@ -205,7 +207,7 @@ export function NavBar({
             size="icon-sm"
             aria-label="Reload data"
             title={refreshing ? 'Reloading…' : 'Reload data'}
-            disabled={refreshing}
+            disabled={refreshing || reloadDisabled}
             onClick={onReload}
           >
             <RefreshIcon size={14} {...(refreshing ? { className: 'animate-spin' } : {})} />

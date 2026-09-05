@@ -18,14 +18,17 @@ Open the URL printed by Vite. The app loads `dev/config.json` (`demoMode: true`)
 
 ## Demo data
 
-The single source of demo data is `src/shared/fixtures/showcaseGraph.ts` (`SHOWCASE_GRAPH`).
+Demo data is two fixtures, one per graph endpoint:
+
+- `src/shared/fixtures/showcaseGraph.ts` (`SHOWCASE_GRAPH`) → `GET /v1/graph`
+- `src/shared/fixtures/showcaseStorageGraph.ts` (`SHOWCASE_STORAGE_GRAPH`) → `GET /v1/storage-graph`
 
 ```sh
-npm run fixture:build   # writes public/demo/graph.json
-npm run fixture:check   # fails if that file drifted
+npm run fixture:build   # writes public/demo/graph.json and public/demo/storage-graph.json
+npm run fixture:check   # fails if either file drifted
 ```
 
-`public/demo/graph.json` is generated. Do not hand-edit it.
+The JSON files are generated. Do not hand-edit them.
 
 ## Connecting to a backend
 
@@ -55,7 +58,7 @@ Requests to `/api/…` are forwarded to `KSG_DEV_PROXY_TARGET` with the `/api` p
 - `src/features/*` — feature folders (barrel imports only across features)
 - `src/shared/*` — tokens, wire types, fixtures, pure helpers
 - Runtime config is fetched from `<base>/config.json` on every full page load
-- Graph and Sankey share one normalized graph loaded by the app shell
+- Graph loads `endpoints.graph`; Sankey loads `endpoints.storageGraph` (lazy, after az/env are chosen). Both share the same normalize boundary.
 
 ## Linting & testing
 
@@ -88,3 +91,5 @@ See `deploy/README.md` for Kubernetes manifests, ConfigMap mounting, and the opt
 - **`fixture:check` fails** — run `npm run fixture:build` after editing `showcaseGraph.ts`.
 - **CORS errors with an absolute backend URL** — use `KSG_DEV_PROXY_TARGET` (or the container proxy) and root-relative endpoints, or allow the frontend origin on the backend.
 - **Full-screen configuration error** — `config.json` is missing, not JSON, or failed validation (for example `endpoints.graph` is required when `demoMode` is false). The screen names the path and the first problem; it never silently falls back to demo data.
+- **Sankey says the storage graph endpoint is not configured** — `endpoints.storageGraph` is missing or empty. Graph view is unaffected. Set a URL (for example `/api/v1/storage-graph` or `/demo/storage-graph.json`) and reload.
+- **Sankey asks for one az and one env** — `/v1/storage-graph` requires a single `az` and a single `env`. The controls are independent of the Graph filter bar. If `endpoints.labelValues` is unset they stay usable as free-text fields, because the endpoint needs both values whether or not anything can enumerate them; if it is set but points at the graph API, every dropdown comes up empty — label values need a Prometheus-compatible upstream (`KSG_METRICS_PROXY_TARGET`, see `deploy/README.md`).

@@ -31,19 +31,20 @@
 
 設定文件的根 MUST 為 JSON object。應用 SHALL 依下表驗證每個已知鍵;任一已知鍵存在但型別或值不合法(含 `null`)即為驗證失敗。缺席的選用鍵 MUST 套用預設值。
 
-| 鍵                        | 型別                                | 必要性                       | 預設值     | 語意                                                                                                              |
-| ------------------------- | ----------------------------------- | ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| `endpoints`               | object                              | 選用                         | `{}`       | 後端端點 URL 集合                                                                                                 |
-| `endpoints.graph`         | string(URL)                         | `demoMode` 為 `false` 時必要 | 無         | 後端 graph 查詢端點的 URL(部署上通常為 `/v1/graph/service_graph`;detail 子端點為其 sibling)                       |
-| `endpoints.labelValues`   | string(URL)                         | 選用                         | 缺席       | Prometheus 相容 HTTP API 的根 URL;身分過濾控制自 `<root>/api/v1/label/<name>/values` 列舉選項(見 `graph-filters`) |
-| `endpoints.edgeTypes`     | string(URL)                         | 選用                         | 缺席       | 後端 edge-type 目錄(`/v1/edge-types`)的 URL,供 edge type 過濾控制列舉選項(見 `graph-filters`)                     |
-| `endpoints.codeChanges`   | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/code_changes` 的 URL                                                                              |
-| `endpoints.configChanges` | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/config_changes` 的 URL                                                                            |
-| `endpoints.dashboard`     | string(URL)                         | 選用                         | 缺席       | 後端 `/dashboard` 的 URL                                                                                          |
-| `demoMode`                | boolean                             | 選用                         | `false`    | 為 `true` 時渲染內建 showcase fixture 而不取數                                                                    |
-| `refreshIntervalSeconds`  | integer,`>= 0`                      | 選用                         | `0`(關閉)  | graph 資料自動刷新間隔(秒);`0` 表示不自動刷新                                                                     |
-| `defaultLayout`           | `"fcose"` \| `"dagre"`              | 選用                         | `"fcose"`  | Graph 視圖的初始佈局演算法;使用者可於 app 內切換                                                                  |
-| `theme`                   | `"dark"` \| `"light"` \| `"system"` | 選用                         | `"system"` | 初始主題;使用者於 app 內的選擇 MUST 優先於此值(見 `app-shell`)                                                    |
+| 鍵                        | 型別                                | 必要性                       | 預設值     | 語意                                                                                                                                                                                 |
+| ------------------------- | ----------------------------------- | ---------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `endpoints`               | object                              | 選用                         | `{}`       | 後端端點 URL 集合                                                                                                                                                                    |
+| `endpoints.graph`         | string(URL)                         | `demoMode` 為 `false` 時必要 | 無         | 後端 `GET /v1/graph` 的 URL,Graph 視圖的取數端點                                                                                                                                     |
+| `endpoints.storageGraph`  | string(URL)                         | 選用                         | 缺席       | 後端 `GET /v1/storage-graph` 的 URL,Sankey 視圖的取數端點(**與 `graph` 為兩個獨立端點**)                                                                                             |
+| `endpoints.labelValues`   | string(URL)                         | 選用                         | 缺席       | 持有 pod inventory 的 Prometheus 相容 HTTP API base URL;篩選選項讀自 `<base>/api/v1/label/<name>/values`。**與 `graph` 是不同的 upstream**:graph API 不提供該路徑,指向它只會得到 404 |
+| `endpoints.edgeTypes`     | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/edge-types` 的 URL,`edge_type` 篩選選項的來源                                                                                                                              |
+| `endpoints.codeChanges`   | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/code_changes` 的 URL                                                                                                                                                 |
+| `endpoints.configChanges` | string(URL)                         | 選用                         | 缺席       | 後端 `/v1/graph/config_changes` 的 URL                                                                                                                                               |
+| `endpoints.dashboard`     | string(URL)                         | 選用                         | 缺席       | 後端 `/dashboard` 的 URL                                                                                                                                                             |
+| `demoMode`                | boolean                             | 選用                         | `false`    | 為 `true` 時渲染內建 showcase fixture 而不取數                                                                                                                                       |
+| `refreshIntervalSeconds`  | integer,`>= 0`                      | 選用                         | `0`(關閉)  | graph 資料自動刷新間隔(秒);`0` 表示不自動刷新                                                                                                                                        |
+| `defaultLayout`           | `"fcose"` \| `"dagre"`              | 選用                         | `"fcose"`  | Graph 視圖的初始佈局演算法;使用者可於 app 內切換                                                                                                                                     |
+| `theme`                   | `"dark"` \| `"light"` \| `"system"` | 選用                         | `"system"` | 初始主題;使用者於 app 內的選擇 MUST 優先於此值(見 `app-shell`)                                                                                                                       |
 
 `refreshIntervalSeconds` MUST 為 JSON 整數:小數、負數、字串形式的數字皆為驗證失敗。`demoMode` MUST 為 JSON boolean:字串 `"true"` / `"false"` 為驗證失敗。列舉型欄位 MUST 精確比對(區分大小寫)。應用 MUST NOT 對任何欄位做自動修正(型別強制轉換、去除空白、補上 scheme)。
 
@@ -124,18 +125,32 @@
 
 ### Requirement: 選用端點缺席時停用對應功能
 
-`endpoints.codeChanges`、`endpoints.configChanges`、`endpoints.dashboard` 任一缺席(或為空字串)時,依賴該端點的功能 MUST 停用:應用 MUST NOT 對該端點發出任何請求,依賴其資料的 UI MUST 不渲染(不得以錯誤訊息、停用狀態的按鈕、或 spinner 取代),且 MUST NOT 對使用者顯示任何錯誤。對應關係如下:
+`endpoints.storageGraph`、`endpoints.labelValues`、`endpoints.edgeTypes`、`endpoints.codeChanges`、`endpoints.configChanges`、`endpoints.dashboard` 任一缺席(或為空字串)時,依賴該端點的功能 MUST 停用:應用 MUST NOT 對該端點發出任何請求,依賴其資料的 UI MUST 不渲染(不得以錯誤訊息、停用狀態的按鈕、或 spinner 取代),且 MUST NOT 對使用者顯示任何錯誤。對應關係如下:
 
+- `endpoints.storageGraph` 缺席 → Sankey 視圖 MUST NOT 發出任何取數請求,並以「未設定 storage graph 端點」的說明狀態取代圖形;導覽列的 Sankey 連結 MUST 仍可到達(路由不變),MUST NOT 以設定錯誤畫面取代整個應用。
+- `endpoints.labelValues` 缺席 → Graph 視圖 filter bar 的 `cluster` / `az` / `env` / `namespace` 控制與 Sankey 的 `cluster` / `namespace` 收斂控制不渲染。**例外:Sankey 的 `az` / `env` MUST 仍渲染且仍可輸入(退化為自由文字)**——`storage-graph` 端點要求這兩個值,而它與 `labelValues` 各自獨立選用,移除控制會讓一個已設定 `storageGraph` 的部署永遠無法取數,只剩一個指向不存在控制的提示。見 `storage-flow-sankey`。
+- `endpoints.edgeTypes` 缺席 → filter bar 的 `edge_type` 控制不渲染,graph 請求不帶該參數。
 - `endpoints.codeChanges` 缺席 → node detail 的 code change history 區段不渲染。
 - `endpoints.configChanges` 缺席 → node detail 的 config change history 區段不渲染。
 - `endpoints.dashboard` 缺席 → Dashboard 按鈕不渲染,亦不發出 dashboard URL 預取。
 
-各端點獨立判定:一個端點缺席 MUST NOT 影響其他已設定端點的功能。端點存在時的取數與呈現行為由 `node-detail` 規範。
+各端點獨立判定:一個端點缺席 MUST NOT 影響其他已設定端點的功能——特別是 `endpoints.storageGraph` 缺席 MUST NOT 影響 Graph 視圖,`endpoints.graph` 與 `endpoints.storageGraph` 為兩個獨立的取數端點,各自的失敗與缺席互不牽連。端點存在時的取數與呈現行為由 `graph-data-source`、`storage-flow-sankey` 與 `node-detail` 規範。
 
 #### Scenario: 僅設定 graph 端點
 
 - **WHEN** 設定文件的 `endpoints` 僅含 `graph`
 - **THEN** graph 正常載入;開啟任一 node 的 detail 面板時,change history 各區段與 Dashboard 按鈕皆不渲染,且不對 code_changes / config_changes / dashboard 發出任何請求
+- **AND** filter bar 的識別維度與 `edge_type` 控制不渲染;切換至 Sankey 視圖時顯示「未設定 storage graph 端點」,且不對任何 URL 發出 storage-graph 請求
+
+#### Scenario: 設定 graph 但未設定 storageGraph
+
+- **WHEN** `endpoints` 含 `graph` 與 `labelValues` 但無 `storageGraph`
+- **THEN** 設定驗證通過,Graph 視圖與 filter bar 完全正常;Sankey 視圖可經導覽列到達,顯示未設定說明,且不發出任何請求、不顯示錯誤畫面
+
+#### Scenario: 設定 storageGraph 但未設定 labelValues
+
+- **WHEN** `endpoints` 含 `graph` 與 `storageGraph` 但無 `labelValues`
+- **THEN** Sankey 的 `az` / `env` 控制仍渲染並接受輸入,兩者填妥後即發出 storage-graph 請求;filter bar 的識別維度控制與 Sankey 的 `cluster` / `namespace` 不渲染,且不對任何 label-values URL 發出請求
 
 #### Scenario: 部分端點設定
 
@@ -149,7 +164,7 @@
 
 ### Requirement: demoMode 語意
 
-`demoMode` 為 `true` 時,應用 SHALL 以內建的 showcase fixture 作為 graph 資料來源,MUST NOT 對任何後端端點發出請求,且 MUST 在 UI 上持續、明顯地標示目前為 demo 模式(呈現方式見 `app-shell`)。此時 `endpoints` 整個物件 MUST 被忽略:其缺席、其子鍵的缺席與其值皆不參與驗證、不被使用。依賴選用端點的功能 MUST 依「選用端點缺席時停用對應功能」處理(視所有 `endpoints.*` 為缺席)。
+`demoMode` 為 `true` 時,應用 SHALL 以內建的 showcase fixture 作為資料來源——Graph 視圖用 `/v1/graph` 形狀的 fixture,Sankey 視圖用 `/v1/storage-graph` 形狀的 fixture(兩份,見 `graph-data-source`)——MUST NOT 對任何後端端點發出請求,且 MUST 在 UI 上持續、明顯地標示目前為 demo 模式(呈現方式見 `app-shell`)。demo 模式下 Sankey 的 `az` / `env` 與 root 控制 MUST 仍可操作,但其變更 MUST NOT 觸發任何網路請求,fixture 內容亦不隨之改變。此時 `endpoints` 整個物件 MUST 被忽略:其缺席、其子鍵的缺席與其值皆不參與驗證、不被使用。依賴選用端點的功能 MUST 依「選用端點缺席時停用對應功能」處理(視所有 `endpoints.*` 為缺席)。
 
 `demoMode` 僅豁免 `endpoints` 的驗證;其他欄位(`refreshIntervalSeconds`、`defaultLayout`、`theme`)在 demo 模式下 MUST 照常驗證並生效。demo 模式下的「重新載入」動作與自動刷新 MUST NOT 發出網路請求,而是以同一份 fixture 重新產生資料。
 

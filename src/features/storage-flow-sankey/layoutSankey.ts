@@ -2,10 +2,12 @@ import { formatBytes } from '../../shared/format/measurements';
 
 import {
   formatBytesPerSec,
+  SANKEY_KIND_ORDER,
   type SankeyDirection,
   type SankeyGraph,
   type SankeyKind,
   type SankeyNode,
+  type StorageFlowTier,
 } from './deriveSankey';
 
 // Intrinsic content-space geometry. These are independent of the container's pixel size —
@@ -28,16 +30,29 @@ export const MIN_THICKNESS = 3;
 /** Below this thickness a mid-ribbon value label would overlap its own stroke. */
 export const LABEL_MIN_THICKNESS = 11;
 
-const TIERS: readonly SankeyKind[] = ['pod', 'pvc', 'netapp-aggr', 'netapp-node'];
+// Column order is the flow's own direction, storage -> workload, and it is the backend's
+// tier list rather than a layout preference (see `storage-flow-sankey` "流向鏈與 tier 結構").
+const TIERS: readonly SankeyKind[] = SANKEY_KIND_ORDER;
+// The rightmost column. Flow ends here, so its cards carry no right-edge slots.
+const LEAF_KIND: SankeyKind = TIERS[TIERS.length - 1] as SankeyKind;
 export const TIER_LABEL: Record<SankeyKind, string> = {
-  pod: 'Pod',
-  pvc: 'PVC',
-  'netapp-aggr': 'NetApp aggregate',
   'netapp-node': 'NetApp node',
+  'netapp-aggr': 'NetApp aggregate',
+  'netapp-svm': 'SVM',
+  pvc: 'PVC',
+  pod: 'Pod',
+  node: 'Node',
 };
 
-export function linkKey(source: string, target: string, direction: SankeyDirection): string {
-  return `${source}|${target}|${direction}`;
+/**
+ * Identity of one drawn ribbon.
+ *
+ * The tier is part of it, not decoration: two `storage-flow` edges can join the same pair
+ * of nodes on different tiers, and a key without the tier collides — React drops one path
+ * and the slot stacks disagree about how many ribbons a card carries.
+ */
+export function linkKey(source: string, target: string, direction: SankeyDirection, tier: StorageFlowTier): string {
+  return `${source}|${target}|${direction}|${tier}`;
 }
 
 export interface LayoutSlot {
@@ -55,6 +70,12 @@ export interface LayoutNode {
   subtitle: string;
   dashed: boolean;
   isLeaf: boolean;
+  /**
+   * Whether clicking this card can locate the node in Graph view. An SVM exists only in the
+   * storage graph, so a locate for one could only ever report "not in the current graph
+   * result" — a dead control rather than a degraded one.
+   */
+  locatable: boolean;
   x: number;
   y: number;
   width: number;
@@ -74,9 +95,12 @@ export interface LayoutLink {
   labelX: number;
   labelY: number;
   showLabel: boolean;
-  splitAmong?: number;
+  tier: StorageFlowTier;
+  attribution?: string;
   maxBytesPerSec?: number;
   maxIops?: number;
+  readLatencyUs?: number;
+  writeLatencyUs?: number;
 }
 
 export interface ColumnHeader {
@@ -175,8 +199,16 @@ function orderPodTier(podNodes: SankeyNode[], flow: Map<string, number>, palette
 }
 
 function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
-  if (node.kind === 'pod') {
-    return node.namespace !== undefined ? `pod · ns/${node.namespace}` : 'pod';
+  // A materialised root the backend answered with but that carries no drawn flow. Saying so
+  // on the card is the whole point of drawing it — silently showing `0 B/s` would read as a
+  // measurement rather than as the absence of one.
+  if (node.noFlow === true) {
+    return `${node.kind} · no flow`;
+  }
+  if (node.kind === 'pod' || node.kind === 'pvc') {
+    if (node.namespace !== undefined) {
+      return `${node.kind} · ns/${node.namespace}`;
+    }
   }
   if (node.kind === 'pvc' || node.kind === 'netapp-aggr') {
     const used = node.usage?.usedBytes;
@@ -184,11 +216,18 @@ function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
     if (used !== undefined && capacity !== undefined) {
       return `${node.kind} · ${formatBytes(used)} / ${formatBytes(capacity)}`;
     }
-    return node.kind;
   }
-  // netapp-node is a terminal leaf card: its one line of content is its total inflow for
-  // the current mode, since it has no right-edge slots to carry that information.
-  return `${node.kind} · ${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
+  if (node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm') {
+    if (node.ontapCluster !== undefined) {
+      return `${node.kind} · ${node.ontapCluster}`;
+    }
+  }
+  // The last column is a terminal leaf card: its one line of content is its total inflow
+  // for the current mode, since it has no right-edge slots to carry that information.
+  if (node.kind === LEAF_KIND) {
+    return `${node.kind} · ${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
+  }
+  return node.kind;
 }
 
 function stackHeight(slots: ReadonlyArray<{ thickness: number }>): number {
@@ -241,10 +280,12 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
 
   const podOrder = orderPodTier(byTier.get('pod') ?? [], flow, namespacePalette);
   const orderedByTier: Record<SankeyKind, SankeyNode[]> = {
-    pod: podOrder.nodes,
-    pvc: [...(byTier.get('pvc') ?? [])].sort(byFlowThenLabel(flow)),
-    'netapp-aggr': [...(byTier.get('netapp-aggr') ?? [])].sort(byFlowThenLabel(flow)),
     'netapp-node': [...(byTier.get('netapp-node') ?? [])].sort(byFlowThenLabel(flow)),
+    'netapp-aggr': [...(byTier.get('netapp-aggr') ?? [])].sort(byFlowThenLabel(flow)),
+    'netapp-svm': [...(byTier.get('netapp-svm') ?? [])].sort(byFlowThenLabel(flow)),
+    pvc: [...(byTier.get('pvc') ?? [])].sort(byFlowThenLabel(flow)),
+    pod: podOrder.nodes,
+    node: [...(byTier.get('node') ?? [])].sort(byFlowThenLabel(flow)),
   };
 
   const incomingByNode = new Map<string, SankeyGraph['links']>();
@@ -272,7 +313,7 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
   }
 
   TIERS.forEach((kind, tierIndex) => {
-    const isLeaf = kind === 'netapp-node';
+    const isLeaf = kind === LEAF_KIND;
     const width = isLeaf ? LEAF_W : CARD_W;
     let y = PAD_TOP;
 
@@ -281,7 +322,7 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
         .map((l) => ({ link: l, oppositeLabel: graph.nodes.find((n) => n.id === l.source)?.label ?? l.source }))
         .sort((a, b) => b.link.value - a.link.value || a.oppositeLabel.localeCompare(b.oppositeLabel))
         .map((e) => ({
-          linkKey: linkKey(e.link.source, e.link.target, e.link.direction),
+          linkKey: linkKey(e.link.source, e.link.target, e.link.direction, e.link.tier),
           thickness: thickness(e.link.value),
         }));
       const outgoing = isLeaf
@@ -290,7 +331,7 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
             .map((l) => ({ link: l, oppositeLabel: graph.nodes.find((n) => n.id === l.target)?.label ?? l.target }))
             .sort((a, b) => b.link.value - a.link.value || a.oppositeLabel.localeCompare(b.oppositeLabel))
             .map((e) => ({
-              linkKey: linkKey(e.link.source, e.link.target, e.link.direction),
+              linkKey: linkKey(e.link.source, e.link.target, e.link.direction, e.link.tier),
               thickness: thickness(e.link.value),
             }));
 
@@ -321,7 +362,8 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
         label: node.label,
         kind: node.kind,
         subtitle: subtitleFor(node, flow),
-        dashed: node.kind === 'netapp-aggr' || node.kind === 'netapp-node',
+        dashed: node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm',
+        locatable: node.kind !== 'netapp-svm',
         isLeaf,
         x: columnX[tierIndex] ?? PAD_X,
         y,
@@ -342,7 +384,7 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
   });
 
   const links: LayoutLink[] = graph.links.map((l) => {
-    const key = linkKey(l.source, l.target, l.direction);
+    const key = linkKey(l.source, l.target, l.direction, l.tier);
     const source = nodesById.get(l.source);
     const target = nodesById.get(l.target);
     const x1 = (source?.x ?? 0) + (source?.width ?? 0);
@@ -361,9 +403,12 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
       labelX: (x1 + x2) / 2,
       labelY: (y1 + y2) / 2,
       showLabel: t >= LABEL_MIN_THICKNESS,
-      ...(l.splitAmong !== undefined ? { splitAmong: l.splitAmong } : {}),
+      tier: l.tier,
+      ...(l.attribution !== undefined ? { attribution: l.attribution } : {}),
       ...(l.maxBytesPerSec !== undefined ? { maxBytesPerSec: l.maxBytesPerSec } : {}),
       ...(l.maxIops !== undefined ? { maxIops: l.maxIops } : {}),
+      ...(l.readLatencyUs !== undefined ? { readLatencyUs: l.readLatencyUs } : {}),
+      ...(l.writeLatencyUs !== undefined ? { writeLatencyUs: l.writeLatencyUs } : {}),
     };
   });
 

@@ -273,6 +273,39 @@ function parseUsage(v: unknown): { usedBytes?: number; capacityBytes?: number } 
 // ratio paints no liquid at all, which is how "no data" stays structurally distinct from
 // a 0% fill. Clamped because a volume can legitimately report used > capacity (filesystem
 // overhead, thin provisioning) and a >100% fill would just render as a rendering bug.
+const HARDWARE_STRING_KEYS = ['model', 'serial', 'version', 'vendor', 'location'] as const;
+
+function parseHardware(v: unknown): cytoscape.NodeDataDefinition['hardware'] {
+  if (!isPlainObject(v)) {
+    return undefined;
+  }
+  const hardware: NonNullable<cytoscape.NodeDataDefinition['hardware']> = {};
+  for (const key of HARDWARE_STRING_KEYS) {
+    const value = v[key];
+    if (isString(value)) {
+      hardware[key] = value;
+    }
+  }
+  return Object.keys(hardware).length > 0 ? hardware : undefined;
+}
+
+function parsePerf(v: unknown): cytoscape.NodeDataDefinition['perf'] {
+  if (!isPlainObject(v)) {
+    return undefined;
+  }
+  const cpuBusyPct = v.cpu_busy_pct;
+  const totalOps = v.total_ops;
+  const totalLatencyUs = v.total_latency_us;
+  const totalBytesPerSec = v.total_bytes_per_sec;
+  const perf: NonNullable<cytoscape.NodeDataDefinition['perf']> = {
+    ...(isFiniteNumber(cpuBusyPct) ? { cpuBusyPct } : {}),
+    ...(isFiniteNumber(totalOps) ? { totalOps } : {}),
+    ...(isFiniteNumber(totalLatencyUs) ? { totalLatencyUs } : {}),
+    ...(isFiniteNumber(totalBytesPerSec) ? { totalBytesPerSec } : {}),
+  };
+  return Object.keys(perf).length > 0 ? perf : undefined;
+}
+
 function deriveUsageRatio(usage: { usedBytes?: number; capacityBytes?: number } | undefined): number | undefined {
   if (usage === undefined) {
     return undefined;
@@ -463,6 +496,11 @@ function parseNodes(rawNodes: unknown[], nodeWorstFromPods: ReadonlyMap<string, 
     const readyStatus = isString(d.ready_status) && d.ready_status.length > 0 ? d.ready_status : undefined;
     const usage = parseUsage(d.usage);
     const usageRatio = deriveUsageRatio(usage);
+    // Hardware / perf ride only on netapp-node in the contract, but the guard is
+    // field-shape not kind: an unexpected kind carrying them still passes through,
+    // and a netapp-node without them stays without them. Never padded to {}.
+    const hardware = parseHardware(d.hardware);
+    const perf = parsePerf(d.perf);
     nodeIds.add(d.id);
     elements.push({
       group: 'nodes',
@@ -490,6 +528,8 @@ function parseNodes(rawNodes: unknown[], nodeWorstFromPods: ReadonlyMap<string, 
         ...(readyStatus !== undefined ? { readyStatus } : {}),
         ...(usage !== undefined ? { usage } : {}),
         ...(usageRatio !== undefined ? { usageRatio } : {}),
+        ...(hardware !== undefined ? { hardware } : {}),
+        ...(perf !== undefined ? { perf } : {}),
         ...(nodeHasStatusInfo ? { worstStatus: rankToStatus(nodeWorstRank) } : {}),
         ...(labels !== undefined ? { labels } : {}),
       },

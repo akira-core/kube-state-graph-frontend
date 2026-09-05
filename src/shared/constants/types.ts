@@ -30,6 +30,10 @@ export type NodeKind =
   // on the PVC's own `data.storageclass`.
   | 'netapp-aggr'
   | 'netapp-node'
+  // ONTAP SVM. Only `/v1/storage-graph` emits this kind; `/v1/graph` never does
+  // (SVM identity there is a PVC label). Parent is the storage-cluster, not a
+  // controller or aggregate — SVM and aggregate are orthogonal.
+  | 'netapp-svm'
   // A virtual compound GROUP wrapping the physical switch fabric (network > switch).
   // Pure grouping box, collapsible like other containers; collapsing swaps
   // `switch` → `network` in the node-kinds legend (deriveLegendKinds). Never
@@ -51,7 +55,11 @@ export type EdgeType =
   | 'service-selects-pod'
   | 'pvc-to-netapp-aggr'
   | 'switch-to-switch'
-  | 'node-to-switch';
+  | 'node-to-switch'
+  // Ninth edge type, only on `/v1/storage-graph`. Direction is storage → workload;
+  // `labels.tier` names the hop (`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` /
+  // `pod-node`). `/v1/graph` never emits it.
+  | 'storage-flow';
 
 // Which edge types are actually DRAWN (and listed in the legend) depends on the
 // pod-parent mode — see `drawnEdgeTypesForMode`. Notably `pod-to-node` is expressed

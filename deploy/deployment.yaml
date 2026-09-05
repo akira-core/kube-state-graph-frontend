@@ -24,10 +24,15 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          # Optional same-origin reverse proxy:
+          # Optional same-origin reverse proxies. Two upstreams, because the graph API
+          # does not serve `/api/v1/label/<name>/values` — `endpoints.labelValues` needs a
+          # Prometheus-compatible store or the az / env and filter controls enumerate
+          # nothing. Unset targets serve 404 on their own prefix and nothing else.
           # env:
           #   - name: KSG_API_PROXY_TARGET
           #     value: http://kube-state-graph.monitoring.svc:8080
+          #   - name: KSG_METRICS_PROXY_TARGET
+          #     value: http://vmselect.monitoring.svc:8481/select/0/prometheus
           volumeMounts:
             - name: config
               mountPath: /srv/config

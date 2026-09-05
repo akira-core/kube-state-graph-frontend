@@ -1,29 +1,43 @@
 ## Purpose
 
-定義 app 如何取得 kube-state-graph 的圖資料——直連後端 `GET /v1/graph`(由 runtime config 的 `endpoints.graph` 指定)或在 `demoMode` 下使用內建的 showcase fixture——並涵蓋載入 / 錯誤 / 重新載入 / 自動刷新狀態的傳遞,以及 normalize boundary(anti-corruption layer)把 wire payload 驗證並映射為 app 內部 cytoscape.js 元素模型的完整契約:節點 kind、edge type、RED / 儲存 I/O metrics 聯集、usage / health / ready_status、alerts、controller 聚合與 worstStatus。
+定義 app 如何取得 kube-state-graph 的圖資料。後端提供**兩個獨立的圖端點**,各服務一個視圖:
+
+- `GET /v1/graph`(runtime config 的 `endpoints.graph`)—— Graph 視圖的工作負載拓樸;
+- `GET /v1/storage-graph`(runtime config 的 `endpoints.storageGraph`)—— Sankey 視圖的儲存流量 DAG。
+
+兩者回傳**同一個 cytoscape.js 形狀**的 body,故共用同一個 normalize boundary 與同一套 wire 型別;差異只在請求參數、投影規則與所帶的 node / edge 型別。`demoMode` 下各以一份內建 fixture 取代取數。
+
+本 capability 涵蓋:兩個端點的請求組裝與取數、載入 / 錯誤 / 重新載入 / 自動刷新狀態的傳遞,以及 normalize boundary(anti-corruption layer)把 wire payload 驗證並映射為 app 內部 cytoscape.js 元素模型的完整契約:節點 kind、edge type、RED / 儲存 I/O metrics 聯集、usage / health / ready_status / hardware / perf、alerts、controller 聚合與 worstStatus。Sankey **視圖**如何消費 storage-graph body(tier、模式、選擇器、空狀態)由 `storage-flow-sankey` 規範。
 
 ## ADDED Requirements
 
 ### Requirement: 直連後端取數(`GET endpoints.graph`)與 demo 模式
 
-App SHALL 以瀏覽器原生 `fetch` 直接向 runtime config 中 `endpoints.graph` 所指定的 URL 發出 `GET` 請求(request header 帶 `Accept: application/json`)取得圖資料,不經任何中介 datasource 層。請求 MUST 於 app 啟動(runtime config 載入完成)時發出一次;之後的重新取數由「重新載入與自動刷新」定義。`endpoints.graph` 的 **origin 與路徑** MUST 原樣使用——絕對 URL(如 `https://ksg.example/v1/graph`)與 root-relative URL(如 `/api/v1/graph`,由同源 reverse proxy 轉發)皆合法,app MUST NOT 自行拼接、改寫或推導路徑。
+App SHALL 以瀏覽器原生 `fetch` 直接向 runtime config 中 `endpoints.graph` 所指定的 URL 發出 `GET` 請求(request header 帶 `Accept: application/json`)取得 **Graph 視圖**的圖資料,不經任何中介 datasource 層。請求 MUST 於 app 啟動(runtime config 載入完成)時發出一次;之後的重新取數由「重新載入與自動刷新」定義。此端點 MUST NOT 用於 Sankey 視圖——Sankey 走 `endpoints.storageGraph`,見「storage-graph 取數」。
+
+`endpoints.graph` 的 **origin 與路徑** MUST 原樣使用——絕對 URL(如 `https://ksg.example/v1/graph`)與 root-relative URL(如 `/api/v1/graph`,由同源 reverse proxy 轉發)皆合法,app MUST NOT 自行拼接、改寫或推導**路徑**(例如 MUST NOT 於其後補上 `/service_graph` 或任何子路徑)。app 只附加查詢參數,依「graph 請求參數組裝」定義;端點自帶的 query string MUST 保留,同名參數由 app 的值取代。
 
 回應 body MUST 以 JSON 解析後、以 `unknown` 型別交付 normalize boundary 驗證;app MUST NOT 對 payload 做任何型別斷言或信任(包含 `apiVersion` 與 `clusters` 欄位),所有欄位的存在與型別皆由 normalize boundary 逐一驗證。
 
-當 runtime config 的 `demoMode` 為 `true` 時,app SHALL 改以內建的 showcase fixture(型別 `WireGraph`,與 panel 共用的單一假資料來源)作為 payload 送入**同一個** normalize boundary,且 MUST NOT 對 `endpoints.graph`(或任何後端端點)發出網路請求;clean checkout 在無後端的情況下 MUST 能渲染完整的圖。`demoMode` 為 `false` 且缺 `endpoints.graph` 時,graph data source MUST NOT 發出請求,並依 runtime-config capability 的缺值規則呈現設定錯誤。
+當 runtime config 的 `demoMode` 為 `true` 時,app SHALL 改以內建的 showcase fixture(型別 `WireGraph`,與 panel 共用的單一假資料來源)作為 payload 送入**同一個** normalize boundary,且 MUST NOT 對 `endpoints.graph`(或任何後端端點)發出網路請求;clean checkout 在無後端的情況下 MUST 能渲染完整的圖。Sankey 於 demo 模式下改用**第二份** fixture,見「storage-graph 取數」。`demoMode` 為 `false` 且缺 `endpoints.graph` 時,graph data source MUST NOT 發出請求,並依 runtime-config capability 的缺值規則呈現設定錯誤。
 
 CORS 允許或同源反向代理屬部署責任(見 container-deployment capability),graph data source 不做任何額外處理。
 
 #### Scenario: 啟動時向設定的 URL 取數
 
 - **WHEN** runtime config 載入完成,`demoMode` 為 `false` 且 `endpoints.graph` 為 `https://ksg.example/v1/graph`
-- **THEN** app 對該 URL 發出恰好一次 `GET` 請求,header 含 `Accept: application/json`
-- **AND** 回應 body 經 JSON 解析後以 `unknown` 交付 normalize boundary,產出的 elements 供 graph-view 與 storage-flow-sankey 共用
+- **THEN** app 對該 URL 發出恰好一次 `GET` 請求(路徑為 `/v1/graph`,查詢參數依「graph 請求參數組裝」),header 含 `Accept: application/json`
+- **AND** 回應 body 經 JSON 解析後以 `unknown` 交付 normalize boundary,產出的 elements 供 graph-view 使用
 
 #### Scenario: root-relative URL 原樣使用
 
 - **WHEN** `endpoints.graph` 為 `/api/v1/graph`
 - **THEN** 請求送往目前 origin 下的 `/api/v1/graph`,app 不對路徑做任何拼接或改寫
+
+#### Scenario: 兩個端點各自取數
+
+- **WHEN** `endpoints.graph` 為 `/api/v1/graph`、`endpoints.storageGraph` 為 `/api/v1/storage-graph`,使用者載入 Graph 視圖後切換至 Sankey 視圖
+- **THEN** Graph 視圖的請求只送往 `/api/v1/graph`,Sankey 的請求只送往 `/api/v1/storage-graph`;兩者的 loading / error 狀態互相獨立,任一失敗 MUST NOT 影響另一個視圖已載入的資料
 
 #### Scenario: demo 模式不發出網路請求
 
@@ -40,32 +54,85 @@ CORS 允許或同源反向代理屬部署責任(見 container-deployment capabil
 - **WHEN** 後端回應為合法 JSON 但形狀與契約不符(例如頂層為陣列,或 `elements` 為字串)
 - **THEN** app 不拋出例外;normalize boundary 以 `errors` 回報形狀錯誤,錯誤狀態依「載入與錯誤狀態傳遞」呈現
 
-### Requirement: graph 請求的查詢字串
+### Requirement: graph 請求參數組裝(時間範圍與篩選)
 
-App SHALL 於 `endpoints.graph` 之上組出查詢字串,內容為:時間視窗 `start` / `end`(Unix 秒,取自檢視時間範圍,見 `app-shell`)、投影旗標 `prune`,以及過濾選擇 `cluster` / `az` / `env` / `namespace` / `edge_type`(見 `graph-filters`)。上游 `GET /v1/graph` 缺 `start` 或 `end` 時以 `400`(`missing_start` / `missing_end`)拒絕,故兩者 MUST 恆帶;`prune` 即使為預設值亦 MUST 恆帶,使一則被擷取的請求自身說明它是哪一種投影。
+每次對 `endpoints.graph` 取數時,app SHALL 由**檢視時間範圍**(見 `app-shell`)與 Graph 視圖的篩選選擇組出查詢參數,附加於設定的 URL 之後:
 
-時間視窗 MUST 於**每次請求當下**求值,而非於選取當下凍結:相對區間(如 `1h`)的每次重新載入與自動刷新 MUST 重新讀時鐘。一個組好就被持有的視窗會停在原處——首次刷新重問同一段分鐘,久到落出 metrics store 的保留期後,後端回一張空圖,而空圖與壞掉的管線在畫面上無從區分。
+- `start` / `end`:MUST 於**送出當下**由檢視時間範圍解析為 Unix 秒後送出,且 MUST 恆送。相對區間(如 `6h`)MUST NOT 於選取當下凍結為固定值——每次請求重讀時鐘,否則視窗停止移動,最終落到儲存保留期之外,後端會回一個與「管線壞掉」無法區分的空圖。
+- `prune`:MUST 恆送 `true` / `false`(即使為預設值),使一個被擷取的請求能自證其投影。
+- `cluster` / `az` / `env` / `namespace` / `edge_type`:每個維度為一個字串列表,非空時以**同名重複參數**送出(後端於同名內取 OR、跨參數取 AND),空列表時 MUST 完全不送該參數。
+- 上述以外的參數 MUST NOT 送出。前端欄位名到參數名的轉換(`edgeType` → `edge_type`)MUST 只發生在此一處。
 
-設定的 URL 若自帶查詢字串:與 app 所送**不同名**的參數 MUST 原樣保留(不重新編碼);**同名**者 MUST 被取代而非附加——`start=<設定值>&start=<本次值>` 之下,以 `Query().Get` 讀值的後端只取第一個,設定裡的過期視窗將永遠勝出。
+**選擇**改變(時間範圍選項、任一篩選維度、`prune`)MUST 觸發一次重新取數;**時鐘前進**本身 MUST NOT 觸發任何請求——重新取數的判定 MUST 依選擇而非依組出的 URL,否則相對區間會每次 render 都產生不同 URL 而無限重取。
 
-#### Scenario: 請求恆帶時間視窗與投影
+後端以 400 拒絕請求時(如 `missing_start` / `invalid_range`),app MUST 以「載入與錯誤狀態傳遞」的 error 狀態呈現後端回報的 `reason` 與訊息,MUST NOT 靜默重試或降級為 demo 資料。
 
-- **WHEN** 檢視時間範圍為 `24h`、投影為預設,app 對 `endpoints.graph` 發出請求
-- **THEN** 該請求帶 `start` / `end`(Unix 秒,相距 24 小時)與 `prune`
+#### Scenario: 相對區間於每次請求重解析
 
-#### Scenario: 相對區間於每次請求重新求值
+- **WHEN** 檢視時間範圍為 `6h`,app 於 `T` 與 `T+30s`(自動刷新)各取數一次
+- **THEN** 兩次請求的 `start` / `end` 不同,分別為 `[T-6h, T]` 與 `[T+30s-6h, T+30s]`,而非同一組凍結值
 
-- **WHEN** 檢視時間範圍為 `1h`,app 於載入 10 分鐘後自動刷新
-- **THEN** 該次請求的 `start` / `end` 為「刷新當下減一小時」至「刷新當下」,而非首次載入時凍結的值
+#### Scenario: 篩選以重複參數送出,空維度不送
 
-#### Scenario: 設定 URL 自帶的同名參數被取代
+- **WHEN** 篩選為 `cluster: []`、`az: ['zone-a']`、`env: ['prod', 'dev']`、`namespace: []`、`edgeType: ['pod-calls-pod']`、`prune: false`
+- **THEN** 請求含 `az=zone-a&env=prod&env=dev&edge_type=pod-calls-pod&prune=false` 與 `start` / `end`,且完全不含 `cluster` 與 `namespace` 參數
 
-- **WHEN** `endpoints.graph` 為 `https://ksg.example/v1/graph?tenant=ops&start=100`
-- **THEN** 送出的請求保留 `tenant=ops` 原樣,且只帶一個 `start`——其值為本次求得的視窗起點,而非 `100`
+#### Scenario: 時鐘前進不觸發請求
+
+- **WHEN** 檢視時間範圍為 `1h` 且無任何選擇變更,元件連續 re-render
+- **THEN** app 不發出任何新的 graph 請求
+
+#### Scenario: 後端 400 呈現為錯誤狀態
+
+- **WHEN** 後端以 400 與 `reason: "invalid_range"` 回應
+- **THEN** 資料狀態為 `error`,錯誤訊息可讀到該 `reason`,且既有資料(若有)依「重新載入與自動刷新」保留
+
+### Requirement: storage-graph 取數(`GET endpoints.storageGraph`)
+
+Sankey 視圖的資料 SHALL 來自對 `endpoints.storageGraph` 的獨立 `GET` 請求(header 帶 `Accept: application/json`),與 `endpoints.graph` 為**兩個互不相干的資料來源**:各自的 in-flight 請求、loading / error 狀態、最後成功載入時間與重試皆獨立。回應 body MUST 以 `unknown` 交付**同一個** normalize boundary(兩端點的 body 為同一形狀契約)。
+
+請求 MUST 為 **lazy**:僅於使用者首次進入 Sankey 視圖、且 `az` 與 `env` 皆已選定時發出第一次;未進入該視圖前 MUST NOT 發出任何 storage-graph 請求。
+
+查詢參數:
+
+- `start` / `end`:與 graph 請求同一規則(檢視時間範圍、送出當下解析、恆送)。
+- `az` / `env`:MUST **各恰好送出一個值**。後端對缺值回 400 `missing_az` / `missing_env`、對重複值回 400 `invalid_scope`,故 app MUST 於兩者皆選定前**不發出請求**,MUST NOT 送出空值、MUST NOT 送出多個值,亦 MUST NOT 自行挑選其一。
+- `cluster` / `namespace`:選用、可重複的收斂條件,非空時以同名重複參數送出。
+- root 選擇器:`ontap_cluster` / `node` / `aggr` / `svm` / `pod`,各為可重複的字串列表,非空時以同名重複參數送出;`pod` 的值 MUST 為 `<namespace>/<pod-name>` 形式(app 於送出前 MUST 驗證恰有一個 `/` 且兩段皆非空,不合法時不送出該值並於控制項就地提示)。全部為空時等同「該 estate 的完整儲存流量」。
+- `edge_type` / `prune` MUST NOT 送出(後端會忽略,但送出會讓被擷取的請求誤導讀者)。
+
+`az` / `env` / root / `cluster` / `namespace` 任一改變 MUST 觸發一次重新取數(視圖已進入時);與 graph 請求同理,時鐘前進本身 MUST NOT 觸發請求。後端 400 的 `reason` MUST 原樣呈現於錯誤狀態。
+
+`demoMode` 為 `true` 時,app SHALL 以第二份內建 fixture(`/v1/storage-graph` 形狀,型別同為 `WireGraph`)送入同一個 normalize boundary,且 MUST NOT 發出任何請求;fixture 內容 MUST NOT 隨 `az` / `env` / root 的選擇改變。`demoMode` 為 `false` 且缺 `endpoints.storageGraph` 時 MUST NOT 發出請求,並依 runtime-config 的缺席規則由 Sankey 視圖呈現未設定狀態(非設定錯誤畫面)。
+
+#### Scenario: az / env 齊備才發出第一次請求
+
+- **WHEN** 使用者首次進入 Sankey 視圖,`az` 已選 `zone-a` 但 `env` 尚未選定
+- **THEN** app 不發出任何 storage-graph 請求;使用者接著選定 `env: prod` 後,app 發出恰好一次請求,其查詢字串含 `az=zone-a&env=prod` 與 `start` / `end`,不含 `edge_type` 與 `prune`
+
+#### Scenario: 未進入 Sankey 視圖不取數
+
+- **WHEN** 使用者停留在 Graph 視圖,graph 資料完成多次自動刷新
+- **THEN** 期間對 `endpoints.storageGraph` 的請求數為 0
+
+#### Scenario: root 以重複參數送出並可混用
+
+- **WHEN** 使用者選定 root `aggr: ['aggr1']` 與 `pod: ['shop/orders-0']`
+- **THEN** 請求含 `aggr=aggr1&pod=shop%2Forders-0`,兩者一併送出(兩側交集的語意由後端決定,app 不自行過濾)
+
+#### Scenario: 不合法的 pod root 不送出
+
+- **WHEN** 使用者於 pod root 輸入 `orders-0`(無 `/`)
+- **THEN** app 不將其加入請求,控制項就地提示需為 `<namespace>/<pod>` 形式,且不發出會被後端以 400 `invalid_scope` 拒絕的請求
+
+#### Scenario: 兩個來源的錯誤互不牽連
+
+- **WHEN** storage-graph 請求回應 HTTP 500,而 graph 請求成功
+- **THEN** Sankey 視圖呈現其自身的錯誤狀態,Graph 視圖的資料與狀態完全不受影響;反之亦然
 
 ### Requirement: 載入與錯誤狀態傳遞
 
-Graph data source SHALL 向 app 其餘部分公開單一的 graph 資料狀態,至少含 `{ status, elements, errors, error, hasPayload }`:`status` 為 `idle` / `loading` / `ready` / `error` 之一(app 自有狀態,無外部 data state 可依賴);`elements` 為 normalize boundary 產出的 cytoscape.js elements;`errors` 為 normalize boundary 的 partial-parse 警告(供 graph-view 的警告 banner 顯示);`error` 為使用者可讀的錯誤訊息(取數失敗或 normalize 失敗時);`hasPayload` 區分「尚未取得任何可辨識的 graph payload」與「payload 成功載入但正規化出零元素」。
+每個資料來源(graph 與 storage-graph)SHALL 各自向 app 其餘部分公開**一份形狀相同、內容獨立**的資料狀態,至少含 `{ status, elements, errors, error, hasPayload }`:`status` 為 `idle` / `loading` / `ready` / `error` 之一(app 自有狀態,無外部 data state 可依賴);`elements` 為 normalize boundary 產出的 cytoscape.js elements;`errors` 為 normalize boundary 的 partial-parse 警告(供 graph-view 的警告 banner 顯示);`error` 為使用者可讀的錯誤訊息(取數失敗或 normalize 失敗時);`hasPayload` 區分「尚未取得任何可辨識的 graph payload」與「payload 成功載入但正規化出零元素」。
 
 取數失敗 MUST 逐類判定並產生**具名**的使用者可讀訊息:
 
@@ -114,7 +181,9 @@ Graph data source SHALL 向 app 其餘部分公開單一的 graph 資料狀態,�
 
 ### Requirement: 重新載入與自動刷新
 
-App SHALL 提供使用者可觸發的「重新載入」動作,對 `endpoints.graph` 重新發出與啟動時相同的 `GET` 請求;當 runtime config 的 `refreshIntervalSeconds` 大於 0 時,app SHALL 以該秒數為週期自動重新取數(預設 0 表示關閉)。`demoMode` 下重新載入 MUST NOT 發出網路請求(fixture 重新經 normalize boundary,結果不變),且 MUST NOT 啟動自動刷新計時器。
+App SHALL 提供使用者可觸發的「重新載入」動作,對**當前視圖的資料來源**重新發出與其第一次相同的 `GET` 請求——於 Graph 視圖為 `endpoints.graph`,於 Sankey 視圖為 `endpoints.storageGraph`(且 `az` / `env` 已齊備時才發出);當 runtime config 的 `refreshIntervalSeconds` 大於 0 時,app SHALL 以該秒數為週期自動重新取數,同樣只作用於當前視圖的來源(預設 0 表示關閉)。非當前視圖的來源 MUST NOT 被刷新——一個從未被開啟的 Sankey 視圖 MUST NOT 產生任何背景請求。`demoMode` 下重新載入 MUST NOT 發出網路請求(fixture 重新經 normalize boundary,結果不變),且 MUST NOT 啟動自動刷新計時器。
+
+本需求的每一條規則 MUST 對**兩個來源各自獨立成立**:兩者各有自己的 in-flight 請求與「至多一個進行中」的限制,一個來源的刷新 MUST NOT 取消或延後另一個。
 
 刷新期間(無論手動或自動)**先前成功渲染的圖 MUST 維持可見**,直到新 payload 經 normalize boundary 成功產出為止;成功後以新 elements 取代。刷新失敗(HTTP / 網路 / JSON / normalize 形狀錯誤)MUST 顯示錯誤指示(含與「載入與錯誤狀態傳遞」相同的具名訊息)但 MUST 保留最後一份成功的 elements 繼續渲染,MUST NOT 清空畫面或退回全頁錯誤狀態。刷新進行中 MUST 以非遮蔽式的指示呈現,MUST NOT 以全頁 loading 覆蓋已渲染的圖。
 
@@ -160,7 +229,7 @@ View state MUST 跨刷新保留,與 graph-view / graph-search / pod-parent-mode 
 
 ### Requirement: 上游 kube-state-graph payload 契約(cytoscape.js 形狀)
 
-上游 kube-state-graph 後端的 `GET /v1/graph` 端點輸出 **cytoscape.js elements 形狀**的 JSON,app MUST 將其視為唯一的資料來源契約並據以正規化。後端(design D6,取代舊的 `cluster > node > pod` 模型)是**整個拓樸階層的單一事實來源**。頂層形狀為:
+上游 kube-state-graph 後端的 `GET /v1/graph` 與 `GET /v1/storage-graph` 兩個端點輸出**同一個 cytoscape.js elements 形狀**的 JSON,app MUST 將其視為唯一的資料來源契約並據以正規化,兩端點共用同一組 wire 型別與同一個 normalize boundary。後端(design D6,取代舊的 `cluster > node > pod` 模型)是**整個拓樸階層的單一事實來源**。頂層形狀為:
 
 ```
 { apiVersion: string, clusters: string[], elements: { nodes: CyNode[], edges: CyEdge[] } }
@@ -168,21 +237,34 @@ View state MUST 跨刷新保留,與 graph-view / graph-search / pod-parent-mode 
 
 每個 node 與 edge 依 cytoscape 慣例包在 `data` 物件內:
 
-- `CyNode.data { id: string, name: string, type: string, parent?: string, ipaddress?: string[], owner?: { kind: string, name: string }, application?: string, containers?: Array<{ name: string; image: string }>, storageclass?: string, health?: string, ready_status?: string, usage?: { used_bytes?: number, capacity_bytes?: number }, labels: Record<string,string> }`
+- `CyNode.data { id: string, name: string, type: string, parent?: string, ipaddress?: string[], owner?: { kind: string, name: string }, application?: string, containers?: Array<{ name: string; image: string }>, storageclass?: string, health?: string, ready_status?: string, usage?: { used_bytes?: number, capacity_bytes?: number }, hardware?: { model?: string, serial?: string, version?: string, vendor?: string, location?: string }, perf?: { cpu_busy_pct?: number, total_ops?: number, total_latency_us?: number, total_bytes_per_sec?: number }, labels: Record<string,string> }`
 - `CyEdge.data { id: string, type: string, source: string, target: string, labels: Record<string,string>, metrics?: EdgeMetricsUnion }`
 
-後端 node `type` enum(小寫):核心資源 `pod` / `node` / `pvc` / `service` / `external`;**實體儲存** `netapp-aggr` / `netapp-node`;**compound 群組節點** `cluster` / `storage-cluster` / `namespace` / `application` / `controller`;實體網路 `switch`。`controller` 群組的 `type` 為字面值 `controller`(**不是**小寫化的 workload Kind);其 Kind 只存在於 id 路徑與子 pod 的 `owner.kind`。`node` 為其 cluster 下的葉節點。無法對應到具體 K8s 資源的端點為 `external`(契約無 `others` 型別)。`storageclass` **已自契約移除**——後端不再輸出該 node type,claim 的 StorageClass 名稱改置於 PVC 自身的 `data.storageclass`(string,omitempty)。
+後端 node `type` enum(小寫):核心資源 `pod` / `node` / `pvc` / `service` / `external`;**實體儲存** `netapp-aggr` / `netapp-node` / `netapp-svm`;**compound 群組節點** `cluster` / `storage-cluster` / `namespace` / `application` / `controller`;實體網路 `switch`。`netapp-svm` **只出現於 `/v1/storage-graph` 的 body**——`/v1/graph` 從不輸出該型別(其 SVM 資訊只以 PVC 的 `svm` label 存在)。`controller` 群組的 `type` 為字面值 `controller`(**不是**小寫化的 workload Kind);其 Kind 只存在於 id 路徑與子 pod 的 `owner.kind`。`node` 為其 cluster 下的葉節點。無法對應到具體 K8s 資源的端點為 `external`(契約無 `others` 型別)。`storageclass` **已自契約移除**——後端不再輸出該 node type,claim 的 StorageClass 名稱改置於 PVC 自身的 `data.storageclass`(string,omitempty)。
 
 **NetApp 儲存鏈。** `netapp-aggr`(ONTAP aggregate,id `netapp/<ontap-cluster>/aggr/<aggr>`)是 PVC 實際落地的實體單位,其 `labels` 恰為 `{ontap_cluster, node}`(`node` = 目前擁有該 aggregate 的 controller);`netapp-node`(ONTAP controller,id `netapp/<ontap-cluster>/<node>`)的 `labels` 恰為 `{ontap_cluster}`。兩者皆不帶 `cluster` label(不屬於任何 K8s cluster,也不出現於頂層 `clusters[]`),故 app 的 cluster 色彩強調與 cluster 過濾不適用於它們。兩者皆可帶 `health`(恰為 `"online"` 或 `"degraded"`,omitempty);`netapp-aggr` 另可帶 `usage`。**缺 `health` 不等於 `"degraded"`**——缺值表示後端無其狀態資料,消費者 MUST NOT 將缺值解讀為 `"degraded"`。
+
+`netapp-svm`(ONTAP SVM,id `netapp/<ontap-cluster>/svm/<svm>`)的 `labels` 恰為 `{ontap_cluster}`,同樣不帶 `cluster`、不出現於頂層 `clusters[]`,且不帶 `health` / `usage`。它 parent 於 `storage-cluster/<ontap-cluster>`(**不是** parent 於 `netapp-node` 或 `netapp-aggr`——SVM 與 aggregate 是兩個正交的維度)。
+
+`netapp-node` 另可帶兩個選用的**具型別、可為缺席**的屬性,**兩個端點皆可能出現**:
+
+- `hardware`:`{ model?, serial?, version?, vendor?, location? }`,全為字串,各欄獨立選用。來自 Harvest 的 `node_labels`,是操作者用來對上手邊機器的硬體識別。
+- `perf`:`{ cpu_busy_pct?, total_ops?, total_latency_us?, total_bytes_per_sec? }`,全為 JSON number,各欄獨立選用,**皆為原始讀數**(後端不做 `rate()`、不做門檻判斷)。app MUST NOT 由這些數值自行推導健康判定或上色警示——`health` 維持其精確語意(ONTAP 回報的狀態),健康判定經由 `alerts` 抵達(見「告警 (alerts) 正規化」)。
+
+兩者缺席時整個 key 不出現;app MUST NOT 以 `0`、`null` 或 `"unknown"` 補值。
 
 **`usage` 欄位**形狀為 `{ used_bytes?: number, capacity_bytes?: number }`(bytes,JSON number),以**相同形狀**出現於 `pvc`(來自 kubelet volume stats)與 `netapp-aggr`(來自 Harvest aggregate space)。物件本身在至少一個欄位有值時出現;未解析到的欄位直接缺席(絕不以 `0` 填補)。
 
 後端 edge `type` enum:`pod-to-node` / `pod-mounts-pvc` / `pod-calls-pod` / `pod-calls-service` / `service-selects-pod` / `pvc-to-netapp-aggr`,加上實體網路 fabric edges `switch-to-switch` / `node-to-switch`。`pod-to-node`(pod→node)表達 pod 與其 K8s node 的關係(自 D6 起 pod-runs-on-node 不再以巢狀表達);`pvc-to-netapp-aggr`(pvc→netapp-aggr)連接 PVC 與承載其 FlexVol 的 ONTAP aggregate(取代已移除的 `pvc-to-storageclass`);`pod-calls-service`(pod→service)與 `service-selects-pod`(service→pod)為方向相反的一對。edge 的視覺(顏色、線型、箭頭)由 graph-view capability 定義。
 
+**`storage-flow` 為第九個 edge type,且只出現於 `/v1/storage-graph` 的 body。** `/v1/graph` 從不輸出它(於該端點送 `?edge_type=storage-flow` 會得到一個沒有 edge 的 200);反之 storage-graph 的 body **只**含這一種 edge,不含 `pod-mounts-pvc` / `pod-to-node` / `pvc-to-netapp-aggr` / `pod-calls-*` / `service-selects-pod`,也不含 `service` 與 `external` 節點。其方向恆為 **storage → workload**,每條 edge 為固定 tier 鏈 `netapp-node → netapp-aggr → netapp-svm → pvc → pod → node` 上的一個相鄰對,並以 `labels.tier` 指名該 hop,值恰為 `node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` / `pod-node` 之一。同一組 `(source, target)` 在一份 body 內至多出現一次,無論多少 claim 流經。`labels.attribution` 為選用,值為 `"split"` 時表示該 `pvc-pod` edge 的權重是一個被多個 pod 掛載(RWX)的 claim **均分**後的歸屬值,而非直接量測;缺該 label 表示為單一掛載,權重即量測值。app MUST 依 `labels.tier` 判定 hop,MUST NOT 由 source / target 的 kind 反推(FlexGroup claim 的路徑自 `svm-pvc` 起始、未排程的 pod 於 `pvc-pod` 結束,兩者都會讓「鏈必然完整」的假設失效)。
+
 **Edge `metrics` 是兩個互斥家族的聯集。** 單一 edge 只帶其中一個家族,絕不混合:
 
 1. **RED 家族**(trace 推導的 edge):後端將兩端皆解析為 `pod` 或 `service` 節點、且 edge 來自 `traces_service_graph_request_*` series 時附加。實務上只有 `pod-calls-pod` 與 `pod-calls-service` 會帶。欄位為 `rate` / `error_rate` / `p90_server_ms`。
-2. **I/O 家族**(僅 `pvc-to-netapp-aggr` edge):六個**量測**欄位——`read_ops` / `write_ops` / `read_latency_us` / `write_latency_us` / `read_bytes_per_sec` / `write_bytes_per_sec`——加上兩個**宣告上限**欄位 `max_iops` / `max_bytes_per_sec`。八者**各自獨立**選用(各對應自己的 Harvest series family,缺一個 family 只少對應的欄位)。ops 為每秒次數、latency 為平均微秒、throughput 為每秒 bytes——所有值後端皆原樣透傳。
+2. **I/O 家族**(`pvc-to-netapp-aggr` edge,以及 storage-graph 的 `storage-flow` edge):六個**量測**欄位——`read_ops` / `write_ops` / `read_latency_us` / `write_latency_us` / `read_bytes_per_sec` / `write_bytes_per_sec`——加上兩個**宣告上限**欄位 `max_iops` / `max_bytes_per_sec`。八者**各自獨立**選用(各對應自己的 Harvest series family,缺一個 family 只少對應的欄位)。ops 為每秒次數、latency 為平均微秒、throughput 為每秒 bytes——所有值後端皆原樣透傳。
+
+   **`storage-flow` edge 上的 I/O 家族多兩條規則。** (a) `read_ops` / `write_ops` / `read_bytes_per_sec` / `write_bytes_per_sec` 為**流經該 hop 的所有 claim 之總和**,由後端於 build 時加總完畢並保證 tier 間**守恆**(每個非 root 的中間節點,入邊總和等於出邊總和,至多差捨入);app MUST 直接使用這些值,MUST NOT 自行加總、均分或重新分配——任何客戶端再計算都會破壞守恆。(b) `read_latency_us` / `write_latency_us` 與 `max_iops` / `max_bytes_per_sec` **只出現於 `svm-pvc` tier**(claim 層級的那一 hop);其他四個 tier 恆不帶這四個欄位,app MUST NOT 於其他 tier 尋找或顯示它們。整條路徑上的 claim 皆無量測時,該 edge 完全不帶 `metrics` key。
 
    量測欄位與上限欄位來自後端 NetApp join 的**兩個不同 hop**,各自獨立降級:六個量測來自 Harvest QoS workload families(hop B),兩個上限來自 QoS fixed-policy families(hop C),以 `(ontap_cluster, svm, policy_group)` 三元組 join 到已匹配的 workload series。後端因此保證**上限欄位絕不會在沒有任何量測欄位時出現**——app 可以依賴此不變式,但 MUST NOT 假設反向:一個有量測但不屬於任何 QoS policy group 的 volume 完全沒有上限,這是正常狀態而非錯誤。
 
@@ -202,7 +284,7 @@ View state MUST 跨刷新保留,與 graph-view / graph-search / pod-parent-mode 
 
 `ipaddress` 為**陣列**(可能多個 IP,可能為空),僅 `pod` / `node` / `service` 節點攜帶。上游已將 IP 資料自 `labels`(原 `pod_ip` / `host_ip` / `external_ip`)移入此專屬欄位,app MUST 自 `data.ipaddress` 讀取 IP,**MUST NOT** 自 `labels` 讀取。
 
-**D6 parent 鏈(`data.parent`)。** workload 鏈為 `cluster > namespace > application > controller > pod`;`pvc` / `service` 直接 parent 於其 `namespace` 群組;`node` 為 cluster 下的葉節點。**儲存鏈為 `storage-cluster > netapp-node > netapp-aggr`**——其中間層 `netapp-node` 是**真實節點**(有 kind、有 icon、可選取)而非裝飾性群組。這是契約中唯一「真實節點兼任 compound parent」之處,app MUST 依 `data.parent` 原樣建立巢狀,MUST NOT 因 parent 是真實 kind 而改以 edge 表達。`namespace` / `application` / `storage-cluster` 群組 `labels: {}`、無 status、無 edge;純粹作為 `data.parent` 目標存在。
+**D6 parent 鏈(`data.parent`)。** workload 鏈為 `cluster > namespace > application > controller > pod`;`pvc` / `service` 直接 parent 於其 `namespace` 群組;`node` 為 cluster 下的葉節點。**儲存鏈為 `storage-cluster > netapp-node > netapp-aggr`,並於 storage-graph body 另有 `storage-cluster > netapp-svm`**(SVM 與 aggregate 同層,皆直接 parent 於 storage-cluster)——其中間層 `netapp-node` 是**真實節點**(有 kind、有 icon、可選取)而非裝飾性群組。storage-graph body 的 compound 群組與 `/v1/graph` **完全相同**(`cluster > namespace > application > controller > pod`、`cluster > namespace > [application >] pvc`、`cluster > node`),且 `namespace` 與 `application` **不是** Sankey 的 tier——它們是 pod / pvc tier 之上正交的分組,消費者若需要 namespace 或 Application 層級的 Sankey,MUST 由 `data.parent` 向上走並加總守恆的權重,而非期待後端提供該層 edge。這是契約中唯一「真實節點兼任 compound parent」之處,app MUST 依 `data.parent` 原樣建立巢狀,MUST NOT 因 parent 是真實 kind 而改以 edge 表達。`namespace` / `application` / `storage-cluster` 群組 `labels: {}`、無 status、無 edge;純粹作為 `data.parent` 目標存在。
 
 **Pod controller 歸屬。** 後端仍在 pod 節點上帶 `data.owner: { kind, name }`、`application: <string>` 與 `labels.node`(其 K8s node id),**即使該 pod 已經由 `data.parent` 巢狀於其 `controller` 群組之下**。後端**直接輸出** `controller` / `namespace` / `application` 群組節點與 `pod-to-node` edge——app 不再自 `data.owner` 合成 controller 節點或 `controller-owns-pod` edge。未 join 到 NetApp aggregate 的 PVC(無 `volumename`、無匹配的 Harvest series、或匹配到的 series 之 `aggr` 為空)後端**不**輸出 `pvc-to-netapp-aggr` edge。
 
@@ -225,6 +307,26 @@ View state MUST 跨刷新保留,與 graph-view / graph-search / pod-parent-mode 
 
 - **WHEN** 某 PVC 未 join 到 NetApp aggregate(後端未輸出對應的 `pvc-to-netapp-aggr` edge;`pvc-to-storageclass` edge type 已自契約移除)
 - **THEN** normalize 不為其產生任何儲存 edge,該 PVC 維持為一般節點
+
+#### Scenario: storage-flow edge 與 netapp-svm 節點映射
+
+- **WHEN** normalize boundary 餵入 `/v1/storage-graph` 形狀的 payload,含 `{id:"netapp/ontap-prod/svm/svm_shop", name:"svm_shop", type:"netapp-svm", parent:"storage-cluster/ontap-prod", labels:{ontap_cluster:"ontap-prod"}}` 與五條 `type: 'storage-flow'` 的 edge(`labels.tier` 分別為 `node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` / `pod-node`)
+- **THEN** SVM 映射為 `kind: 'netapp-svm'` 且 parent 為 `storage-cluster/ontap-prod`;五條 edge 皆映射為 `edgeType: 'storage-flow'`,`labels.tier` 原樣保留,皆不落入 unknown-type fallback
+
+#### Scenario: 均分歸屬的 pvc-pod edge
+
+- **WHEN** 某 `pvc-pod` 的 `storage-flow` edge 帶 `labels.attribution: "split"` 與 `metrics: { read_ops: 100 }`
+- **THEN** normalize 保留該 label 與該值原樣,MUST NOT 乘回 pod 數、MUST NOT 移除該 label(消費端據此標示為估計值)
+
+#### Scenario: latency 與 ceiling 只在 svm-pvc tier
+
+- **WHEN** payload 中 `svm-pvc` edge 帶 `read_latency_us` 與 `max_iops`,而 `node-aggr` 與 `pod-node` edge 只帶四個總和欄位
+- **THEN** normalize 逐欄映射既有欄位,不為缺席的 latency / ceiling 補值,亦不將 `svm-pvc` 的值傳播到其他 tier
+
+#### Scenario: netapp-node 的 hardware 與 perf 逐欄降級
+
+- **WHEN** 某 `netapp-node` 帶 `hardware: { model: "AFF-A400" }`(無 `serial`)與 `perf: { cpu_busy_pct: 41.2 }`(無其餘三欄),另一個 `netapp-node` 兩個 key 皆缺席
+- **THEN** 前者保留既有欄位、缺席欄位維持缺席;後者的 `hardware` 與 `perf` 皆為缺席,MUST NOT 出現為 `{}`、`null` 或以 `0` 填補的物件,且 `perf` 的數值 MUST NOT 影響該節點的 `health` 或狀態外框
 
 #### Scenario: RED metrics 契約以後端 golden fixture 為錨
 

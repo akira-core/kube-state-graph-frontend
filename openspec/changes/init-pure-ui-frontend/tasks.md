@@ -171,7 +171,38 @@
 - [x] 19.6 `BrowserRouter` 以 `import.meta.env.BASE_URL` 作為 `basename`,與 runtime-config 讀取 `config.json` 的 base 一致;驗證:元件測試以 `BASE_URL=/ksg/` 斷言 `/ksg/sankey` 顯示 Sankey 且 `/ksg/` 導向 `/ksg/graph`
 - [x] 19.7 修訂規格以吻合已實作的決定:app-shell 檢視時間範圍改為 graph 查詢的時間視窗、graph-data-source 新增「graph 請求的查詢字串」需求、新增 `graph-filters` capability 規格、runtime-config 端點表補 `labelValues` / `edgeTypes`、dev-environment 將 e2e 納入 CI gate;驗證:`openspec validate init-pure-ui-frontend --strict` 通過,且全庫無「graph 查詢不帶時間參數」的殘留敘述
 
+## 20. 兩個端點的拆分(graph 與 storage-graph)
+
+- [x] 20.1 `runtime-config`:型別與 validator 加入 `endpoints.storageGraph`(選用,URL 形式規則同其他端點),並確認 `labelValues` / `edgeTypes` 的驗證與錯誤訊息齊備;驗證:單元測試涵蓋缺席、空字串等同缺席、非 http(s) scheme、非字串,且 `storageGraph` 缺席時**不**構成設定錯誤
+- [x] 20.2 wire 型別與 normalize:加入 `netapp-svm` node kind、`storage-flow` edge type(含 `labels.tier` 五值與選用的 `labels.attribution`)、`netapp-node` 的 `hardware` / `perf` 屬性;驗證:單元測試斷言五種 tier 皆正確映射、`attribution` 原樣保留、`hardware` / `perf` 逐欄降級且缺席不補值、`perf` 不影響 `health` 或狀態外框
+- [x] 20.3 `buildStorageGraphRequestUrl` 與其重取鍵:`start` / `end`(送出當下解析)、單值 `az` / `env`、可重複的 `ontap_cluster` / `node` / `aggr` / `svm` / `pod`、選用的 `cluster` / `namespace`,不送 `edge_type` / `prune`;`pod` 值於送出前驗證 `<ns>/<name>`;驗證:單元測試涵蓋參數組合、URL 編碼、時鐘前進不改變重取鍵、az 或 env 缺一即不產生請求
+- [x] 20.4 shell 加入**第二個** loader 實例服務 storage-graph:lazy(首次進入 Sankey 且 `az` / `env` 齊備才發第一次)、獨立的 in-flight / status / error / 最後成功時間;驗證:元件測試斷言停留 Graph 視圖期間 storage-graph 請求數為 0、首次進入後恰好一次、來回切換不再發、一方 500 不影響另一方
+- [x] 20.5 重新載入動作與自動刷新改為只作用於**當前視圖**的來源,狀態指示器改為反映當前來源;`az` / `env` 未齊備或端點未設定時重新載入呈現為不可用;驗證:元件測試斷言於 Sankey 觸發重新載入只打 storage-graph、切換視圖後指示器立即改顯示新來源的時間與錯誤
+- [x] 20.6 檢視時間範圍改為同時驅動兩個端點:變更時只重取**已載入**的來源;驗證:元件測試斷言未開啟過 Sankey 時變更時間範圍不產生 storage-graph 請求,兩者皆已載入時各重取一次且 `start` / `end` 相同
+- [x] 20.7 Sankey 估計選擇器:`az` / `env` 單選、選項取自 `endpoints.labelValues`、候選值恰為一個時自動預選、未選齊時顯示提示且不取數、選項消失後清除選擇;驗證:元件測試涵蓋四種情形,並斷言與 Graph filter bar 的同名維度互不影響
+- [x] 20.8 Sankey root 控制:五種 root 可重複可混用、`pod` 值就地驗證、控制項明示 `node` 同時比對兩種節點且兩側取交集、清空為合法狀態;驗證:元件測試斷言不合法的 pod root 不進入請求且其他 root 仍運作,root 變更觸發恰好一次重取
+- [x] 20.9 Sankey 選用的 `cluster` / `namespace` 收斂控制(多選,作為請求參數送出,不於客戶端過濾);驗證:元件測試斷言選擇改變請求參數而非改變已回傳元素
+- [x] 20.10 重寫 Sankey 推導:六層 tier、tier 歸屬讀自 `labels.tier`、FlexGroup 路徑自 `svm-pvc` 起始、未排程 pod 於 `pvc-pod` 結束、無流量 root 仍繪製為孤立節點;驗證:單元測試以 storage fixture 斷言六個 tier 的成員,並涵蓋三種殘缺路徑
+- [x] 20.11 權重改為直接取自 `storage-flow` edge 的 `data.metrics`,**移除**客戶端的 aggregate 加總與 pod 均分邏輯及其測試;`labels.attribution="split"` 於 tooltip 標示為均分估計;驗證:單元測試斷言上游權重不由下游之和取代(含後端捨入造成的不等)、split link 標示為估計而 `svm-pvc` link 不標示
+- [x] 20.12 移除客戶端 cluster selector 與其過濾邏輯(改由請求參數達成),連同其測試;驗證:`rg` 確認無殘留的客戶端 cluster 過濾程式碼,既有測試更新後全綠
+- [x] 20.13 空狀態改為四態(端點未設定 / 估計未選齊 / 回應為空 / 當前方向無量測),各有可區分的文字,demo 模式下第三態額外標示 fixture 來源;驗證:元件測試逐態斷言文字與選擇器仍可操作
+- [x] 20.14 tooltip 與排序更新:節點 tooltip 加入 `ontap_cluster`、`hardware`、`perf`(標示為原始讀數且不上色)、`alerts` 與無流量 root 說明;link tooltip 顯示 tier,ceiling / latency 只在 `svm-pvc`;排序把無流量 root 置於 tier 最下;驗證:單元與元件測試逐條斷言
+- [x] 20.15 跨視圖 Locate 更新:目標為 filter-hidden、目標不存在於 graph 當前 body(篩選或 `prune` 不同)兩種提示可區分,`netapp-svm` 節點不提供 Locate 互動;驗證:元件測試斷言三種情形,且任一情形皆不改寫使用者的篩選或 `prune`
+- [x] 20.16 新增 `SHOWCASE_STORAGE_GRAPH` fixture(五種 tier 齊全、含一條 `attribution="split"` 的 `pvc-pod`、一條 FlexGroup 路徑、`hardware` / `perf`),`fixture:build` 改為產出兩個 JSON,`fixture:check` 涵蓋兩者;驗證:單元測試斷言 storage fixture 的權重逐 tier 守恆,且其 pod / pvc / netapp 節點 id 皆存在於 graph fixture(SVM 除外)
+- [x] 20.17 部署與文件:ConfigMap 範例與 `deploy/README.md` 加入 `endpoints.storageGraph`(及 `labelValues` / `edgeTypes`),快取標頭涵蓋 `/demo/storage-graph.json`,README 疑難排解加入「Sankey 顯示未設定端點」與「Sankey 要求各選一個 az / env」;驗證:依 README 於 kind 叢集套用後 Sankey 可繪出圖
+- [x] 20.18 新增第三個 e2e spec:同時提供兩份 demo payload,斷言停留 Graph 期間 storage-graph 請求數為 0、進入 Sankey 並選定 `az` / `env` 後恰好一次、繪出的 tier 來自 storage fixture;驗證:`npm run e2e` 三個 spec 全通過
+
+## 21. 程式碼審查後的修正
+
+- [x] 21.1 bytes 階梯統一為 `KB`:刪除 `deriveSankey` 內與 `shared/format/measurements.formatBytes` 逐字相同的 `formatSiBytes`,`formatBytesPerSec` 改為委派;驗證:單元測試斷言 `262144` → `262 KB/s`,且同一 tooltip 內的速率與 `usage` 使用同一拼寫
+- [x] 21.2 Sankey `az` / `env` 於 `endpoints.labelValues` 缺席時仍渲染並可輸入(退化為自由文字),`cluster` / `namespace` 則於無可列舉選項時不渲染;驗證:元件測試斷言零選項時 `AZ` / `Env` 為 input 且可輸入,shell 測試斷言只設定 `storageGraph` 時仍能送出帶 `az` / `env` 的請求且不打任何 label-values URL
+- [x] 21.3 image 加入第二個代理 `KSG_METRICS_PROXY_TARGET` → `/metrics-api/`,ConfigMap 範例的 `endpoints.labelValues` 改為 `/metrics-api`;驗證:`deploy/README.md` 與 `deployment.yaml` 註解說明兩者為不同 upstream,未設定時 `/metrics-api/` 回 404
+- [x] 21.4 無量測路徑上的 root 仍繪製:`deriveSankey` 接受該請求的 root 選擇,以後端相同的比對規則(`node` 比對兩側、`ontap_cluster` 涵蓋其下三種、`pod` 為 `<ns>/<pod>`、`pvc` 非 root 種類)保留節點;驗證:單元測試斷言全無 `metrics` 的路徑上只有被選為 root 的節點以 `noFlow` 保留,且 root 全空時無節點被保留
+- [x] 21.5 無流量節點堆疊收斂於視圖內:流量圖為最高的堆疊預留高度,堆疊於空間不足時壓縮間距;驗證:元件測試以單一 tier 20 個無流量節點斷言每個節點的下緣不超過 SVG 高度
+
 ## 17. 整體驗收
 
 - [x] 17.1 全鏈驗證:乾淨 checkout 執行 `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` 全數通過,且單元測試覆蓋率達 80%
 - [x] 17.2 對照 `specs/` 逐一走查 13 個 capability 的 requirements,確認無遺漏或行為偏差;驗證:產出走查清單,每條 requirement 標註其對應的測試或可觀察行為
+- [x] 17.3 兩端點拆分後重跑全鏈驗證(含新增的第三個 e2e spec),覆蓋率仍達 80%;驗證:乾淨 checkout 上整條 CI 鏈綠燈
+- [x] 17.4 對照修訂後的 `specs/` 重走查 `runtime-config` / `graph-data-source` / `storage-flow-sankey` / `app-shell` / `dev-environment` / `container-deployment` 六支的異動需求;驗證:走查清單標註每條新需求對應的測試或可觀察行為

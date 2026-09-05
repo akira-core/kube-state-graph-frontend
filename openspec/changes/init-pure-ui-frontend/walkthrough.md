@@ -18,9 +18,12 @@ Each capability below is mapped to the test or observable behavior that covers i
 | Loading screen uses ThemeProvider                               | `src/app/App.tsx`                                                                                       |
 | View time range default 24h, persist, resolve-at-read, absolute | `useViewTimeRange.test.ts`, `NavBar.test.tsx`                                                           |
 | Shared loader: demo, in-flight, stale-on-fail                   | `useGraphLoader.test.ts`                                                                                |
+| Two independent loaders; storage-graph lazy                     | `AppShell.test.tsx` “two data sources”; `useGraphLoader` `enabled`                                      |
+| Reload / auto-refresh only the current view                     | `AppShell.test.tsx` reload; `NavBar` `reloadDisabled`                                                   |
+| Time range refetches loaded sources only                        | `AppShell.test.tsx` time-range change                                                                   |
 | Keep-alive views                                                | `AppShell.tsx` `graphMounted` / `sankeyMounted` + `hidden`; e2e round-trip                              |
-| Routes relative to the app base URL                             | `AppShell.test.tsx` (`BASE_URL=/ksg/`: `/ksg/sankey` renders Sankey, `/ksg/` redirects to `/ksg/graph`) |
 | Landmarks                                                       | `NavBar.test.tsx` navigation; `AppShell.tsx` `<main>`                                                   |
+| Routes relative to the app base URL                             | `AppShell.test.tsx` (`BASE_URL=/ksg/`: `/ksg/sankey` renders Sankey, `/ksg/` redirects to `/ksg/graph`) |
 
 ## runtime-config
 
@@ -28,6 +31,7 @@ Each capability below is mapped to the test or observable behavior that covers i
 | ------------------------------------------------- | ----------------------------------------------------------------- |
 | Types                                             | `src/features/runtime-config/types.ts` + `npm run typecheck`      |
 | Validator (no coercion, URL forms, first error)   | `validate.test.ts`                                                |
+| `endpoints.storageGraph` optional, empty = absent | `validate.test.ts` storageGraph cases                             |
 | Load `<base>/config.json`                         | `load.test.ts`                                                    |
 | Error screen, never silent demo                   | `ConfigErrorScreen.test.tsx`, `App.test.tsx`                      |
 | `dev/config.json` + local override + `/api` proxy | `vite.config.ts`, `dev/config.json`; `dist/` has no `config.json` |
@@ -37,9 +41,13 @@ Each capability below is mapped to the test or observable behavior that covers i
 | Requirement                                                           | Evidence                                                                                            |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | normalize (alerts, controller, metrics, NetApp, PVC, ready_status)    | `normalize.test.ts`                                                                                 |
+| `netapp-svm` + `storage-flow` + hardware/perf                         | `normalize.test.ts` “storage-flow edges and netapp-svm”                                             |
 | wrapNodeGroup / wrapSwitchFabric                                      | `wrapNodeGroup.test.ts`, `wrapSwitchFabric.test.ts`                                                 |
+| Graph request URL                                                     | `graphRequestUrl.test.ts`                                                                           |
+| Storage-graph request URL (no prune/edge_type; pod validation)        | `storageGraphRequestUrl.test.ts`                                                                    |
 | Demo vs fetch                                                         | `useGraphLoader.test.ts`; e2e `tests/fetch-path.spec.ts`                                            |
-| Fixture dual storage edges                                            | `showcaseGraph.test.ts`; `fixture:check`                                                            |
+| Two fixtures                                                          | `showcaseGraph.test.ts`, `showcaseStorageGraph.test.ts`; `fixture:check`                            |
+| Lazy storage-graph e2e                                                | `tests/storage-graph.spec.ts`                                                                       |
 | Query string: `start`/`end`/`prune` always sent, resolved per request | `graphRequestUrl.test.ts`, `useGraphLoader.test.ts`                                                 |
 | A same-name key on the configured URL is replaced, not appended       | `fetchJson.test.ts` (`?start=100` + new window → one `start`; `tenant=ops` and `%20` kept verbatim) |
 
@@ -93,15 +101,20 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## storage-flow-sankey
 
-| Requirement                                  | Evidence                                                                                                                                                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Derive chain + weights + absent≠0            | `deriveSankey.test.ts`                                                                                                                                                                                  |
-| Both dual links                              | `SankeyView.test.tsx`                                                                                                                                                                                   |
-| Cluster selector + `dr` empty                | `SankeyView.test.tsx` `sankey-empty-cluster`                                                                                                                                                            |
-| Cluster scope applied before aggregation     | `deriveSankey.test.ts` (two clusters on one netapp-node: aggr→node weight re-summed from in-scope pvc links; an aggr with nothing in scope is not drawn; storage tiers are never filtered _by_ cluster) |
-| Hover state cleared when its node disappears | `SankeyView.test.tsx` (tooltip closes and fade lifts on refresh; a surviving node keeps its highlight)                                                                                                  |
-| Tooltips kind/label                          | `SankeyView.test.tsx`                                                                                                                                                                                   |
-| Cross-view locate                            | e2e click `sankey-node-aggr1` → `/graph`; filter-hidden banner `locate-filter-hidden`                                                                                                                   |
+| Requirement                                                             | Evidence                                                                                               |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Input is storage-graph, not `/v1/graph`                                 | `AppShell.tsx` second loader; `SankeyView.test.tsx`; e2e `tests/storage-graph.spec.ts`                 |
+| az / env single-select, auto-preselect, independent of Graph filter bar | `useSankeyQuery.test.ts`, `SankeyControlBar.test.tsx`, `AppShell.test.tsx`                             |
+| Roots mixed, invalid pod refused, empty roots legal                     | `useSankeyQuery.test.ts`, `storageGraphRequestUrl.test.ts`                                             |
+| cluster / namespace as request params, not client filter                | `storageGraphRequestUrl.test.ts`; no `clusterFilter` in `deriveSankey.ts`                              |
+| Six tiers from `labels.tier`, FlexGroup / unscheduled / no-flow root    | `deriveSankey.test.ts`                                                                                 |
+| Weights taken from edge metrics; split attribution                      | `deriveSankey.test.ts`; `SankeyView.test.tsx` split estimate                                           |
+| Four empty states                                                       | `SankeyView.test.tsx` `sankey-empty-*`                                                                 |
+| Tooltips: ontap_cluster, hardware, raw perf, tier, svm-pvc ceiling      | `SankeyView.test.tsx`                                                                                  |
+| Locate: filter-hidden vs missing vs SVM not clickable                   | `locateOutcome.test.ts`, `SankeyView.test.tsx` `data-locatable`                                        |
+| Hover state cleared when its node disappears                            | `SankeyView.test.tsx` (tooltip closes and fade lifts on refresh; a surviving node keeps its highlight) |
+| Box cards, ribbons, column headers, namespace stripes, summary tables   | `layoutSankey.test.ts`, `SankeyView.test.tsx`                                                          |
+| Zoom / pan / zoom control bar / focus mode                              | `useZoomPan.test.ts`, `SankeyView.test.tsx`                                                            |
 
 ## graph-filters
 
@@ -116,20 +129,24 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## container-deployment
 
-| Requirement                                                                                               | Evidence                                                  |
-| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Multi-stage image, UID 101, 8080                                                                          | `Dockerfile`; `docker build` succeeded                    |
-| `/` `index.html` `no-cache`; `/assets` immutable; `/config.json` `no-store`; `/healthz` 200; SPA fallback | curled `kube-state-graph-frontend:local` on :18081        |
-| `/api/*` 404 unless `KSG_API_PROXY_TARGET`                                                                | curl 404; proxy forwarded `/api/hello` → `proxied:/hello` |
-| k8s manifests (probes, ConfigMap dir mount, restricted)                                                   | `deploy/*.yaml` — **not** applied to a cluster            |
+| Requirement                                                                                               | Evidence                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Multi-stage image, UID 101, 8080                                                                          | `Dockerfile`; `docker build` succeeded                                                                                                                                                                                                                             |
+| `/` `index.html` `no-cache`; `/assets` immutable; `/config.json` `no-store`; `/healthz` 200; SPA fallback | curled `kube-state-graph-frontend:local` on :18081                                                                                                                                                                                                                 |
+| `/api/*` 404 unless `KSG_API_PROXY_TARGET`                                                                | curl 404; proxy forwarded `/api/hello` → `proxied:/hello`                                                                                                                                                                                                          |
+| `/metrics-api/*` 404 unless `KSG_METRICS_PROXY_TARGET`                                                    | curl 404 with only `KSG_API_PROXY_TARGET` set and with neither; with both set, `/metrics-api/api/v1/label/az/values?match[]=…` reached the metrics upstream as `/api/v1/label/az/values?match[]=…` while `/api/v1/graph` reached the graph upstream as `/v1/graph` |
+| k8s manifests (probes, ConfigMap dir mount, restricted)                                                   | `deploy/*.yaml` — **not** applied to a cluster                                                                                                                                                                                                                     |
+| ConfigMap includes `storageGraph` / `labelValues` / `edgeTypes`                                           | `deploy/configmap.yaml`; `labelValues` points at `/metrics-api`, not the graph API                                                                                                                                                                                 |
+| `/demo/storage-graph.json` served `no-cache`                                                              | `docker/nginx.conf` `location /`                                                                                                                                                                                                                                   |
 
 ## dev-environment
 
-| Requirement                              | Evidence                                                     |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| Vite/TS/Vitest/Playwright/hooks/Makefile | `package.json`, `.githooks/`, `Makefile`                     |
-| e2e in CI                                | `.github/workflows/ci.yml`                                   |
-| Image workflow tags                      | `.github/workflows/image.yml` — **not** pushed to a registry |
+| Requirement                              | Evidence                                                                |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| Vite/TS/Vitest/Playwright/hooks/Makefile | `package.json`, `.githooks/`, `Makefile`                                |
+| Two generated demo payloads              | `dev/buildFixture.mjs`; `public/demo/graph.json` + `storage-graph.json` |
+| e2e in CI                                | `.github/workflows/ci.yml`                                              |
+| Image workflow tags                      | `.github/workflows/image.yml` — **not** pushed to a registry            |
 
 ## Not verified in this apply
 

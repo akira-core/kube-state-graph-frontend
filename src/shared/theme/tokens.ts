@@ -39,6 +39,7 @@ export interface ThemeTokens {
     switch: string;
     'netapp-aggr': string;
     'netapp-node': string;
+    'netapp-svm': string;
     cluster: string;
     namespace: string;
     application: string;
@@ -55,6 +56,7 @@ export interface ThemeTokens {
     'pvc-to-netapp-aggr': string;
     'switch-to-switch': string;
     'node-to-switch': string;
+    'storage-flow': string;
     fallback: string;
   };
   sankey: {
@@ -120,6 +122,7 @@ export const DARK_TOKENS: ThemeTokens = {
     switch: '#67e8f9',
     'netapp-aggr': '#c4b5fd',
     'netapp-node': '#a78bfa',
+    'netapp-svm': '#ddd6fe',
     cluster: '#94a3b8',
     namespace: '#86efac',
     application: '#f9a8d4',
@@ -136,6 +139,7 @@ export const DARK_TOKENS: ThemeTokens = {
     'pvc-to-netapp-aggr': '#8b5cf6',
     'switch-to-switch': '#06b6d4',
     'node-to-switch': '#06b6d4',
+    'storage-flow': '#6366f1',
     fallback: '#94a3b8',
   },
   sankey: {
@@ -194,6 +198,7 @@ export const LIGHT_TOKENS: ThemeTokens = {
     switch: '#0e7490',
     'netapp-aggr': '#6d28d9',
     'netapp-node': '#5b21b6',
+    'netapp-svm': '#5b21b6',
     cluster: '#475569',
     namespace: '#15803d',
     application: '#be185d',
@@ -210,6 +215,7 @@ export const LIGHT_TOKENS: ThemeTokens = {
     'pvc-to-netapp-aggr': '#8b5cf6',
     'switch-to-switch': '#06b6d4',
     'node-to-switch': '#06b6d4',
+    'storage-flow': '#4f46e5',
     fallback: '#94a3b8',
   },
   sankey: {

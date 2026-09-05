@@ -1,32 +1,35 @@
 import { describe, expect, it } from 'vitest';
 
-import { SHOWCASE_GRAPH } from '../../shared/fixtures/showcaseGraph';
+import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { normalizeGraph } from '../graph-data';
 
 import { deriveSankey } from './deriveSankey';
 import { layoutSankey, LEAF_W, CARD_W, MIN_THICKNESS, ROW_MIN_H } from './layoutSankey';
 
-const { elements } = normalizeGraph(SHOWCASE_GRAPH);
+const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 const PALETTE = ['#111111', '#222222', '#333333'];
 
 describe('layoutSankey', () => {
-  it('assigns each tier a fixed column x, pod leftmost and netapp-node rightmost', () => {
+  it('assigns each tier a fixed column x, running storage to workload', () => {
     const graph = deriveSankey(elements, 'both');
     const layout = layoutSankey(graph, PALETTE);
     const xByKind = new Map<string, number>();
     for (const n of layout.nodes) {
       xByKind.set(n.kind, n.x);
     }
-    expect(xByKind.get('pod')).toBeLessThan(xByKind.get('pvc') as number);
-    expect(xByKind.get('pvc')).toBeLessThan(xByKind.get('netapp-aggr') as number);
-    expect(xByKind.get('netapp-aggr')).toBeLessThan(xByKind.get('netapp-node') as number);
+    // Columns run in the flow's own direction — the picture answers "where does this
+    // aggregate's traffic end up", so the storage side is where the eye starts.
+    const order = ['netapp-node', 'netapp-aggr', 'netapp-svm', 'pvc', 'pod', 'node'];
+    for (let i = 1; i < order.length; i += 1) {
+      expect(xByKind.get(order[i - 1] as string)).toBeLessThan(xByKind.get(order[i] as string) as number);
+    }
   });
 
   it('gives every node in a tier the same width, and the leaf tier a smaller width', () => {
     const graph = deriveSankey(elements, 'both');
     const layout = layoutSankey(graph, PALETTE);
     for (const n of layout.nodes) {
-      expect(n.width).toBe(n.kind === 'netapp-node' ? LEAF_W : CARD_W);
+      expect(n.width).toBe(n.kind === 'node' ? LEAF_W : CARD_W);
     }
   });
 
@@ -139,105 +142,92 @@ describe('layoutSankey', () => {
     expect(zero?.showLabel).toBe(false);
   });
 
+  it('grows the content box to hold a tall stack of no-flow roots, and sorts them last', () => {
+    // No-flow roots stack under whatever the flow graph laid out in the same column. The
+    // content box is what the viewport fits to, so a node past its bottom edge is a node
+    // nobody can reach by any amount of panning.
+    const many = [
+      ...withZeroValueLink(),
+      ...Array.from({ length: 20 }, (_, i) => node(`aggr-idle-${i}`, 'netapp-aggr')),
+    ];
+    const layout = layoutSankey(deriveSankey(many, 'read'), PALETTE);
+    for (const n of layout.nodes) {
+      expect(n.y + n.height).toBeLessThanOrEqual(layout.height);
+    }
+    const idle = layout.nodes.filter((n) => n.label.startsWith('aggr-idle-'));
+    expect(idle).toHaveLength(20);
+    for (const n of idle) {
+      expect(n.subtitle).toContain('no flow');
+    }
+  });
+
   it('only lists a column header for a tier that has at least one drawn node', () => {
-    const dr = deriveSankey(elements, 'both', 'dr');
-    const layout = layoutSankey(dr, PALETTE);
-    expect(layout.columns).toEqual([]);
+    const empty = layoutSankey(deriveSankey([], 'both'), PALETTE);
+    expect(empty.columns).toEqual([]);
+    const drawn = layoutSankey(deriveSankey(elements, 'both'), PALETTE);
+    expect(drawn.columns.map((c) => c.label)).toEqual(['NetApp node', 'NetApp aggregate', 'SVM', 'PVC', 'Pod', 'Node']);
   });
 });
 
+const node = (id: string, kind: string, extra: Record<string, unknown> = {}) => ({
+  group: 'nodes' as const,
+  data: { id, label: id, kind, ...extra },
+});
+
+/** One `storage-flow` edge. Direction is storage -> workload, matching the wire. */
+const flow = (source: string, target: string, tier: string, read: number, write: number) => ({
+  group: 'edges' as const,
+  data: {
+    id: `${source}->${target}`,
+    source,
+    target,
+    edgeType: 'storage-flow',
+    labels: { tier },
+    metrics: { readBytesPerSec: read, writeBytesPerSec: write },
+  },
+});
+
 function twoNamespacePods() {
-  const node = (id: string, kind: string, extra: Record<string, unknown> = {}) => ({
-    group: 'nodes' as const,
-    data: { id, label: id, kind, ...extra },
-  });
-  const mount = (pod: string, pvc: string) => ({
-    group: 'edges' as const,
-    data: { id: `${pod}->${pvc}`, source: pod, target: pvc, edgeType: 'pod-mounts-pvc' },
-  });
-  const io = (pvc: string, aggr: string, read: number, write: number) => ({
-    group: 'edges' as const,
-    data: {
-      id: `${pvc}->${aggr}`,
-      source: pvc,
-      target: aggr,
-      edgeType: 'pvc-to-netapp-aggr',
-      metrics: { readBytesPerSec: read, writeBytesPerSec: write },
-    },
-  });
   return [
-    node('pod-prod-a', 'pod', { namespace: 'prod' }),
+    node('svm-x', 'netapp-svm'),
     node('pvc-prod-a', 'pvc'),
-    node('pod-prod-b', 'pod', { namespace: 'prod' }),
+    node('pod-prod-a', 'pod', { namespace: 'prod' }),
     node('pvc-prod-b', 'pvc'),
-    node('pod-staging', 'pod', { namespace: 'staging' }),
+    node('pod-prod-b', 'pod', { namespace: 'prod' }),
     node('pvc-staging', 'pvc'),
-    node('aggr-x', 'netapp-aggr'),
-    mount('pod-prod-a', 'pvc-prod-a'),
-    mount('pod-prod-b', 'pvc-prod-b'),
-    mount('pod-staging', 'pvc-staging'),
-    io('pvc-prod-a', 'aggr-x', 100, 0),
-    io('pvc-prod-b', 'aggr-x', 100, 0),
+    node('pod-staging', 'pod', { namespace: 'staging' }),
+    flow('svm-x', 'pvc-prod-a', 'svm-pvc', 100, 0),
+    flow('svm-x', 'pvc-prod-b', 'svm-pvc', 100, 0),
     // staging has the biggest single flow, so its group sorts first — the fixture
     // exercises "group order by peak flow", not just "namespace order".
-    io('pvc-staging', 'aggr-x', 900, 0),
+    flow('svm-x', 'pvc-staging', 'svm-pvc', 900, 0),
+    flow('pvc-prod-a', 'pod-prod-a', 'pvc-pod', 100, 0),
+    flow('pvc-prod-b', 'pod-prod-b', 'pvc-pod', 100, 0),
+    flow('pvc-staging', 'pod-staging', 'pvc-pod', 900, 0),
   ];
 }
 
 function twoNamespacePodsAndOneWithout() {
-  const node = (id: string, kind: string, extra: Record<string, unknown> = {}) => ({
-    group: 'nodes' as const,
-    data: { id, label: id, kind, ...extra },
-  });
-  const mount = (pod: string, pvc: string) => ({
-    group: 'edges' as const,
-    data: { id: `${pod}->${pvc}`, source: pod, target: pvc, edgeType: 'pod-mounts-pvc' },
-  });
-  const io = (pvc: string, aggr: string, read: number, write: number) => ({
-    group: 'edges' as const,
-    data: {
-      id: `${pvc}->${aggr}`,
-      source: pvc,
-      target: aggr,
-      edgeType: 'pvc-to-netapp-aggr',
-      metrics: { readBytesPerSec: read, writeBytesPerSec: write },
-    },
-  });
   return [
-    node('pod-ns-a', 'pod', { namespace: 'a' }),
+    node('svm-y', 'netapp-svm'),
     node('pvc-ns-a', 'pvc'),
-    node('pod-no-ns', 'pod'),
+    node('pod-ns-a', 'pod', { namespace: 'a' }),
     node('pvc-no-ns', 'pvc'),
-    node('aggr-y', 'netapp-aggr'),
-    mount('pod-ns-a', 'pvc-ns-a'),
-    mount('pod-no-ns', 'pvc-no-ns'),
-    io('pvc-ns-a', 'aggr-y', 100, 0),
-    io('pvc-no-ns', 'aggr-y', 500, 0),
+    node('pod-no-ns', 'pod'),
+    flow('svm-y', 'pvc-ns-a', 'svm-pvc', 100, 0),
+    flow('svm-y', 'pvc-no-ns', 'svm-pvc', 500, 0),
+    flow('pvc-ns-a', 'pod-ns-a', 'pvc-pod', 100, 0),
+    flow('pvc-no-ns', 'pod-no-ns', 'pvc-pod', 500, 0),
   ];
 }
 
-/** One `pvc-to-netapp-aggr` edge whose `readBytesPerSec` is a real, present zero. */
+/** One `storage-flow` edge whose `read_bytes_per_sec` is a real, present zero. */
 function withZeroValueLink() {
-  const node = (id: string, kind: string) => ({ group: 'nodes' as const, data: { id, label: id, kind } });
-  const mount = (pod: string, pvc: string) => ({
-    group: 'edges' as const,
-    data: { id: `${pod}->${pvc}`, source: pod, target: pvc, edgeType: 'pod-mounts-pvc' },
-  });
-  const io = (pvc: string, aggr: string, read: number, write: number) => ({
-    group: 'edges' as const,
-    data: {
-      id: `${pvc}->${aggr}`,
-      source: pvc,
-      target: aggr,
-      edgeType: 'pvc-to-netapp-aggr',
-      metrics: { readBytesPerSec: read, writeBytesPerSec: write },
-    },
-  });
   return [
-    node('pod-z', 'pod'),
+    node('svm-z', 'netapp-svm'),
     node('pvc-z', 'pvc'),
-    node('aggr-z', 'netapp-aggr'),
-    mount('pod-z', 'pvc-z'),
-    io('pvc-z', 'aggr-z', 0, 1048576),
+    node('pod-z', 'pod'),
+    flow('svm-z', 'pvc-z', 'svm-pvc', 0, 1048576),
+    flow('pvc-z', 'pod-z', 'pvc-pod', 0, 1048576),
   ];
 }

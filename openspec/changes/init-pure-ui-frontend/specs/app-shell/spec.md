@@ -1,6 +1,6 @@
 ## Purpose
 
-定義 SPA 的進入點與全域框架:啟動序列(設定載入閘門 → 錯誤畫面或應用)、Graph / Sankey 視圖的 client-side 路由與 deep link、持續顯示的頂部導覽列(視圖切換、主題、重新載入、狀態與 demo 標示)、填滿視窗的視圖區、由 shell 一次載入並供兩視圖共用的 graph 資料、跨視圖保留的暫時性視圖狀態,以及基本無障礙。視圖內部行為不在此規範。
+定義 SPA 的進入點與全域框架:啟動序列(設定載入閘門 → 錯誤畫面或應用)、Graph / Sankey 視圖的 client-side 路由與 deep link、持續顯示的頂部導覽列(視圖切換、主題、重新載入、狀態與 demo 標示)、填滿視窗的視圖區、由 shell 持有的兩個獨立資料來源(Graph 視圖的 `/v1/graph` 與 Sankey 視圖的 `/v1/storage-graph`)、跨視圖保留的暫時性視圖狀態,以及基本無障礙。視圖內部行為不在此規範。
 
 ## ADDED Requirements
 
@@ -11,12 +11,12 @@
 #### Scenario: 設定成功後進入應用
 
 - **WHEN** 使用者開啟 `/graph`,設定文件於 300ms 後成功取得並驗證通過
-- **THEN** 該 300ms 內僅顯示載入中畫面;之後導覽列與 Graph 視圖出現,graph 資料請求在此時才發出
+- **THEN** 該 300ms 內僅顯示載入中畫面;之後導覽列與 Graph 視圖出現,graph 資料請求在此時才發出,storage-graph 請求則不發出
 
 #### Scenario: 設定失敗只顯示錯誤畫面
 
 - **WHEN** 設定文件取得失敗或驗證失敗
-- **THEN** 應用顯示設定錯誤畫面,不渲染導覽列與任何視圖,且整個 session 不發出任何 graph 資料請求
+- **THEN** 應用顯示設定錯誤畫面,不渲染導覽列與任何視圖,且整個 session 不對任何圖資料端點發出請求
 
 #### Scenario: 設定載入前不取數
 
@@ -52,7 +52,7 @@
 #### Scenario: 視圖切換不重新載入文件
 
 - **WHEN** 使用者在 `/graph` 點擊導覽列的 Sankey 連結
-- **THEN** 不發生完整文件載入,不重新請求設定文件,Sankey 視圖立即以已載入的資料渲染
+- **THEN** 不發生完整文件載入,不重新請求設定文件;Sankey 視圖若已有資料則立即渲染,若為首次進入則依「兩個獨立的資料生命週期」取得其自身的資料
 
 ### Requirement: Deep link 與瀏覽歷史
 
@@ -61,7 +61,7 @@
 #### Scenario: 於 Sankey 視圖重新整理
 
 - **WHEN** 使用者在 `/sankey` 按重新整理
-- **THEN** 應用重新啟動(重新讀取設定、重新載入 graph 資料)並顯示 Sankey 視圖
+- **THEN** 應用重新啟動(重新讀取設定)並顯示 Sankey 視圖;此時 Sankey 為當前視圖,故取得的是 storage-graph 資料——graph 來源在使用者切到 Graph 視圖前不被取數
 
 #### Scenario: 分享 deep link
 
@@ -82,7 +82,20 @@
 3. 主題切換控制(見「主題切換與持久化」);
 4. 「重新載入資料」動作(見「重新載入動作與狀態指示器」);
 5. 狀態指示器(見「重新載入動作與狀態指示器」);
-6. 僅當 `demoMode` 為 `true` 時顯示的 **demo 模式標記**,文字明確指出資料為內建 demo 資料;`demoMode` 為 `false` 時該標記 MUST NOT 存在於 DOM。
+6. 僅當 `demoMode` 為 `true` 時顯示的 **demo 模式標記**,文字明確指出資料為內建 demo 資料;`demoMode` 為 `false` 時該標記 MUST NOT 存在於 DOM;
+7. 檢視時間範圍控制(見「檢視時間範圍」)。
+
+導覽列之下 SHALL 另有一列**視圖專屬的控制列**,其內容隨當前視圖而異且 MUST NOT 跨視圖共用:Graph 視圖為 filter bar(`cluster` / `az` / `env` / `namespace` / `edge_type` 多選與 Projection 切換);Sankey 視圖為其估計與 root 選擇器(`az` / `env` 單選、root、選用的 `cluster` / `namespace`,見 `storage-flow-sankey`)。兩列控制的選擇 MUST 各自獨立——同名維度出現在兩處是刻意的:它們送往兩個不同的端點,語意與基數(多值 vs 單值)也不同。控制列 MUST NOT 因另一個視圖的選擇而改變。
+
+#### Scenario: 控制列隨視圖切換
+
+- **WHEN** 使用者自 Graph 視圖切換至 Sankey 視圖
+- **THEN** filter bar 被 Sankey 的估計 / root 控制取代;切回 Graph 視圖時 filter bar 的選擇與離開時相同,Sankey 的選擇亦然
+
+#### Scenario: 同名維度互不影響
+
+- **WHEN** 使用者於 Graph filter bar 選 `az: zone-a` 與 `az: zone-b`,再於 Sankey 選 `az: zone-c`
+- **THEN** 兩處各自維持自己的值;graph 請求帶 `az=zone-a&az=zone-b`,storage-graph 請求帶 `az=zone-c`
 
 #### Scenario: 目前視圖的連結呈現 active
 
@@ -141,9 +154,15 @@
 
 導覽列 SHALL 提供一個**檢視時間範圍**控制,選項為相對區間 `1h` / `6h` / `24h` / `7d` 與一個自訂的絕對區間(起訖各為一個時刻)。預設 MUST 為 `24h`。使用者的選擇 MUST 保存於瀏覽器本機、跨重新整理與新分頁沿用;它 MUST NOT 被寫入 URL,亦 MUST NOT 被寫入 runtime config。相對區間 MUST 於每次被讀取時就地換算為當下的絕對起訖(`from` = 現在減去該長度,`to` = 現在),而非於選取當下凍結。
 
-檢視時間範圍是 graph 查詢的時間視窗,也是 node detail 的 Dashboard 查詢的時間視窗:graph 查詢 MUST 以它組出 `start` / `end`(Unix 秒,見 `graph-data-source`)——上游 `GET /v1/graph` 缺任一者即以 400 拒絕,故該視窗不是選用的裝飾;Dashboard 查詢 MUST 以它組出 `from_time` / `to_time`(Unix 秒,見 `node-detail`)。change history 查詢(`endpoints.codeChanges` / `endpoints.configChanges`)MUST NOT 帶時間參數。
+檢視時間範圍是 shell 唯一**跨視圖共用**的輸入,有三個消費端:
 
-變更檢視時間範圍 MUST 以新視窗對 `endpoints.graph` 重新取數(舊視窗的結果已不代表所選區間),並 MUST 即時反映於後續的 Dashboard 查詢;它 MUST NOT 對 change history 端點發出請求。該次重新取數 MUST 走與「重新載入」相同的路徑(見「共用 graph 資料與載入生命週期」):既有圖於請求進行中持續可見,不重跑佈局,且 MUST NOT 重置任何視圖狀態(選取、collapse、viewport、篩選、搜尋)。該控制 MUST 可經鍵盤到達與啟動,並具有可存取名稱。
+1. `GET /v1/graph` 的 `start` / `end`(Graph 視圖);
+2. `GET /v1/storage-graph` 的 `start` / `end`(Sankey 視圖);
+3. node detail 的 Dashboard 查詢的 `from_time` / `to_time`(Unix 秒,詳見 `node-detail`)。
+
+前兩者是**必要參數**——後端對缺值以 400 `missing_start` / `missing_end` 拒絕,兩個端點都沒有相對時間的形式,故視窗由前端於**每次請求送出當下**解析(見 `graph-data-source` 的請求組裝需求)。change history 查詢不帶時間參數,MUST NOT 因此重新取數。
+
+變更檢視時間範圍 MUST 使**已載入的**資料來源重新取數(Graph 視圖已載入則重取 graph;Sankey 視圖已載入則重取 storage-graph;未曾開啟的視圖 MUST NOT 因此產生請求),且 MUST NOT 重置任何視圖狀態(選取、collapse、viewport、篩選、搜尋、Sankey 的模式與選擇器)。該控制 MUST 可經鍵盤到達與啟動,並具有可存取名稱。
 
 #### Scenario: 預設為 24h 且選擇跨重新整理沿用
 
@@ -156,56 +175,87 @@
 - **WHEN** 檢視時間範圍為 `1h`,使用者選取某節點並觸發其 Dashboard 查詢
 - **THEN** 該查詢的 `from_time` / `to_time` 為「查詢當下減一小時」至「查詢當下」的 Unix 秒,而非選取該區間當時所凍結的值
 
-#### Scenario: 變更範圍以新視窗重新取數
+#### Scenario: 變更時間範圍重取已載入的來源
 
-- **WHEN** 使用者將檢視時間範圍自 `24h` 改為 `1h`
-- **THEN** 應用對 `endpoints.graph` 發出一次新請求,其 `start` / `end` 為「現在減一小時」至「現在」的 Unix 秒
+- **WHEN** 使用者已載入 Graph 視圖但從未開啟 Sankey 視圖,此時將檢視時間範圍自 `24h` 改為 `1h`
+- **THEN** 應用對 `endpoints.graph` 重新發出一次帶新 `start` / `end` 的請求,對 `endpoints.storageGraph` 的請求數仍為 0
 - **AND** 不對 `endpoints.codeChanges` / `endpoints.configChanges` 發出任何請求
-- **AND** 請求進行中既有圖持續可見,完成後目前的選取、collapse、viewport、篩選與搜尋狀態皆不變
+- **AND** 目前的選取、collapse、viewport、篩選與搜尋狀態皆不變
+
+#### Scenario: 兩個視圖都已載入時兩者皆重取
+
+- **WHEN** 使用者已依序開啟過 Graph 與 Sankey 兩視圖(且 Sankey 的 `az` / `env` 已選定),此時變更檢視時間範圍
+- **THEN** 兩個端點各重新發出一次請求,兩者的 `start` / `end` 相同
 
 #### Scenario: 不寫入 URL 或 runtime config
 
 - **WHEN** 使用者改選 `7d`
 - **THEN** 瀏覽器網址列不出現任何時間範圍相關參數,且應用不寫入 runtime config
 
-### Requirement: 共用 graph 資料與載入生命週期
+### Requirement: 兩個獨立的資料生命週期
 
-graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正規化行為見 `graph-data-source`),並將同一份正規化結果提供給 Graph 與 Sankey 兩視圖。視圖切換 MUST NOT 觸發重新取數、MUST NOT 重新正規化;兩視圖 MUST 立即以 shell 持有的資料渲染。shell MUST 向視圖提供資料狀態:載入中、就緒、錯誤(含訊息)、最後一次成功載入的時間;各狀態在視圖內的呈現由各視圖規範。
+shell SHALL 持有**兩個獨立的資料來源**,各服務一個視圖(取數與正規化行為見 `graph-data-source`):
 
-資料重新載入(手動或自動)期間,MUST 持續顯示先前成功載入的資料,不得清空視圖;重新載入失敗時 MUST 保留先前資料並於狀態指示器顯示錯誤,MUST NOT 以錯誤畫面取代既有視圖。首次載入失敗時無先前資料,視圖依其錯誤狀態呈現。
+| 來源          | 端點                     | 服務的視圖 | 首次取數時機                                     |
+| ------------- | ------------------------ | ---------- | ------------------------------------------------ |
+| graph         | `endpoints.graph`        | Graph      | 設定載入完成後立即一次                           |
+| storage-graph | `endpoints.storageGraph` | Sankey     | **首次進入 Sankey 視圖且 `az` / `env` 已選定時** |
+
+兩者的 in-flight 請求、`status`、錯誤訊息、最後一次成功載入時間與重試 MUST 完全獨立:一方失敗或載入中 MUST NOT 影響另一方已渲染的資料。shell MUST NOT 把任一來源的資料交給另一個視圖。
+
+storage-graph 來源 MUST 為 **lazy**:使用者未曾進入 Sankey 視圖前,shell MUST NOT 發出任何 storage-graph 請求(包含自動刷新與時間範圍變更所觸發者)。這不只是省一次請求——`/v1/storage-graph` 要求 `az` / `env` 皆為單值,在使用者做出選擇前根本沒有可送出的合法請求。
+
+視圖切換本身 MUST NOT 觸發任何重新取數、MUST NOT 重新正規化:已載入的視圖 MUST 立即以其來源既有的資料渲染。
+
+任一來源重新載入(手動或自動)期間,MUST 持續顯示該來源先前成功載入的資料,不得清空視圖;重新載入失敗時 MUST 保留先前資料並於狀態指示器顯示錯誤,MUST NOT 以錯誤畫面取代既有視圖。首次載入失敗時無先前資料,視圖依其錯誤狀態呈現。
 
 #### Scenario: 視圖切換不重新取數
 
-- **WHEN** graph 資料已載入,使用者於 Graph 與 Sankey 視圖間來回切換三次
-- **THEN** 整個過程不發出任何 `endpoints.graph` 請求,兩視圖皆以同一份資料渲染,且不出現載入中狀態
+- **WHEN** 兩個來源皆已載入,使用者於 Graph 與 Sankey 視圖間來回切換三次
+- **THEN** 整個過程不發出任何請求,兩視圖各以其來源的資料渲染,且不出現載入中狀態
+
+#### Scenario: Sankey 未開啟前不取數
+
+- **WHEN** 應用啟動後使用者只停留在 Graph 視圖,期間發生多次自動刷新
+- **THEN** 對 `endpoints.storageGraph` 的請求數為 0
+
+#### Scenario: 首次進入 Sankey 才取數
+
+- **WHEN** 使用者首次切換至 Sankey 視圖,且 `az` / `env` 皆已選定
+- **THEN** shell 對 `endpoints.storageGraph` 發出恰好一次請求;再切回 Graph 視圖後又切回 Sankey,不再發出新請求
 
 #### Scenario: 重新載入期間保留舊資料
 
-- **WHEN** graph 資料已載入,使用者觸發重新載入且新請求進行中
-- **THEN** 視圖持續顯示既有資料,狀態指示器顯示載入中
+- **WHEN** 某來源的資料已載入,使用者觸發重新載入且新請求進行中
+- **THEN** 對應視圖持續顯示既有資料,狀態指示器顯示載入中
 
-#### Scenario: 重新載入失敗保留舊資料
+#### Scenario: 一方失敗不影響另一方
 
-- **WHEN** 重新載入的請求回應 HTTP 500
-- **THEN** 視圖仍顯示先前成功載入的資料,狀態指示器呈現錯誤狀態並可讀到錯誤訊息,不顯示設定錯誤畫面
-
-#### Scenario: 重新載入後兩視圖同步更新
-
-- **WHEN** 使用者於 Sankey 視圖觸發重新載入且成功
-- **THEN** Sankey 視圖以新資料重繪;切換至 Graph 視圖時亦為新資料,且不再發出請求
+- **WHEN** storage-graph 的重新載入回應 HTTP 500
+- **THEN** Sankey 仍顯示其先前成功載入的資料並於狀態指示器呈現錯誤;切換至 Graph 視圖時其資料與狀態完全不受影響,不顯示設定錯誤畫面
 
 ### Requirement: 重新載入動作與狀態指示器
 
-導覽列的「重新載入資料」動作 SHALL 立即觸發一次 graph 資料重新取得;請求進行中時該動作 MUST 呈現進行中狀態並 MUST NOT 發出第二個並行請求。`demoMode` 為 `true` 時,此動作 MUST 以同一份 fixture 重新產生資料而不發出網路請求。
+導覽列的「重新載入資料」動作 SHALL 立即觸發**當前視圖之資料來源**的一次重新取得——於 Graph 視圖為 graph 來源,於 Sankey 視圖為 storage-graph 來源;請求進行中時該動作 MUST 呈現進行中狀態並 MUST NOT 發出第二個並行請求。該動作 MUST NOT 刷新非當前視圖的來源。Sankey 視圖的 `az` / `env` 尚未選齊、或 `endpoints.storageGraph` 未設定時,該動作 MUST 呈現為不可用(而非發出一個必定被 400 拒絕的請求)。`demoMode` 為 `true` 時,此動作 MUST 以對應的 fixture 重新產生資料而不發出網路請求。
 
-當設定的 `refreshIntervalSeconds` 大於 `0` 時,shell SHALL 每隔該秒數自動觸發一次重新載入;若前一次請求仍在進行中,該次 tick MUST 略過;手動重新載入 MUST 重新計時。`refreshIntervalSeconds` 為 `0` 時 MUST NOT 自動刷新。
+當設定的 `refreshIntervalSeconds` 大於 `0` 時,shell SHALL 每隔該秒數自動觸發一次重新載入,同樣**只作用於當前視圖的來源**;若該來源前一次請求仍在進行中,該次 tick MUST 略過;手動重新載入 MUST 重新計時。切換視圖 MUST 使計時器改為服務新的當前來源。`refreshIntervalSeconds` 為 `0` 時 MUST NOT 自動刷新。
 
-狀態指示器 MUST 顯示:載入中時的載入指示;就緒時最後一次成功載入的時間(以使用者本地時間呈現);錯誤時的錯誤狀態,且錯誤訊息 MUST 可經由指示器讀取(例如展開或 tooltip);自動刷新啟用時 MUST 標示其間隔。
+狀態指示器 MUST 反映**當前視圖之來源**的狀態:載入中時的載入指示;就緒時該來源最後一次成功載入的時間(以使用者本地時間呈現);錯誤時的錯誤狀態,且錯誤訊息 MUST 可經由指示器讀取(例如展開或 tooltip);自動刷新啟用時 MUST 標示其間隔。切換視圖時指示器 MUST 立即改為顯示新視圖來源的狀態,MUST NOT 沿用前一個來源的時間或錯誤。
 
 #### Scenario: 手動重新載入
 
-- **WHEN** 使用者點擊「重新載入資料」
-- **THEN** 應用發出恰好一次 graph 資料請求;成功後狀態指示器更新為新的最後載入時間
+- **WHEN** 使用者於 Graph 視圖點擊「重新載入資料」
+- **THEN** 應用對 `endpoints.graph` 發出恰好一次請求、對 `endpoints.storageGraph` 發出零次;成功後狀態指示器更新為新的最後載入時間
+
+#### Scenario: 於 Sankey 視圖重新載入只重取 storage-graph
+
+- **WHEN** 兩個來源皆已載入,使用者於 Sankey 視圖點擊「重新載入資料」
+- **THEN** 應用只對 `endpoints.storageGraph` 發出一次請求;切回 Graph 視圖時其資料與最後載入時間維持不變
+
+#### Scenario: az / env 未選齊時重新載入不可用
+
+- **WHEN** 使用者於 Sankey 視圖且 `env` 尚未選定
+- **THEN** 「重新載入資料」呈現為不可用,點擊不發出任何請求
 
 #### Scenario: 進行中不重複發送
 
@@ -214,8 +264,9 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 
 #### Scenario: 自動刷新
 
-- **WHEN** `refreshIntervalSeconds` 為 `30`
-- **THEN** 應用約每 30 秒發出一次 graph 資料請求,狀態指示器標示自動刷新為 30s;手動重新載入後下一次自動刷新自該時間點起算 30 秒
+- **WHEN** `refreshIntervalSeconds` 為 `30`,使用者停留於 Graph 視圖
+- **THEN** 應用約每 30 秒對 `endpoints.graph` 發出一次請求,狀態指示器標示自動刷新為 30s;手動重新載入後下一次自動刷新自該時間點起算 30 秒
+- **AND** 切換至 Sankey 視圖後,自動刷新改為每 30 秒對 `endpoints.storageGraph` 發出一次,`endpoints.graph` 不再被自動刷新
 
 #### Scenario: 自動刷新關閉
 
@@ -224,8 +275,8 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 
 #### Scenario: demo 模式重新載入
 
-- **WHEN** `demoMode` 為 `true`,使用者點擊「重新載入資料」
-- **THEN** 不發出任何網路請求,資料以 fixture 重新產生,狀態指示器更新最後載入時間
+- **WHEN** `demoMode` 為 `true`,使用者於任一視圖點擊「重新載入資料」
+- **THEN** 不發出任何網路請求,該視圖的資料以其對應的 fixture 重新產生,狀態指示器更新最後載入時間
 
 ### Requirement: 視圖區填滿剩餘視窗高度並響應尺寸
 
@@ -243,7 +294,7 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 
 ### Requirement: 跨視圖保留各視圖的暫時狀態
 
-各視圖的暫時狀態 SHALL 在同一 session 內於視圖切換時保留:Graph 視圖的選取、collapse 集合、篩選(kind / edge type / ingress 可見性)、pod-parent mode、搜尋字串、legend 收合狀態;Sankey 視圖的 mode selector、cluster selector 與縮放平移視角(Sankey MUST NOT 持有持久的選取狀態,見 `storage-flow-sankey`;專注模式則於切走視圖時解除)。使用者離開再返回某視圖時,MUST 見到離開時的狀態。
+各視圖的暫時狀態 SHALL 在同一 session 內於視圖切換時保留:Graph 視圖的選取、collapse 集合、篩選(kind / edge type / ingress 可見性)、pod-parent mode、搜尋字串、legend 收合狀態,以及 filter bar 的 `cluster` / `az` / `env` / `namespace` / `edge_type` 與 Projection 選擇;Sankey 視圖的模式、其 `az` / `env` / root / `cluster` / `namespace` 選擇,以及縮放平移視角(Sankey MUST NOT 持有持久的選取狀態,見 `storage-flow-sankey`;專注模式則於切走視圖時解除)。使用者離開再返回某視圖時,MUST 見到離開時的狀態。
 
 上述狀態 MUST NOT 持久化至瀏覽器本機儲存,MUST NOT 寫入 URL(路由路徑 MUST 維持精確的 `/graph` / `/sankey`,無 query string、無 hash);完整重新整理後 MUST 全部回到初始值(其中 Graph 視圖的佈局演算法初始值來自設定的 `defaultLayout`)。資料重新載入 MUST NOT 主動清除這些狀態;資料改變後個別狀態如何對應(例如被選取的節點已不存在)由各視圖規範。
 
@@ -254,8 +305,8 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 
 #### Scenario: Sankey 視圖狀態跨切換保留
 
-- **WHEN** 使用者於 Sankey 視圖切換模式並選取一個節點,切至 Graph 視圖再返回
-- **THEN** Sankey 視圖的模式與選取不變
+- **WHEN** 使用者於 Sankey 視圖切換模式、加入一個 root 並改選 `env`,切至 Graph 視圖再返回
+- **THEN** Sankey 視圖的模式、root 與 `az` / `env` 選擇皆不變,且返回時 MUST NOT 因此重新取數(Sankey 自身沒有持久化的節點選取,見 `storage-flow-sankey`)
 
 #### Scenario: 狀態不寫入 URL 與本機儲存
 
@@ -265,7 +316,8 @@ graph 資料 SHALL 由 shell 於設定載入完成後取得一次(取數與正�
 #### Scenario: 重新整理後回到初始狀態
 
 - **WHEN** 使用者於 Graph 視圖建立選取與 collapse 狀態後完整重新整理
-- **THEN** Graph 視圖以初始狀態呈現:無選取、預設 collapse、預設篩選、預設 pod-parent mode、空搜尋、legend 展開,佈局演算法為設定的 `defaultLayout`
+- **THEN** Graph 視圖以初始狀態呈現:無選取、預設 collapse、預設篩選、預設 pod-parent mode、空搜尋、legend 展開、filter bar 為空且 Projection 為預設,佈局演算法為設定的 `defaultLayout`
+- **AND** Sankey 視圖的模式回到 `Both`、root 清空、`az` / `env` 依「單一候選值自動預選」規則重新決定
 
 ### Requirement: Shell 不註冊全域鍵盤快捷鍵
 

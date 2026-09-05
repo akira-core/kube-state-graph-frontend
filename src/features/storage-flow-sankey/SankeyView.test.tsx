@@ -2,19 +2,30 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type cytoscape from 'cytoscape';
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOWCASE_GRAPH } from '../../shared/fixtures/showcaseGraph';
+import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { normalizeGraph } from '../graph-data';
 import { ThemeProvider } from '../theme';
 
 import { SankeyView, type SankeyViewProps } from './SankeyView';
 
-const { elements } = normalizeGraph(SHOWCASE_GRAPH);
+const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 
-/** A refreshed payload in which `aggr1` no longer carries any measured flow. */
+/**
+ * A refreshed payload the backend answered without `aggr1` at all.
+ *
+ * Dropping only its edges would not do it: a node the backend returns with no flow is a
+ * materialised root and stays drawn on purpose, so the node itself has to go for this to
+ * be the "hovered node disappeared" case.
+ */
 function withoutAggr1(): cytoscape.ElementDefinition[] {
-  return elements.filter(
-    (el) => el.group !== 'edges' || !((el.data as cytoscape.EdgeDataDefinition).target ?? '').endsWith('/aggr1')
-  );
+  const isAggr1 = (id: string | undefined): boolean => (id ?? '').endsWith('/aggr1');
+  return elements.filter((el) => {
+    if (el.group === 'nodes') {
+      return !isAggr1((el.data as cytoscape.NodeDataDefinition).id);
+    }
+    const d = el.data as cytoscape.EdgeDataDefinition;
+    return !isAggr1(d.source) && !isAggr1(d.target);
+  });
 }
 
 type Overrides = Partial<SankeyViewProps>;
@@ -29,21 +40,23 @@ function baseProps(overrides: Overrides = {}): SankeyViewProps {
     visible: true,
     focusMode: false,
     onFocusModeChange: vi.fn(),
+    endpointConfigured: true,
+    azEnvReady: true,
     onLocateNode: vi.fn(),
     ...overrides,
   };
 }
 
-function renderSankey(overrides: Overrides = {}): { props: SankeyViewProps } {
+function renderSankey(overrides: Overrides = {}): { props: SankeyViewProps; unmount: () => void } {
   const props = baseProps(overrides);
-  render(
+  const { unmount } = render(
     <ThemeProvider>
       <div style={{ width: 800, height: 480 }}>
         <SankeyView {...props} />
       </div>
     </ThemeProvider>
   );
-  return { props };
+  return { props, unmount };
 }
 
 function renderSankeyWithProps(props: SankeyViewProps): ReturnType<typeof render> {
@@ -64,26 +77,89 @@ describe('SankeyView', () => {
     expect(screen.getAllByTestId('sankey-link-write').length).toBeGreaterThan(0);
   });
 
-  it('shows a cluster selector for the fixture and an empty state for dr', () => {
-    renderSankey();
-    const select = screen.getByLabelText('Cluster');
-    fireEvent.change(select, { target: { value: 'dr' } });
-    expect(screen.getByTestId('sankey-empty-cluster')).toHaveTextContent('The selected cluster has no storage flow');
-    expect(screen.queryByTestId('sankey-empty-mode')).not.toBeInTheDocument();
+  it('shows an unconfigured empty state without drawing', () => {
+    renderSankey({ demoMode: false, endpointConfigured: false, azEnvReady: false, hasPayload: false, status: 'idle' });
+    expect(screen.getByTestId('sankey-empty-unconfigured')).toHaveTextContent('not configured');
+    expect(screen.queryByTestId('sankey-svg')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /both/i })).toBeEnabled();
   });
 
-  it('locates a node on click', () => {
+  it('shows a distinct az/env prompt that is not the empty-response copy', () => {
+    renderSankey({ azEnvReady: false, hasPayload: false, status: 'idle' });
+    expect(screen.getByTestId('sankey-empty-scope')).toHaveTextContent('No request has been sent');
+    expect(screen.queryByTestId('sankey-empty-response')).not.toBeInTheDocument();
+  });
+
+  it('shows a distinct empty-response copy, extra in demo mode', () => {
+    renderSankey({ elements: [], demoMode: true });
+    expect(screen.getByTestId('sankey-empty-response')).toHaveTextContent('demo fixture');
+    expect(screen.getByTestId('sankey-empty-response')).toHaveTextContent('root name may not exist');
+  });
+
+  it('prompts to switch mode when the current direction has no measurements', () => {
+    const writeOnly = normalizeGraph({
+      elements: {
+        nodes: [
+          { data: { id: 'a', name: 'a', type: 'netapp-aggr' } },
+          { data: { id: 's', name: 's', type: 'netapp-svm' } },
+        ],
+        edges: [
+          {
+            data: {
+              id: 'e',
+              type: 'storage-flow',
+              source: 'a',
+              target: 's',
+              labels: { tier: 'aggr-svm' },
+              metrics: { write_bytes_per_sec: 100 },
+            },
+          },
+        ],
+      },
+    }).elements;
+    renderSankey({ elements: writeOnly });
+    fireEvent.click(screen.getByRole('radio', { name: /read/i }));
+    expect(screen.getByTestId('sankey-empty-mode')).toHaveTextContent('Read direction has no measurements');
+    fireEvent.click(screen.getByRole('radio', { name: /write/i }));
+    expect(screen.queryByTestId('sankey-empty-mode')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+  });
+
+  it('locates a storage node on click but not an SVM', () => {
     const { props } = renderSankey();
     fireEvent.click(screen.getByTestId('sankey-node-aggr1'));
     expect(props.onLocateNode).toHaveBeenCalled();
+    (props.onLocateNode as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.click(screen.getByTestId('sankey-node-svm_shop'));
+    expect(props.onLocateNode).not.toHaveBeenCalled();
+    expect(screen.getByTestId('sankey-node-svm_shop')).toHaveAttribute('data-locatable', 'false');
   });
 
-  it('shows a node tooltip with kind and label', () => {
+  it('shows ontap_cluster, hardware, and raw perf on a netapp-node tooltip', () => {
     renderSankey();
-    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr1'));
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-ontap-prod-02'));
     const tip = screen.getByRole('tooltip');
-    expect(tip).toHaveTextContent('netapp-aggr');
-    expect(tip).toHaveTextContent('aggr1');
+    expect(tip).toHaveTextContent('netapp-node');
+    expect(tip).toHaveTextContent('ontap_cluster: ontap-prod');
+    expect(tip).toHaveTextContent('AFF-A400');
+    expect(tip).toHaveTextContent('cpu_busy_pct');
+    expect(tip).toHaveTextContent('(raw)');
+    expect(tip).toHaveTextContent('health degraded');
+  });
+
+  it('shows tier on a link tooltip and QoS only on svm-pvc', () => {
+    renderSankey();
+    fireEvent.mouseEnter(screen.getAllByTestId('sankey-link-read')[0]!);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('tier');
+  });
+
+  it('marks a split pvc-pod as an estimate', () => {
+    renderSankey();
+    const splitLink = screen.getAllByTestId('sankey-link-read').find((el) => {
+      fireEvent.mouseEnter(el);
+      return screen.queryByRole('tooltip')?.textContent?.includes('split estimate') === true;
+    });
+    expect(splitLink).toBeDefined();
   });
 
   it('clears the tooltip and highlight when a refresh removes the hovered node', () => {
@@ -148,17 +224,18 @@ describe('SankeyView', () => {
   });
 
   it('shows the node flow summary table and hides it once the graph is empty', () => {
-    renderSankey();
+    const { unmount } = renderSankey();
     expect(screen.getByTestId('sankey-summary')).toBeInTheDocument();
-    const select = screen.getByLabelText('Cluster');
-    fireEvent.change(select, { target: { value: 'dr' } });
+    unmount();
+    renderSankey({ elements: [] });
     expect(screen.queryByTestId('sankey-summary')).not.toBeInTheDocument();
   });
 
   it('shows the zoom control bar only while a chart is actually drawn', () => {
-    renderSankey();
+    const { unmount } = renderSankey();
     expect(screen.getByTestId('sankey-zoom-controls')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Cluster'), { target: { value: 'dr' } });
+    unmount();
+    renderSankey({ elements: [] });
     expect(screen.queryByTestId('sankey-zoom-controls')).not.toBeInTheDocument();
     // mode selector stays operable during the empty state
     expect(screen.getByRole('radio', { name: /both/i })).not.toBeDisabled();
@@ -174,7 +251,7 @@ describe('SankeyView', () => {
     // path into the chart's listener exists, so the readout must not move.
     fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
     const zoomedText = screen.getByTestId('sankey-zoom-controls').textContent;
-    fireEvent.keyDown(screen.getByLabelText('Cluster'), { key: '1' });
+    fireEvent.keyDown(screen.getByRole('radio', { name: /both/i }), { key: '1' });
     expect(screen.getByTestId('sankey-zoom-controls').textContent).toBe(zoomedText);
   });
 
@@ -240,31 +317,29 @@ describe('SankeyView', () => {
     function node(id: string, kind: string, extra: Record<string, unknown> = {}): cytoscape.ElementDefinition {
       return { group: 'nodes', data: { id, label: id, kind, ...extra } };
     }
-    function mount(pod: string, pvc: string): cytoscape.ElementDefinition {
-      return { group: 'edges', data: { id: `${pod}->${pvc}`, source: pod, target: pvc, edgeType: 'pod-mounts-pvc' } };
-    }
-    function io(pvc: string, aggr: string): cytoscape.ElementDefinition {
+    function flow(source: string, target: string, tier: string): cytoscape.ElementDefinition {
       return {
         group: 'edges',
         data: {
-          id: `${pvc}->${aggr}`,
-          source: pvc,
-          target: aggr,
-          edgeType: 'pvc-to-netapp-aggr',
+          id: `${source}->${target}`,
+          source,
+          target,
+          edgeType: 'storage-flow',
+          labels: { tier },
           metrics: { readBytesPerSec: 1048576, writeBytesPerSec: 0 },
         },
       };
     }
     const usageFixture: cytoscape.ElementDefinition[] = [
-      node('pod-full', 'pod'),
+      node('svm-shared', 'netapp-svm'),
       node('pvc-full', 'pvc', { usage: { usedBytes: 700_000_000_000, capacityBytes: 1_000_000_000_000 } }),
-      node('pod-partial', 'pod'),
+      node('pod-full', 'pod'),
       node('pvc-partial', 'pvc', { usage: { usedBytes: 500_000_000 } }),
-      node('aggr-shared', 'netapp-aggr'),
-      mount('pod-full', 'pvc-full'),
-      mount('pod-partial', 'pvc-partial'),
-      io('pvc-full', 'aggr-shared'),
-      io('pvc-partial', 'aggr-shared'),
+      node('pod-partial', 'pod'),
+      flow('svm-shared', 'pvc-full', 'svm-pvc'),
+      flow('svm-shared', 'pvc-partial', 'svm-pvc'),
+      flow('pvc-full', 'pod-full', 'pvc-pod'),
+      flow('pvc-partial', 'pod-partial', 'pvc-pod'),
     ];
 
     it('shows used / capacity when both fields are present', () => {

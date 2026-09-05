@@ -1,11 +1,11 @@
 ## Context
 
-動機見 [proposal.md](./proposal.md) 的 Why;行為契約見 [specs/](./specs/)(13 個 capability,143 requirements)。本文只談**怎麼做**。
+動機見 [proposal.md](./proposal.md) 的 Why;行為契約見 [specs/](./specs/)(13 個 capability)。本文只談**怎麼做**。
 
 塑形此設計的既有條件:
 
 - **來源實作存在且成熟**。`kube-state-graph-panel` 已有完整的 graph 視圖實作,其 `src/shared/**` 與各 feature 的純邏輯與 Grafana 無關,可直接移植。本 change 不是從零設計,而是**抽離宿主**。
-- **後端契約不動**。`GET /v1/graph`(部署上通常為 `/v1/graph/service_graph`)回傳 cytoscape.js 形狀的 payload;`code_changes` / `config_changes` / `dashboard` 為其 sibling。三個 detail 端點中只有 `/dashboard` 吃 `from_time` / `to_time`。
+- **後端契約不動,且後端提供兩個圖端點**。`GET /v1/graph`(工作負載拓樸)與 `GET /v1/storage-graph`(儲存流量 DAG)回傳**同一個** cytoscape.js 形狀的 payload,差別在請求參數、投影與所帶的 node / edge 型別;`code_changes` / `config_changes` / `dashboard` 為 detail sibling,其中只有 `/dashboard` 吃 `from_time` / `to_time`。兩個圖端點的 `start` / `end` 皆為**必填且無相對形式**,`/v1/storage-graph` 的 `az` / `env` 另為必填單值。
 - **cytoscape 是既定約束**。canvas 渲染、compound 巢狀、collapse、佈局演算法都綁在 cytoscape.js 與其 extension 上,並非可替換的選擇。
 - **UI 表面小但高度自訂**。spec 已將搜尋列(兩段式 Esc、↑↓ 跳過 disabled 列、scroll-follow)、hover tooltip(跟隨游標、`right: 8` 對齊)、legend(每列 eye 切換、收合鈕 z-index 約束)指定到按鍵與像素層級;現成元件庫在這三塊幫不上忙。表格無排序、無分頁、無虛擬捲動。
 - **部署為 k8s 中的靜態容器**。同一個 image 服務所有環境,差異只來自掛載進來的 `config.json`。
@@ -82,9 +82,11 @@
 
 ### 6. 資料取用:自寫 hook,不引入 data-fetching 函式庫
 
-**Decision:** 一個 shell 層的 graph 載入 hook,自行實作 spec 要求的語意:單一 in-flight 請求(reload 與 auto-refresh tick 在請求進行中不重複發起)、stale-while-revalidate(刷新期間與刷新失敗後保留最後一份成功資料)、失敗只以狀態指示器呈現而不清空畫面、手動 reload 重置 interval。detail 端點的查詢沿用 panel 既有的 hook 形狀,把端點來源從 datasource 換成 runtime config。
+**Decision:** 一個**參數化的** shell 層載入 hook,以兩個實例分別服務兩個圖端點(見決策 17),自行實作 spec 要求的語意:單一 in-flight 請求(reload 與 auto-refresh tick 在請求進行中不重複發起)、stale-while-revalidate(刷新期間與刷新失敗後保留最後一份成功資料)、失敗只以狀態指示器呈現而不清空畫面、手動 reload 重置 interval。兩個實例的狀態互不相干。detail 端點的查詢沿用 panel 既有的 hook 形狀,把端點來源從 datasource 換成 runtime config。
 
-**Why:** 只有一個輪詢資源與少數幾個 by-id 查詢。spec 對刷新語意的規定很精確,直接寫比設定一個函式庫的快取策略更短也更好驗證。panel 的 detail hooks 已實作過同樣的 in-flight 與 key 比對邏輯,可原樣移植。
+重取的觸發鍵是**選擇**而非組出的 URL:相對時間範圍每次 render 都會解析出不同的 `start` / `end`,以 URL 當依賴會無限重取。因此 hook 依賴一個「選擇快照」(端點 + 時間範圍選項 + 篩選 / 估計 / root),而視窗於送出當下才解析。
+
+**Why:** 只有兩個輪詢資源與少數幾個 by-id 查詢。spec 對刷新語意的規定很精確,直接寫比設定一個函式庫的快取策略更短也更好驗證。panel 的 detail hooks 已實作過同樣的 in-flight 與 key 比對邏輯,可原樣移植。
 
 **Alternatives considered:** _TanStack Query_ —— 若日後 detail 端點增多、需要跨元件共享快取與失效策略,值得回頭引入;現階段其快取模型帶來的設定負擔大於收益。
 
@@ -100,7 +102,8 @@
 
 ### 8. Sankey:自算佈局 + React 自繪 SVG,盒卡節點與單一縮放層
 
-**Decision:** 不引入圖表庫,也**不使用 `d3-sankey`**;佈局是自己的純函式,渲染由 React 產生 SVG(`<path>` / `<rect>` / `<text>`)。
+**Decision:** 不引入圖表庫,也**不使用 `d3-sankey`**;佈局是自己的純函式(`layoutSankey`),渲染由 React 產生 SVG(`<path>` / `<rect>` / `<text>`)。read / write 雙向緞帶、零權重的最小厚度虛線、無流量 root 的孤立卡片、hover 全路徑高亮、tooltip、點擊跨視圖 locate,全部是自己的 JSX 與事件處理。顏色取自決策 3 的 token。
+輸入是 `/v1/storage-graph` 的 body(見決策 17),推導只做三件事:依 `labels.tier` 分層、把每條 `storage-flow` edge 依當前模式取一個方向的權重、依總流量排序。**不做任何加總或均分**——後端已保證逐 tier 守恆且已完成 RWX 的均分,前端再算一次只會產生一組對不上的數字。
 
 佈局分四步,每步都是可單測的純函式:
 
@@ -179,13 +182,11 @@
 
 ### 13. 新增檢視時間範圍(view time range)
 
-**Decision:** 導覽列提供相對時間範圍選擇器(1h / 6h / 24h / 7d / 自訂絕對區間),預設 24h,與主題同樣持久化於瀏覽器儲存,**不寫入 URL**。消費端有兩個:`/dashboard` 查詢的 `from_time` / `to_time`,以及 graph 查詢的 `start` / `end`;alert 的「Last occurred」點擊將其設為 `[t-300, t+300]`。
+**Decision:** 導覽列提供相對時間範圍選擇器(1h / 6h / 24h / 7d / 自訂絕對區間),預設 24h,與主題同樣持久化於瀏覽器儲存,**不寫入 URL**。它是 shell 唯一跨視圖共用的輸入,有三個消費端:`/v1/graph` 與 `/v1/storage-graph` 的 `start` / `end`,以及 `/dashboard` 查詢的 `from_time` / `to_time`;alert 的「Last occurred」點擊將其設為 `[t-300, t+300]`。
 
-**Why:** panel 從 Grafana dashboard 繼承時間範圍,SPA 無此宿主。取回的是實際運維動作:從一則告警跳到**該時刻**的 dashboard。既然 proposal 要求 UI 功能完整移植,這條屬於對等範圍。
+**Why:** panel 從 Grafana dashboard 繼承時間範圍,SPA 無此宿主,而兩個圖端點的 `start` / `end` 都是**必填且沒有相對形式**——視窗只能由前端在每次請求送出當下解析。這也是為什麼視窗不能是一個 config 值或一個在選取當下凍結的常數:它會停止移動,最終落到儲存保留期之外,後端回一個與壞掉的管線無法區分的空圖。附帶取回的是實際運維動作:從一則告警跳到**該時刻**的 dashboard。
 
-**修訂(實作後):** 原本判定「graph 查詢不帶時間」是錯的——上游 `GET /v1/graph` 缺 `start` / `end` 即回 400,設定裡寫死的視窗又會停在原處直到落出保留期、回一張與壞管線無從區分的空圖。時間範圍因此成為 graph 查詢的視窗,並於**每次請求當下**求值;change history 端點仍不帶時間。變更範圍會以新視窗重新取數,走與重新載入相同的路徑(既有圖續留、不重跑佈局、不重置視圖狀態)。
-
-**影響:** `app-shell` spec 的檢視時間範圍需求、`graph-data-source` 的「graph 請求的查詢字串」需求;`node-detail` spec 現有的條件式敘述(「當 app 提供可變更的檢視時間範圍時」)自動成為生效分支,無需改寫。
+**影響:** `app-shell` spec 的檢視時間範圍需求同時規範兩個端點的重取行為;`node-detail` spec 現有的條件式敘述(「當 app 提供可變更的檢視時間範圍時」)自動成為生效分支,無需改寫。
 
 **Alternatives considered:** _不新增_ —— `/dashboard` 不送時間,由目標 dashboard 用自己的預設視窗,「Last occurred」降級為純文字。省下一個控制項,但失去告警到 dashboard 的時間對齊。_寫入 URL 以便分享_ —— 與 spec 既定的「view state 不入 URL」不一致,且會讓分享連結的語意需要另外定義;日後若有分享需求可單獨提案。
 
@@ -215,6 +216,21 @@ CI 鏈:`typecheck → lint → fixture:check → unit → e2e → build`。
 
 **Why:** 「同一 image + 不同 ConfigMap」是此設計的核心部署前提(見決策 12)。`no-store` 於 config 確保設定變更在下次載入即生效,不需重建 image 或重啟 Pod。不用 `subPath` 是因為該掛載方式不會接收 ConfigMap 的後續更新。
 
+### 17. 兩個圖端點,兩個資料來源
+
+**Decision:** Graph 視圖走 `GET /v1/graph`,Sankey 視圖走 `GET /v1/storage-graph`,兩者是 shell 層兩個獨立的 loader 實例(決策 6),各有自己的 in-flight 請求、狀態、錯誤與最後成功時間。重新載入與自動刷新只作用於**當前視圖**的來源;storage-graph 為 **lazy**,使用者未進入 Sankey 視圖前不發出任何請求。兩者的 body 是同一個 cytoscape 形狀,因此共用同一組 `WireGraph` 型別與同一個 `normalizeGraph`——**只有請求端分岔,回應端不分岔**。
+
+**Why:** 早期設計讓兩個視圖共用一份 `/v1/graph` 資料,由前端沿 `pod → pvc → netapp-aggr` 推鏈、自行加總 aggregate 的入邊、自行把 RWX claim 的量測均分給 pod。後端的 storage-graph 端點使這條路同時**不可能**也**不必要**:
+
+- `netapp-svm` 是一整層 tier,`/v1/graph` 根本不輸出這個節點型別;
+- root 搜尋(自 aggregate、SVM、controller、pod 或 node 任一端出發,兩側取交集)是後端的投影,前端無從以 `/v1/graph` 的 body 重現;
+- 權重的**守恆**是後端在 build 時算好的性質。前端自行加總會在捨入與 FlexGroup / 未排程 pod 這類殘缺路徑上與後端分歧,產生一組無法對帳的數字;
+- `az` 是 Harvest 的路由鍵,`/v1/storage-graph` 因此要求 `az` / `env` 必填單值——這個約束在 `/v1/graph` 上不存在,無法用同一組 filter 表達。
+
+**代價:** 同名維度出現在兩處(Graph 的多選 filter bar 與 Sankey 的單選估計選擇器),使用者需要理解它們各自送往不同端點。這是刻意的:把兩者綁在一起,就得在 Graph 的多值選擇上強加一個單值限制,或在 Sankey 上沉默取第一個值——後者正是這個 demo 存在要抓的那種靜默失配。
+
+**Alternatives considered:** _Sankey 繼續由 `/v1/graph` 推導,只補 SVM_ —— SVM 不在該 body 中,補不了。_一個 loader 依當前視圖切換端點_ —— 切視圖會丟掉另一個視圖已載入的資料,違反「視圖切換不重新取數」。_兩個端點共用一組篩選控制_ —— 見上述代價。
+
 ## Risks / Trade-offs
 
 - **兩 repo 的純邏輯分岔** → 移植是複製而非共用套件。後端契約變更(新 kind、新 edge type、新 metrics 欄位)需要在兩處各改一次,且可能不同步。**Mitigation:** 兩邊都以 `WireGraph` 型別與 fixture drift check 把契約變更變成 typecheck 失敗而非執行期空白畫面;若日後分岔成本顯著上升,再評估抽成套件或 monorepo(此為刻意延後的決定,不是疏漏)。
@@ -227,7 +243,11 @@ CI 鏈:`typecheck → lint → fixture:check → unit → e2e → build`。
 
 - **Sankey 自繪的工作量** → 去掉 `d3-sankey` 後連佈局也自寫:欄 x、欄內順序、槽位疊、緞帶幾何,加上盒卡、欄位標題、色條、縮放平移與專注模式,量級約在 600 行。**Mitigation:** 佈局四步與 hover 路徑追蹤(給定節點求上下游連線集合)全是純函式,可脫離 DOM 單測;渲染層只做「純函式輸出 → SVG」的直譯,沒有藏在渲染裡的幾何。縮放平移不碰佈局,兩者的測試互不干擾。
 
-- **cytoscape bundle 約 300KB** → 首次載入成本固定存在。**Mitigation:** 接受(見 Non-Goals);Sankey 完全自繪,不再疊加任何圖表相依(ECharts 約 300KB+、`d3-sankey` 亦已移除)。
+- **Sankey 的 `az` / `env` 是一道額外的門檻** → 後端要求兩者必填單值,使用者進入 Sankey 視圖後可能看到一個什麼都沒畫的畫面。**Mitigation:** 候選值只有一個時自動預選(多數單估計部署即為此情況);未選齊時的提示與「沒有儲存流量」的空狀態必須是兩段不同的文字——把兩者寫成同一句,會讓一個未完成的選擇看起來像壞掉的管線。
+
+- **兩份 fixture 的一致性** → demo 模式下 Sankey 與 Graph 讀不同 fixture,兩者若描述不同的估計,跨視圖 Locate 在 demo 下會找不到目標。**Mitigation:** 兩份 fixture 共用同一組節點 id 與名稱,並由一個單元測試斷言 storage fixture 的每個 pod / pvc / netapp 節點 id 都存在於 graph fixture(SVM 除外——`/v1/graph` 不輸出該型別),以及 `storage-flow` 權重逐 tier 守恆。
+
+- **cytoscape bundle 約 300KB** → 首次載入成本固定存在。**Mitigation:** 接受(見 Non-Goals);Sankey 選 d3-sankey 而非 ECharts 已避免再疊加 300KB。
 
 - **專注模式收起 shell 導覽列** → 這是全 app 唯一由視圖隱藏 shell chrome 的路徑,離開的出口只剩 `Esc` 與控制列的按鈕;若兩者同時失效,使用者會被困在一個沒有導覽的畫面。**Mitigation:** `app-shell` 的導覽列需求寫死這條例外並只給 Sankey 專注模式;離開的兩條路徑各有 scenario;專注模式不入 URL、不持久化,重新整理必定回到有導覽列的狀態。
 
@@ -241,7 +261,7 @@ CI 鏈:`typecheck → lint → fixture:check → unit → e2e → build`。
 
 **建置順序**(細節見 tasks.md):
 
-1. 專案骨架與工具鏈 → 2. token 與主題層 → 3. runtime config 載入與錯誤畫面 → 4. 純邏輯移植(含其測試) → 5. app shell 與路由 → 6. Graph 視圖(canvas → legend → 互動 → 搜尋 → detail) → 7. Sankey 視圖 → 8. 容器與 k8s manifests → 9. e2e 與 CI。
+1. 專案骨架與工具鏈 → 2. token 與主題層 → 3. runtime config 載入與錯誤畫面 → 4. 純邏輯移植(含其測試) → 5. app shell 與路由 → 6. Graph 視圖(canvas → legend → 互動 → 搜尋 → detail) → 7. Graph 請求組裝(時間範圍 + filter bar) → 8. storage-graph 來源與 Sankey 視圖(估計 / root 選擇器 → tier 推導 → 渲染 → 跨視圖 Locate) → 9. 容器與 k8s manifests → 10. e2e 與 CI。
 
 每一階段結束時 demo 模式必須可渲染,使進度隨時可見。
 
@@ -253,4 +273,5 @@ CI 鏈:`typecheck → lint → fixture:check → unit → e2e → build`。
 
 - **Sankey 在超大拓樸下的可讀性上限**。spec 已訂效能界線(500 條 `pvc-to-netapp-aggr` edge 內首次繪製 ≤ 1 秒),但「幾百條連線的 Sankey 是否還讀得懂」是視覺問題而非效能問題。可能需要 top-N 篩選或聚合。**可延後**:待真實資料規模已知後再決定,不影響現有 spec、架構或任務拆解。
 - **是否需要匯出**(PNG / SVG / CSV)。運維情境常見「把圖貼進事件報告」。**可延後**:是獨立的附加功能,不影響現有設計。
+- **是否要提供 namespace / Application 層級的 Sankey**。後端刻意不把這兩者做成 tier(pod 不一定有 Application,`pod → node` 是物理跳而 `pod → application` 是邏輯跳),但同一份 body 帶著 `data.parent`,前端可以走 parent 鏈並加總守恆的權重推導出來。**可延後**:是既有 body 上的加法,不影響現有 spec 或架構。
 - **`refreshIntervalSeconds` 的實務預設值**。spec 訂預設 0(關閉),由運維者決定。實際部署後或許會發現某個值應成為文件建議值。**可延後**:純文件層面。

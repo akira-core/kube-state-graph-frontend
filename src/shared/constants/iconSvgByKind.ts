@@ -80,6 +80,12 @@ export const ICON_SVG_BY_KIND: Record<NodeKind, string> = {
   'netapp-node': icon(
     '<rect x="3" y="6" width="18" height="12" rx="1.6"/><line x1="6.4" y1="9.6" x2="13" y2="9.6"/><line x1="6.4" y1="14.4" x2="13" y2="14.4"/><circle cx="17.6" cy="9.6" r="1.1"/>'
   ),
+  // ONTAP SVM: a cylinder (storage) with a single mid band — one fewer than
+  // netapp-aggr's two internal layers, so the two Storage cylinders stay distinct
+  // at legend size. SVM is a leaf in the Sankey (not a compound parent).
+  'netapp-svm': icon(
+    '<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6 v12 a7 2.5 0 0 0 14 0 V6"/><path d="M5 12 a7 2.5 0 0 0 14 0"/>'
+  ),
   // Virtual switch-fabric group, drawn as a wifi mark (three arcs + dot): reads
   // as "the network". Only ever drawn when the group is COLLAPSED (expanded it
   // is a labelled container with no icon). Legend follows deriveLegendKinds:

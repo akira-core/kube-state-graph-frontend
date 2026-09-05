@@ -85,6 +85,27 @@ export interface WireNodeData {
   /** The K8s node's Ready condition. Absence is NOT 'Unknown'. */
   ready_status?: string;
   usage?: WireUsage;
+  /**
+   * Hardware identity on a `netapp-node` (Harvest `node_labels`). Each field is
+   * independently optional; the whole object is omitted when none resolved.
+   */
+  hardware?: {
+    model?: string;
+    serial?: string;
+    version?: string;
+    vendor?: string;
+    location?: string;
+  };
+  /**
+   * Raw performance readings on a `netapp-node`. Absence is NOT 0, and none of
+   * these values is a health signal — health arrives via `health` / `alerts`.
+   */
+  perf?: {
+    cpu_busy_pct?: number;
+    total_ops?: number;
+    total_latency_us?: number;
+    total_bytes_per_sec?: number;
+  };
   /** PANEL-ONLY, like `alerts` — the backend emits no health status field. */
   status?: string;
   /** PANEL-ONLY. See WireAlert. */

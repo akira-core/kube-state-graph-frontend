@@ -80,7 +80,7 @@ repo 根目錄 SHALL 提供 `Dockerfile`,以多階段建置產出 image:建置�
 靜態 web server SHALL 依資源類型設定快取策略:
 
 - `/assets/` 下以內容雜湊命名的檔案 MUST 帶 `Cache-Control: public, max-age=31536000, immutable`。
-- `index.html`(含 fallback 回應)與其他非雜湊命名的靜態檔(如 `/demo/graph.json`)MUST 帶 `Cache-Control: no-cache`,使每次部署新版後瀏覽器重新驗證。
+- `index.html`(含 fallback 回應)與其他非雜湊命名的靜態檔(如 `/demo/graph.json`、`/demo/storage-graph.json`)MUST 帶 `Cache-Control: no-cache`,使每次部署新版後瀏覽器重新驗證。
 - 每個回應 MUST 帶正確的 `Content-Type`(`.js` 為 JavaScript MIME type、`.json` 為 `application/json`、`.svg` 為 `image/svg+xml`),否則 ES module 無法載入;並 MUST 帶 `X-Content-Type-Options: nosniff`。
 - 文字類資源(HTML、JavaScript、CSS、JSON、SVG)在 client 以 `Accept-Encoding` 表明支援時 MUST 以壓縮編碼回傳,並帶 `Vary: Accept-Encoding`。
 
@@ -107,7 +107,11 @@ repo 根目錄 SHALL 提供 `Dockerfile`,以多階段建置產出 image:建置�
 
 靜態 web server SHALL 支援以環境變數 `KSG_API_PROXY_TARGET`(例如 `http://kube-state-graph.monitoring.svc:8080`)啟用同源反向代理:設定時,`/api/` 前綴下的請求 MUST 轉發至該目標並去除 `/api` 前綴(`/api/v1/graph` → `<target>/v1/graph`、`/api/dashboard` → `<target>/dashboard`),path 與 query string 原樣保留,回應的狀態碼、header 與 body 原樣回傳且 MUST NOT 由 web server 快取。運維者藉此在 `config.json` 使用 root-relative 端點(`/api/v1/graph`)而免除 CORS 設定。此功能為**可選**:未設定 `KSG_API_PROXY_TARGET` 時,`/api/` 下的請求 MUST 回 `404` 而非 `index.html`,讓錯誤設定以明確的 HTTP 錯誤浮現,而非 app 內的 JSON 解析失敗。
 
-運維者若需超出此範圍的 server 行為,SHALL 能以掛載方式覆寫 image 內的 web server 設定檔;該設定檔在容器內的路徑 MUST 記載於 `deploy/README.md`。
+web server SHALL 另支援**第二個**、獨立的環境變數 `KSG_METRICS_PROXY_TARGET`,以完全相同的規則代理 `/metrics-api/` 前綴至一個 **Prometheus 相容**的 upstream(`/metrics-api/api/v1/label/az/values` → `<target>/api/v1/label/az/values`),未設定時同樣回 `404`。
+
+兩個 upstream **不可**合而為一:`endpoints.labelValues` 讀的是 `<base>/api/v1/label/<name>/values`,graph API 不提供該路徑。把 `labelValues` 指向 `/api` 會得到 404,而 404 在 UI 上的樣子是一組列不出任何選項的識別維度控制——與「這個 estate 沒有 pod」無法區分。
+
+運維者若需超出此範圍的 server 行為(例如該 metrics store 需要憑證,而 `config.json` 公開可讀不得攜帶),SHALL 能以掛載方式覆寫 image 內的 web server 設定檔;該設定檔在容器內的路徑 MUST 記載於 `deploy/README.md`。
 
 #### Scenario: 以環境變數啟用代理
 
@@ -119,13 +123,19 @@ repo 根目錄 SHALL 提供 `Dockerfile`,以多階段建置產出 image:建置�
 - **WHEN** 未設定 `KSG_API_PROXY_TARGET` 即啟動容器,請求 `GET /api/v1/graph`
 - **THEN** 回應為 `404`,body 不是 `index.html`
 
+#### Scenario: label values 走第二個 upstream
+
+- **WHEN** 容器以 `KSG_API_PROXY_TARGET=http://backend:8080` 與 `KSG_METRICS_PROXY_TARGET=http://vmselect:8481/select/0/prometheus` 啟動,請求 `GET /metrics-api/api/v1/label/az/values?match%5B%5D=kube_pod_info`
+- **THEN** vmselect 收到 `GET /api/v1/label/az/values?match[]=kube_pod_info`,後端未收到任何請求
+- **AND** 只設定 `KSG_API_PROXY_TARGET` 時,同一請求回 `404`,而非被轉發至不提供該路徑的 graph API
+
 ### Requirement: Kubernetes manifests
 
 `deploy/` SHALL 含 `kustomization.yaml` 與其引用的 `deployment.yaml`、`service.yaml`、`configmap.yaml`,可以 `kubectl apply -k deploy/` 套用;每個檔案亦 MUST 為可獨立套用的合法 manifest,使 `kubectl apply -f deploy/` 亦可。manifests MUST NOT 硬編 namespace。
 
-- **Deployment** SHALL:引用 CI 發佈的 image;宣告 container port `8080`(命名 `http`);以 `GET /healthz` 設定 liveness 與 readiness probe;宣告 CPU / memory 的 `requests` 與 `limits`;將 ConfigMap 以目錄掛載於 `/srv/config`;符合 Pod Security Standards `restricted` profile(`runAsNonRoot: true`、`allowPrivilegeEscalation: false`、`capabilities.drop: [ALL]`、`seccompProfile.type: RuntimeDefault`);並以註解示範 `KSG_API_PROXY_TARGET` 的設定方式。
+- **Deployment** SHALL:引用 CI 發佈的 image;宣告 container port `8080`(命名 `http`);以 `GET /healthz` 設定 liveness 與 readiness probe;宣告 CPU / memory 的 `requests` 與 `limits`;將 ConfigMap 以目錄掛載於 `/srv/config`;符合 Pod Security Standards `restricted` profile(`runAsNonRoot: true`、`allowPrivilegeEscalation: false`、`capabilities.drop: [ALL]`、`seccompProfile.type: RuntimeDefault`);並以註解示範 `KSG_API_PROXY_TARGET` 與 `KSG_METRICS_PROXY_TARGET` 的設定方式,且註解 MUST 說明兩者是不同的 upstream。
 - **Service** SHALL 為 `ClusterIP`,port `80` 對應 targetPort `http`。Ingress 與 TLS 由叢集運維提供,不在本 capability 範圍。
-- **ConfigMap** SHALL 以 `config.json` 為 key 攜帶一份**完整**的設定範例:每一個文件化的 key 皆出現(`endpoints.graph`、`endpoints.codeChanges`、`endpoints.configChanges`、`endpoints.dashboard`、`demoMode`、`refreshIntervalSeconds`、`defaultLayout`、`theme`),`demoMode` 預設 `true`,端點以 root-relative `/api/...` 形式示範。
+- **ConfigMap** SHALL 以 `config.json` 為 key 攜帶一份**完整**的設定範例:每一個文件化的 key 皆出現(`endpoints.graph`、`endpoints.storageGraph`、`endpoints.labelValues`、`endpoints.edgeTypes`、`endpoints.codeChanges`、`endpoints.configChanges`、`endpoints.dashboard`、`demoMode`、`refreshIntervalSeconds`、`defaultLayout`、`theme`),`demoMode` 預設 `true`,端點以 root-relative 形式示範。範例值 MUST 指向該端點**真正會被服務到**的前綴:graph API 的端點走 `/api/...`,而 `endpoints.labelValues` MUST 為 `/metrics-api`——範例是照抄用的,一個 404 的範例值等同於預設就是壞的。
 
 image 參照 SHALL 可由 `kustomization.yaml` 的 `images:` 區段覆寫;`Makefile` SHALL 提供 `image`(`docker build`)、`image-push` 與 `deploy`(套用 manifests)目標,皆以文件化變數 `IMAGE=<registry>/<repo>:<tag>` 指定 image 參照。
 
@@ -146,7 +156,7 @@ image 參照 SHALL 可由 `kustomization.yaml` 的 `images:` 區段覆寫;`Makef
 
 ### Requirement: 無後端時以 demo 模式啟動
 
-image 的啟動與就緒 MUST NOT 依賴任何後端可達:容器不做啟動時連線檢查,readiness 只看 `/healthz`。當 ConfigMap 的 `config.json` 設定 `demoMode: true` 且叢集內沒有任何 kube-state-graph 後端時,套用未修改的 `deploy/` 後 app MUST 完整渲染 showcase graph。image 亦 SHALL 於 `<base>/demo/graph.json` 提供 `dist/` 內的範例 payload,使 `endpoints.graph: "/demo/graph.json"`、`demoMode: false` 能在無後端的叢集中走完真實 fetch 路徑,作為部署後的 smoke test。
+image 的啟動與就緒 MUST NOT 依賴任何後端可達:容器不做啟動時連線檢查,readiness 只看 `/healthz`。當 ConfigMap 的 `config.json` 設定 `demoMode: true` 且叢集內沒有任何 kube-state-graph 後端時,套用未修改的 `deploy/` 後 app MUST 完整渲染 showcase graph。image 亦 SHALL 於 `<base>/demo/graph.json` 與 `<base>/demo/storage-graph.json` 提供 `dist/` 內的兩份範例 payload,使 `endpoints.graph: "/demo/graph.json"`、`endpoints.storageGraph: "/demo/storage-graph.json"`、`demoMode: false` 能在無後端的叢集中走完兩條真實 fetch 路徑,作為部署後的 smoke test。
 
 #### Scenario: 無後端的叢集直接看到 demo
 
@@ -176,7 +186,7 @@ image tag SHALL 為:push 到 `main` 時 `main` 與 `sha-<short-sha>`;tag `vX.Y.Z
 
 ### Requirement: 部署文件
 
-`deploy/README.md` SHALL 記載:前置需求(可用的叢集與 `kubectl`)、image registry 與 tag 規則、套用指令(`kubectl apply -k deploy/` 與 `make deploy IMAGE=...`)、`config.json` 的掛載路徑 `/srv/config/config.json` 與「公開可讀、不得含 secret」的警語、`KSG_API_PROXY_TARGET` 的用法與 CORS 取捨(root-relative 端點 + 代理,或絕對 URL + 後端允許前端 origin)、覆寫 web server 設定檔的路徑、`/healthz` 端點、修改 ConfigMap 後的生效方式與傳播延遲、升版 image tag 的方式,以及以 `demoMode: true` 與 `/demo/graph.json` 驗證部署的步驟。
+`deploy/README.md` SHALL 記載:前置需求(可用的叢集與 `kubectl`)、image registry 與 tag 規則、套用指令(`kubectl apply -k deploy/` 與 `make deploy IMAGE=...`)、`config.json` 的掛載路徑 `/srv/config/config.json` 與「公開可讀、不得含 secret」的警語、`KSG_API_PROXY_TARGET` 與 `KSG_METRICS_PROXY_TARGET` 的用法、兩者為不同 upstream 的理由,與 CORS 取捨(root-relative 端點 + 代理,或絕對 URL + 後端允許前端 origin)、覆寫 web server 設定檔的路徑、`/healthz` 端點、修改 ConfigMap 後的生效方式與傳播延遲、升版 image tag 的方式,以及以 `demoMode: true` 與 `/demo/graph.json` 驗證部署的步驟。
 
 #### Scenario: 運維者只靠文件完成部署與驗證
 

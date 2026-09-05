@@ -30,7 +30,10 @@ export interface SankeySummaryProps {
 // anyone who wants exact figures instead of reading ribbon widths.
 export function SankeySummary({ nodes, namespaces }: Readonly<SankeySummaryProps>): JSX.Element {
   return (
-    <div className="shrink-0 space-y-4 border-t border-hairline bg-surface p-3" data-testid="sankey-summary">
+    <div
+      className="ksg-scroll max-h-[45%] shrink-0 space-y-4 overflow-y-auto border-t border-hairline bg-surface p-3"
+      data-testid="sankey-summary"
+    >
       <div>
         <h3 className={eyebrowClass}>Node flow summary</h3>
         <div className="ksg-scroll mt-1.5 overflow-x-auto rounded-md border border-hairline">

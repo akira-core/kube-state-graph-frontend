@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 
-import { buildGraphRequestUrl, graphRequestKey, useGraphLoader } from '../graph-data';
+import { DEMO_IDENTITY_OPTIONS, SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
+import {
+  buildGraphRequestUrl,
+  buildStorageGraphRequestUrl,
+  graphRequestKey,
+  storageGraphRequestKey,
+  useGraphLoader,
+} from '../graph-data';
 import { FilterBar, useFilterOptions, useGraphFilters } from '../graph-filters';
 import { GraphView } from '../graph-view';
 import type { RuntimeConfig } from '../runtime-config';
-import { SankeyView } from '../storage-flow-sankey';
+import { SankeyScopeBar, SankeyView, useSankeyQuery } from '../storage-flow-sankey';
 
 import { NavBar } from './NavBar';
 import { useViewTimeRange } from './useViewTimeRange';
@@ -27,31 +34,63 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
   const [graphMounted, setGraphMounted] = useState(isGraph);
   const [sankeyMounted, setSankeyMounted] = useState(isSankey);
   const [sankeyFocusMode, setSankeyFocusMode] = useState(false);
+  const [sankeyVisited, setSankeyVisited] = useState(isSankey);
   const time = useViewTimeRange();
   const { filters, setValues, setPrune, clear } = useGraphFilters();
-  // Demo mode renders a bundled fixture, so there is no backend to narrow: the option
-  // sources are not consulted and the bar is not rendered.
   const filterOptions = useFilterOptions(
     config.demoMode ? undefined : config.endpoints.labelValues,
     config.demoMode ? undefined : config.endpoints.edgeTypes
   );
+  const sankeyIdentity = config.demoMode
+    ? DEMO_IDENTITY_OPTIONS
+    : {
+        az: filterOptions.az,
+        env: filterOptions.env,
+        cluster: filterOptions.cluster,
+        namespace: filterOptions.namespace,
+      };
+  const sankeyQuery = useSankeyQuery(sankeyIdentity);
+
   const graphEndpoint = config.demoMode ? undefined : config.endpoints.graph;
-  // The URL is a function rather than a value: a relative window must re-read the clock
-  // on every request, so the loader calls this when it fetches, not when we render.
-  const makeUrl = useCallback(
+  const storageEndpoint = config.demoMode ? undefined : config.endpoints.storageGraph;
+  const storageConfigured = config.demoMode || storageEndpoint !== undefined;
+
+  const makeGraphUrl = useCallback(
     () => (graphEndpoint === undefined ? undefined : buildGraphRequestUrl(graphEndpoint, time.range, filters)),
     [graphEndpoint, time.range, filters]
   );
-  const requestKey = useMemo(
+  const graphKey = useMemo(
     () => graphRequestKey(graphEndpoint, time.range, filters),
     [graphEndpoint, time.range, filters]
   );
-  const { state, reload } = useGraphLoader({
+  const graph = useGraphLoader({
     demoMode: config.demoMode,
-    makeUrl,
-    requestKey,
-    refreshIntervalSeconds: config.refreshIntervalSeconds,
+    makeUrl: makeGraphUrl,
+    requestKey: graphKey,
+    refreshIntervalSeconds: isGraph ? config.refreshIntervalSeconds : 0,
   });
+
+  const makeStorageUrl = useCallback(
+    () =>
+      storageEndpoint === undefined
+        ? undefined
+        : buildStorageGraphRequestUrl(storageEndpoint, time.range, sankeyQuery.query),
+    [storageEndpoint, time.range, sankeyQuery.query]
+  );
+  const storageKey = useMemo(
+    () => storageGraphRequestKey(storageEndpoint, time.range, sankeyQuery.query),
+    [storageEndpoint, time.range, sankeyQuery.query]
+  );
+  const storageEnabled = sankeyVisited && sankeyQuery.azEnvReady && storageConfigured;
+  const storage = useGraphLoader({
+    demoMode: config.demoMode,
+    demoPayload: SHOWCASE_STORAGE_GRAPH,
+    enabled: storageEnabled,
+    makeUrl: makeStorageUrl,
+    requestKey: storageKey,
+    refreshIntervalSeconds: isSankey ? config.refreshIntervalSeconds : 0,
+  });
+
   const [locateId, setLocateId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,6 +99,7 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
     }
     if (isSankey) {
       setSankeyMounted(true);
+      setSankeyVisited(true);
     }
   }, [isGraph, isSankey]);
 
@@ -76,18 +116,21 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
   }, [isSankey, sankeyFocusMode]);
 
   const notFound = !isGraph && !isSankey && path !== '/';
+  const active = isSankey ? storage.state : graph.state;
+  const reloadDisabled =
+    notFound || (isSankey && (!sankeyQuery.azEnvReady || (!config.demoMode && storageEndpoint === undefined)));
 
   const graphProps = useMemo(
     () => ({
       config,
-      elements: state.elements,
-      errors: state.errors,
-      error: state.error,
-      hasPayload: state.hasPayload,
-      status: state.status,
+      elements: graph.state.elements,
+      errors: graph.state.errors,
+      error: graph.state.error,
+      hasPayload: graph.state.hasPayload,
+      status: graph.state.status,
       viewTimeRange: time.resolved,
     }),
-    [config, state, time.resolved]
+    [config, graph.state, time.resolved]
   );
 
   return (
@@ -95,19 +138,21 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
       {!sankeyFocusMode && (
         <NavBar
           demoMode={config.demoMode}
-          lastLoadedAt={state.lastLoadedAt}
-          refreshing={state.refreshing || (state.status === 'loading' && !state.hasPayload)}
-          error={state.error}
-          refreshIntervalSeconds={config.refreshIntervalSeconds}
-          onReload={reload}
+          lastLoadedAt={active.lastLoadedAt}
+          refreshing={active.refreshing || (active.status === 'loading' && !active.hasPayload)}
+          error={active.error}
+          refreshIntervalSeconds={isGraph || isSankey ? config.refreshIntervalSeconds : 0}
+          onReload={isSankey ? storage.reload : graph.reload}
+          reloadDisabled={reloadDisabled}
           viewRange={time.range}
           onRelative={time.setRelative}
           onAbsolute={time.setAbsolute}
         />
       )}
-      {!config.demoMode && (
+      {isGraph && !config.demoMode && (
         <FilterBar filters={filters} options={filterOptions} onValues={setValues} onPrune={setPrune} onClear={clear} />
       )}
+      {isSankey && !sankeyFocusMode && <SankeyScopeBar options={sankeyIdentity} controller={sankeyQuery} />}
       <main className="relative min-h-0 flex-1">
         {graphMounted && (
           <div className="absolute inset-0" hidden={!isGraph}>
@@ -122,14 +167,17 @@ function ViewHost({ config }: Readonly<AppShellProps>): JSX.Element {
         {sankeyMounted && (
           <div className="absolute inset-0" hidden={!isSankey}>
             <SankeyView
-              elements={state.elements}
-              status={state.status}
-              error={state.error}
-              hasPayload={state.hasPayload}
+              elements={storage.state.elements}
+              status={storage.state.status}
+              error={storage.state.error}
+              hasPayload={storage.state.hasPayload}
               demoMode={config.demoMode}
               visible={isSankey}
               focusMode={sankeyFocusMode}
               onFocusModeChange={setSankeyFocusMode}
+              endpointConfigured={storageConfigured}
+              azEnvReady={sankeyQuery.azEnvReady}
+              roots={sankeyQuery.query.roots}
               onLocateNode={(id) => {
                 setLocateId(id);
                 void navigate('/graph');
