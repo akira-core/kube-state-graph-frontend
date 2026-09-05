@@ -97,4 +97,38 @@ describe('AlertTable', () => {
     // max = 1717501200s = 2024-06-04 11:40:00 UTC
     expect(screen.getByTestId('alert-time')).toHaveTextContent(localTime(1717501200));
   });
+
+  // kube-state-graph's alert overlay reports no occurrence history at all. Both derived
+  // cells have to degrade rather than invent a 0 count and an epoch-zero date.
+  describe('an alert with no occurrence history', () => {
+    const timeless: NodeAlert = { pod: 'ontap-lab-02', name: 'NetAppControllerDegraded', severity: 'critical' };
+
+    it('still renders the row, with its name and severity', () => {
+      render(<AlertTable alerts={[timeless]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.getByText('NetAppControllerDegraded')).toBeInTheDocument();
+      expect(screen.getByTestId('alert-severity')).toHaveTextContent('critical');
+    });
+
+    it('shows n/a for Count and Last occurred instead of a fabricated 0 and epoch date', () => {
+      render(<AlertTable alerts={[timeless]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.queryByTestId('alert-count')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('alert-time')).not.toBeInTheDocument();
+      // service + Count + Last occurred; pod is present on this fixture.
+      expect(screen.getAllByText('n/a')).toHaveLength(3);
+    });
+
+    it('offers no time-rewind target — there is no instant to rewind to', () => {
+      const onAlertTimeClick = jest.fn();
+      render(<AlertTable alerts={[timeless]} onAlertTimeClick={onAlertTimeClick} timeZone="utc" />);
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+      expect(onAlertTimeClick).not.toHaveBeenCalled();
+    });
+
+    it('degrades only its own row when mixed with timed alerts', () => {
+      render(<AlertTable alerts={[alerts[0]!, timeless]} onAlertTimeClick={jest.fn()} timeZone="utc" />);
+      expect(screen.getAllByTestId('alert-count')).toHaveLength(1);
+      expect(screen.getAllByTestId('alert-time')).toHaveLength(1);
+      expect(screen.getByTestId('alert-time')).toHaveTextContent(localTime(1717501200));
+    });
+  });
 });

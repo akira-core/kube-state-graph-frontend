@@ -9,8 +9,16 @@ import { formatChangeTime } from '../../formatChangeTime';
 
 import type { AlertTableProps } from './AlertTable.types';
 
-function lastSeen(alert: NodeAlert): number {
-  return alert.timeRecords.length > 0 ? (alert.timeRecords[alert.timeRecords.length - 1] as number) : 0;
+// Occurrence times of one alert, or [] when the producer reports none. `timeRecords` is
+// optional and is never written empty, so this is the single place the two spellings of
+// "no history" collapse into one.
+function occurrences(alert: NodeAlert): readonly number[] {
+  return alert.timeRecords ?? [];
+}
+
+// Ascending by contract, so the last element is the most recent.
+function lastSeen(times: readonly number[]): number | undefined {
+  return times.length > 0 ? times[times.length - 1] : undefined;
 }
 
 function fmt(timeSec: number): string {
@@ -40,7 +48,8 @@ export function AlertTable({ alerts, onAlertTimeClick }: Readonly<AlertTableProp
         </thead>
         <tbody>
           {alerts.map((alert, index) => {
-            const t = lastSeen(alert);
+            const times = occurrences(alert);
+            const t = lastSeen(times);
             return (
               <tr key={`${alert.id ?? alert.name}-${String(index)}`}>
                 <td className={alert.pod === undefined ? 'text-muted' : undefined}>
@@ -59,43 +68,61 @@ export function AlertTable({ alerts, onAlertTimeClick }: Readonly<AlertTableProp
                     {alert.severity}
                   </span>
                 </td>
-                <td>
-                  <Tooltip.Root>
-                    <Tooltip.Trigger asChild>
-                      <span
-                        className="inline-block min-w-[18px] cursor-default rounded-full border border-secondary px-1.5 text-center text-[11px] font-semibold text-secondary"
-                        data-testid="alert-count"
-                        tabIndex={0}
-                        title={alert.timeRecords.map(fmt).join('\n')}
-                      >
-                        {alert.timeRecords.length}
-                      </span>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content className="z-[1200] rounded bg-elevated px-2 py-1 text-xs shadow" sideOffset={4}>
-                        <div className="flex flex-col gap-0.5 font-mono">
-                          {alert.timeRecords.map((occ, i) => (
-                            <span key={`${String(occ)}-${String(i)}`}>{fmt(occ)}</span>
-                          ))}
-                        </div>
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                  <div className="hidden" data-testid="alert-occurrences">
-                    {alert.timeRecords.map((occ, i) => (
-                      <span key={`${String(occ)}-${String(i)}`}>{fmt(occ)}</span>
-                    ))}
-                  </div>
+                {/* Count and Last occurred are BOTH derived from the occurrence list, so
+                    an alert with no history degrades both to the panel-wide placeholder
+                    rather than showing a made-up 0 and an epoch date. */}
+                <td className={times.length === 0 ? 'text-muted' : undefined}>
+                  {times.length === 0 ? (
+                    MISSING_VALUE_PLACEHOLDER
+                  ) : (
+                    <>
+                      <Tooltip.Root>
+                        <Tooltip.Trigger asChild>
+                          <span
+                            className="inline-block min-w-[18px] cursor-default rounded-full border border-secondary px-1.5 text-center text-[11px] font-semibold text-secondary"
+                            data-testid="alert-count"
+                            tabIndex={0}
+                            title={times.map(fmt).join('\n')}
+                          >
+                            {times.length}
+                          </span>
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                          <Tooltip.Content
+                            className="z-[1200] rounded bg-elevated px-2 py-1 text-xs shadow"
+                            sideOffset={4}
+                          >
+                            <div className="flex flex-col gap-0.5 font-mono">
+                              {times.map((occ, i) => (
+                                <span key={`${String(occ)}-${String(i)}`}>{fmt(occ)}</span>
+                              ))}
+                            </div>
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      </Tooltip.Root>
+                      <div className="hidden" data-testid="alert-occurrences">
+                        {times.map((occ, i) => (
+                          <span key={`${String(occ)}-${String(i)}`}>{fmt(occ)}</span>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </td>
-                <td>
-                  <button
-                    type="button"
-                    className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-link underline"
-                    data-testid="alert-time"
-                    onClick={() => onAlertTimeClick(t)}
-                  >
-                    {fmt(t)}
-                  </button>
+                {/* Not a button when there is no time: the click rewinds the view window
+                    to that instant, and there is no instant to rewind to. */}
+                <td className={t === undefined ? 'text-muted' : undefined}>
+                  {t === undefined ? (
+                    MISSING_VALUE_PLACEHOLDER
+                  ) : (
+                    <button
+                      type="button"
+                      className="cursor-pointer border-0 bg-transparent p-0 font-inherit text-link underline"
+                      data-testid="alert-time"
+                      onClick={() => onAlertTimeClick(t)}
+                    >
+                      {fmt(t)}
+                    </button>
+                  )}
                 </td>
               </tr>
             );

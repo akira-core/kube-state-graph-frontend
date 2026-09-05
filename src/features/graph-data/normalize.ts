@@ -196,7 +196,8 @@ function isValidEpochSeconds(n: unknown): n is number {
 }
 
 // Ascending `timeRecords` from upstream `time_records` (valid epoch seconds, sorted);
-// falls back to the legacy single `time` scalar. undefined = no valid occurrence time.
+// falls back to the legacy single `time` scalar. undefined = no valid occurrence time,
+// which is a legitimate alert (see parseAlerts) rather than a reason to discard one.
 function parseTimeRecords(entry: Record<string, unknown>): number[] | undefined {
   if (Array.isArray(entry.time_records)) {
     const valid = entry.time_records.filter(isValidEpochSeconds);
@@ -210,6 +211,13 @@ function parseTimeRecords(entry: Record<string, unknown>): number[] | undefined 
 // Project upstream `alerts` onto typed NodeAlert[]. Anti-corruption: malformed entries
 // dropped, not thrown (partial-parse contract). `severity` kept as free-form string —
 // custom labels survive and are colour-mapped downstream. undefined = no alerts field.
+//
+// `name` and `severity` are the ONLY required fields. An occurrence time is not one of
+// them: kube-state-graph's alert overlay emits `{name, state, severity}` and no time at
+// all, so requiring one here discarded every alert a real backend produced — an empty
+// overlay behind a 200, which is exactly the failure the overlay exists to make visible.
+// A time-less entry keeps no `timeRecords` field and the table degrades its two derived
+// cells; see NodeAlert.
 function parseAlerts(v: unknown): NodeAlert[] | undefined {
   if (!Array.isArray(v)) {
     return undefined;
@@ -223,13 +231,12 @@ function parseAlerts(v: unknown): NodeAlert[] | undefined {
       continue;
     }
     const timeRecords = parseTimeRecords(entry);
-    if (timeRecords === undefined) {
-      continue;
-    }
     alerts.push({
       name: entry.name,
       severity: entry.severity,
-      timeRecords,
+      // Omitted rather than written as [] — one representation of "no history", so no
+      // consumer has to test both.
+      ...(timeRecords !== undefined ? { timeRecords } : {}),
       ...(isString(entry.pod) ? { pod: entry.pod } : {}),
       ...(isString(entry.service) ? { service: entry.service } : {}),
       ...(isString(entry.id) ? { id: entry.id } : {}),

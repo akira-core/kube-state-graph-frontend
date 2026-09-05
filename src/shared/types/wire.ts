@@ -12,22 +12,38 @@
 // Backend source of truth: `openspec/specs/graph-api/spec.md` in the kube-state-graph repo.
 
 /**
- * One occurrence-grouped alert on a node.
+ * One alert on a node.
  *
- * PANEL-ONLY. No version of the backend emits `alerts` — the field is the panel's own
- * extension point, fed by the fixture (and, in a real deployment, by whatever the operator
- * puts in front of the panel). Kept in the wire types because normalize parses it from the
- * same payload, but never expect it from kube-state-graph itself.
+ * TWO PRODUCERS, and they disagree about time. kube-state-graph's alert overlay emits
+ * `{name, state, severity}` read from the upstream `ALERTS` series — a point-in-time
+ * statement with NO occurrence history, because the query is a `last_over_time` over the
+ * request window and the series says only that the alert is firing in it. The panel-era
+ * producers (the bundled fixture, and whatever an operator puts in front of a deployment
+ * that predates the overlay) group repeats of one alert and carry every occurrence.
+ *
+ * So `name` and `severity` are the only fields either producer always sends. An alert with
+ * no time is a complete alert, not a malformed one — dropping it would empty the whole
+ * overlay against the real backend, silently and with a 200.
  */
 export interface WireAlert {
   name: string;
   severity: string;
   pod?: string;
   service?: string;
-  /** Every occurrence, Unix epoch SECONDS, ascending. Preferred over the legacy `time`. */
+  /**
+   * Every occurrence, Unix epoch SECONDS, ascending. Preferred over the legacy `time`.
+   * ABSENT from kube-state-graph's overlay — see the note above.
+   */
   time_records?: number[];
   /** Legacy single-occurrence form; normalize widens it to a one-element list. */
   time?: number;
+  /**
+   * `firing` / `pending`, from the overlay only. Deliberately NOT projected: the backend's
+   * query carries a fixed `alertstate="firing"` selector and its reader re-tests it, so
+   * every entry that reaches here is already firing and a column showing so would be a
+   * constant. Declared to document that the field exists and is knowingly ignored.
+   */
+  state?: string;
   id?: string;
 }
 

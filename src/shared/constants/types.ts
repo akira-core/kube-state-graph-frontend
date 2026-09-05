@@ -89,9 +89,11 @@ export type NodeStatus = 'normal' | 'warning' | 'critical';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 // A single alert attached to a node, carried on the optional upstream graph-JSON
-// node field `alerts` and surfaced in the detail panel's alert table. The backend
-// groups repeats of the same alert into ONE entry whose `time_records` wire field
-// lists every occurrence time; `normalizeGraph` projects that to `timeRecords`.
+// node field `alerts` and surfaced in the detail panel's alert table. A producer
+// that groups repeats of one alert carries every occurrence in the `time_records`
+// wire field, which `normalizeGraph` projects to `timeRecords`; kube-state-graph's
+// own alert overlay carries no time at all (see WireAlert), so the field is
+// OPTIONAL and its absence is a complete alert, not a defective one.
 export interface NodeAlert {
   pod?: string;
   service?: string;
@@ -105,7 +107,13 @@ export interface NodeAlert {
   // are derived at render, never stored. A legacy backend's single `time` scalar
   // normalises to a one-element list. The panel converts to milliseconds only at the
   // render / time-rewind boundary.
-  timeRecords: number[];
+  //
+  // ABSENT when the producer reports no occurrence history — kube-state-graph's overlay
+  // never does. Both derived cells then render the missing-value placeholder and the
+  // last-occurred cell is not a time-rewind target, because there is no time to rewind to.
+  // Absent and `[]` are the same fact; normalize only ever writes the field when it holds
+  // at least one valid time.
+  timeRecords?: number[];
   id?: string; // optional stable row id; synthesised from name+records+index if absent
 }
 

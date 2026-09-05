@@ -1069,6 +1069,7 @@ describe('normalizeGraph', () => {
       ]);
     });
 
+    // name and severity are the only required fields — an occurrence time is NOT one.
     it('drops alert entries with a bad/missing name or non-string/empty severity, keeping valid ones', () => {
       const { elements } = withAlerts([
         { name: 'ok', severity: 'warning', time_records: [1717500000] },
@@ -1096,16 +1097,37 @@ describe('normalizeGraph', () => {
       ]);
     });
 
-    it('omits the alerts field when absent, empty, or no entry has a valid occurrence time', () => {
+    it('omits the alerts field only when it is absent or holds no valid entry', () => {
       expect(withAlerts(undefined).elements[0]?.data.alerts).toBeUndefined();
       expect(withAlerts([]).elements[0]?.data.alerts).toBeUndefined();
-      expect(withAlerts([{ name: 'x', severity: 'warning' }]).elements[0]?.data.alerts).toBeUndefined();
-      expect(
-        withAlerts([{ name: 'x', severity: 'warning', time_records: [] }]).elements[0]?.data.alerts
-      ).toBeUndefined();
+      expect(withAlerts(['nope', { severity: 'warning' }]).elements[0]?.data.alerts).toBeUndefined();
+    });
+
+    // kube-state-graph's alert overlay emits {name, state, severity} and no time at all.
+    // Requiring an occurrence time here discarded every alert a real backend produced.
+    // toStrictEqual, not toEqual: it is what distinguishes an omitted `timeRecords` from
+    // one written as [] or undefined, and "omitted" is the contract.
+    it('keeps an alert that carries no occurrence time, omitting timeRecords', () => {
+      const { elements } = withAlerts([{ name: 'NetAppControllerDegraded', state: 'firing', severity: 'critical' }]);
+      expect(elements[0]?.data.alerts).toStrictEqual([{ name: 'NetAppControllerDegraded', severity: 'critical' }]);
+    });
+
+    it('omits timeRecords rather than writing [] when every candidate time is invalid', () => {
+      expect(withAlerts([{ name: 'x', severity: 'warning', time_records: [] }]).elements[0]?.data.alerts).toStrictEqual(
+        [{ name: 'x', severity: 'warning' }]
+      );
       expect(
         withAlerts([{ name: 'x', severity: 'warning', time: -1, time_records: [NaN, -5] }]).elements[0]?.data.alerts
-      ).toBeUndefined();
+      ).toStrictEqual([{ name: 'x', severity: 'warning' }]);
+    });
+
+    // The overlay's `state` is always "firing" — the backend query carries a fixed
+    // alertstate selector — so projecting it would add a constant column.
+    it('never projects the upstream state field', () => {
+      const { elements } = withAlerts([
+        { name: 'x', severity: 'warning', state: 'firing', time_records: [1717500000] },
+      ]);
+      expect(elements[0]?.data.alerts).toEqual([{ name: 'x', severity: 'warning', timeRecords: [1717500000] }]);
     });
 
     it('never carries alerts on a cluster container node', () => {

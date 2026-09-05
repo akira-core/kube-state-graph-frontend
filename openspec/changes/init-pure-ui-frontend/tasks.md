@@ -200,9 +200,20 @@
 - [x] 21.4 無量測路徑上的 root 仍繪製:`deriveSankey` 接受該請求的 root 選擇,以後端相同的比對規則(`node` 比對兩側、`ontap_cluster` 涵蓋其下三種、`pod` 為 `<ns>/<pod>`、`pvc` 非 root 種類)保留節點;驗證:單元測試斷言全無 `metrics` 的路徑上只有被選為 root 的節點以 `noFlow` 保留,且 root 全空時無節點被保留
 - [x] 21.5 無流量節點堆疊收斂於視圖內:流量圖為最高的堆疊預留高度,堆疊於空間不足時壓縮間距;驗證:元件測試以單一 tier 20 個無流量節點斷言每個節點的下緣不超過 SVG 高度
 
+## 22. alert overlay 對接真實後端
+
+`kube-state-graph` 的 alert overlay 送出 `{name, state, severity}`,不帶任何發生時間;normalize 的 `parseAlerts` 卻要求每筆 alert 具備有效發生時間,否則丟棄。結果是真實後端的告警**全數**在 anti-corruption boundary 消失——API body 帶著 `data.alerts`,UI 一筆都不顯示,而且回應是 200,沒有任何錯誤可循。
+
+- [x] 22.1 wire 契約更正:`WireAlert` 的「PANEL-ONLY,後端不送 alerts」註記已不成立(backend `e6430ad` 起送出),改為記載兩種產生者對「時間」的不同認知,並宣告選用的 `state` 欄為**刻意不投影**(查詢帶固定 `alertstate="firing"` selector,呈現只會是常數);驗證:型別編譯通過,註解點名兩種產生者各自送出的欄位
+- [x] 22.2 `NodeAlert.timeRecords` 改為選用,並於型別註解寫明「缺漏即無發生史」是完整狀態而非缺陷;驗證:`npm run typecheck` 通過,所有消費端經編譯器逐一暴露
+- [x] 22.3 `parseAlerts` 不再因缺發生時間而丟棄 alert:`name` / `severity` 為唯二必填,無有效時間時**省略** `timeRecords`(不得寫成 `[]`);驗證:單元測試斷言 overlay 形狀的 alert 被保留且不帶 `timeRecords`(以 `toStrictEqual` 區分省略與空陣列)、`state` 不被投影、缺 `name` / `severity` 仍丟棄
+- [x] 22.4 alert 表格降級:`timeRecords` 缺漏時 Count 與 Last occurred 各顯示 muted 的「n/a」,Last occurred 不再是按鈕(無時刻可回捲),不得以 `0` 與 epoch 起點日期代替;驗證:元件測試斷言該列仍渲染、兩格為 n/a、無 `alert-count` / `alert-time` testid、無 button,且同表格中帶時間的列不受影響
+- [x] 22.5 `SHOWCASE_STORAGE_GRAPH` 的 `ontap-prod-02` 同時掛一筆帶 `time` 與一筆 overlay 形狀的 alert,使 demo 模式同時走過正常與降級兩條路徑;驗證:`npm run fixture:check` 通過,fixture 測試全綠
+
 ## 17. 整體驗收
 
 - [x] 17.1 全鏈驗證:乾淨 checkout 執行 `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` 全數通過,且單元測試覆蓋率達 80%
 - [x] 17.2 對照 `specs/` 逐一走查 13 個 capability 的 requirements,確認無遺漏或行為偏差;驗證:產出走查清單,每條 requirement 標註其對應的測試或可觀察行為
 - [x] 17.3 兩端點拆分後重跑全鏈驗證(含新增的第三個 e2e spec),覆蓋率仍達 80%;驗證:乾淨 checkout 上整條 CI 鏈綠燈
 - [x] 17.4 對照修訂後的 `specs/` 重走查 `runtime-config` / `graph-data-source` / `storage-flow-sankey` / `app-shell` / `dev-environment` / `container-deployment` 六支的異動需求;驗證:走查清單標註每條新需求對應的測試或可觀察行為
+- [x] 17.5 alert overlay 修正後重跑全鏈驗證;驗證:`npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci` 全綠,並以真實 kube-state-graph 後端確認節點 `data.alerts` 於面板實際成列

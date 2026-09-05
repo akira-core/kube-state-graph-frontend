@@ -20,7 +20,9 @@
 
 面板高度 MUST 隨內容增長,僅在超過 canvas 高度 **50%** 的上限後才捲動(header 固定);低於上限的內容 MUST NOT 捲動。**捲動 MUST 集中於單一容器(面板 body)**:body 是唯一的捲動權威,每個 section 皆為內容高度,任何 section MUST NOT 擁有內部捲動。面板可同時堆疊多個 section(Application + Containers + Alerts);若任一 section 自帶內部捲動,受限高度下多個 section 會互相重疊且皆無法捲動,故單一 body 捲動是唯一可組合的模型。
 
-Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `data.alerts`;缺漏或空陣列 → 該 section 不渲染)。每筆 alert 以 `timeRecords: number[]`(Unix 秒,升冪)表示重複發生;後端已將同一 alert 聚合為**單一**筆,故表格**一列一 alert**。**Count** 欄 MUST 顯示 `timeRecords.length`,並 MUST 以 hover 提示列出每一個發生時間(以瀏覽器本地時區格式化)。**Last occurred** 欄 MUST 顯示 `max(timeRecords)`(格式化);當 app 提供可變更的**檢視時間範圍**(view time range)時,該欄 MUST 可點擊,點擊將檢視時間範圍設為以 `t = max(timeRecords)`(Unix 秒)為中心、固定 ±5 分鐘(300 秒)的視窗 `[t-300, t+300]`;app 未提供檢視時間範圍時,該欄以純文字呈現。`severity` 為自由字串:`info` / `warning` / `critical` 取各自的語意色;其他任何自訂標籤 MUST 原樣保留並以 critical 色作為 fallback 上色。**alert 表格中缺漏的 Pod / Service 儲存格 MUST 顯示 muted 的「n/a」**(全面板統一的 missing-value placeholder——見「Node-detail Application and Containers sections」)。
+Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `data.alerts`;缺漏或空陣列 → 該 section 不渲染)。每筆 alert 以**選用**的 `timeRecords: number[]`(Unix 秒,升冪)表示重複發生;產生者已將同一 alert 聚合為**單一**筆,故表格**一列一 alert**。**Count** 欄 MUST 顯示 `timeRecords.length`,並 MUST 以 hover 提示列出每一個發生時間(以瀏覽器本地時區格式化)。**Last occurred** 欄 MUST 顯示 `max(timeRecords)`(格式化);當 app 提供可變更的**檢視時間範圍**(view time range)時,該欄 MUST 可點擊,點擊將檢視時間範圍設為以 `t = max(timeRecords)`(Unix 秒)為中心、固定 ±5 分鐘(300 秒)的視窗 `[t-300, t+300]`;app 未提供檢視時間範圍時,該欄以純文字呈現。
+
+**Count 與 Last occurred 皆為 `timeRecords` 的衍生欄,而該欄是選用的**(kube-state-graph 的 alert overlay 不帶任何發生時間——見 `graph-data-source`)。`timeRecords` 缺漏時,這兩格 MUST 各自降級為統一的 missing-value placeholder「n/a」,且 Last occurred MUST NOT 可點擊——沒有時刻可供回捲。兩格 MUST NOT 以 `0` 與 epoch 起點日期代替:那是捏造的讀數,與「該 alert 發生過一次、時間為 1970-01-01」無法區分。`severity` 為自由字串:`info` / `warning` / `critical` 取各自的語意色;其他任何自訂標籤 MUST 原樣保留並以 critical 色作為 fallback 上色。**alert 表格中缺漏的 Pod / Service 儲存格 MUST 顯示 muted 的「n/a」**(全面板統一的 missing-value placeholder——見「Node-detail Application and Containers sections」)。
 
 #### Scenario: 左鍵點擊任一 detail-eligible 節點開啟面板
 
@@ -91,6 +93,14 @@ Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `da
 - **THEN** 該列的 Count 欄顯示 `N`(= `timeRecords.length`)
 - **AND** hover Count 時以提示列出全部 N 個發生時間(以瀏覽器本地時區格式化)
 
+#### Scenario: 無發生時間的 alert 仍成列,兩個衍生欄降級為 n/a
+
+- **WHEN** 某 alert 沒有 `timeRecords` 欄(如 kube-state-graph overlay 送出的 `{ name, severity }`)
+- **THEN** 該 alert 仍 MUST 渲染為一列,Alert 與 Severity 欄如常呈現
+- **AND** Count 與 Last occurred 兩欄 MUST 各顯示 muted 的「n/a」,MUST NOT 顯示 `0` 或 epoch 起點日期
+- **AND** Last occurred 欄 MUST NOT 可點擊(無 Count hover 提示)
+- **AND** 同表格中帶 `timeRecords` 的其他列 MUST 不受影響,照常顯示 Count 與可點擊的 Last occurred
+
 #### Scenario: Severity 上色(自由字串加語意色)
 
 - **WHEN** 某 alert 的 `severity` 為 `info` / `warning` / `critical`
@@ -102,7 +112,7 @@ Alert 資料來自上游 graph JSON node 的選用 `alerts` 欄(正規化為 `da
 
 - **WHEN** app 提供可變更的檢視時間範圍,使用者點擊某列的 Last occurred 欄,且該 alert 最大的 `timeRecords` 值為 `t`(Unix 秒)
 - **THEN** app 將檢視時間範圍設為 `[t-300, t+300]`(±5 分鐘),以最後一次發生為中心
-- **WHEN** app 未提供檢視時間範圍
+- **WHEN** app 未提供檢視時間範圍,或該 alert 無 `timeRecords`
 - **THEN** Last occurred 欄以純文字呈現,不可點擊
 
 #### Scenario: 多個 section 共用單一 body 捲動且永不重疊

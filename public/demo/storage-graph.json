@@ -49,6 +49,11 @@
               "name": "NodeDegraded",
               "severity": "warning",
               "time": 1748692200
+            },
+            {
+              "name": "NetAppControllerDegraded",
+              "state": "firing",
+              "severity": "critical"
             }
           ],
           "labels": {

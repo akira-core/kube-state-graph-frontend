@@ -37,7 +37,15 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           health: 'degraded',
           hardware: { model: 'AFF-A400' },
           perf: { cpu_busy_pct: 41.2, total_ops: 18200, total_latency_us: 640, total_bytes_per_sec: 5767168 },
-          alerts: [{ name: 'NodeDegraded', severity: 'warning', time: 1748692200 }],
+          // TWO producers' shapes side by side, deliberately: the first carries an
+          // occurrence time the way the panel-era producers do, the second is exactly what
+          // kube-state-graph's alert overlay emits — `{name, state, severity}` and no time
+          // at all. Demo mode therefore exercises the derived Count / Last occurred cells
+          // AND their degraded form, which is the shape a real deployment always sees.
+          alerts: [
+            { name: 'NodeDegraded', severity: 'warning', time: 1748692200 },
+            { name: 'NetAppControllerDegraded', state: 'firing', severity: 'critical' },
+          ],
           labels: { ontap_cluster: 'ontap-prod' },
         },
       },

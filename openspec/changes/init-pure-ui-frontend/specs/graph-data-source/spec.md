@@ -390,16 +390,26 @@ normalize MUST 同時容忍下列頂層形狀:完整回應 `{ elements: { nodes,
 
 ### Requirement: 告警 (alerts) 正規化與 time_records 解析
 
-Normalize boundary SHALL 於 anti-corruption boundary 將上游 leaf node 的選用欄位 `alerts`(陣列)正規化為 app 內部 `NodeAlert[]`,並以 `timeRecords: number[]` 承載同一 alert 的**所有發生時間**(取代舊的單一 `time` scalar)。規則:
+Normalize boundary SHALL 於 anti-corruption boundary 將上游 leaf node 的選用欄位 `alerts`(陣列)正規化為 app 內部 `NodeAlert[]`,並以**選用**的 `timeRecords: number[]` 承載同一 alert 的**所有發生時間**(取代舊的單一 `time` scalar)。
+
+`alerts` 有**兩種上游產生者,對「時間」的認知不同**,契約 MUST 同時容納:
+
+| 產生者                                                   | 送出                                                 | 發生時間                                                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| kube-state-graph 的 alert overlay                        | `{ name, state, severity }`,讀自上游 `ALERTS` series | **完全沒有**——該 series 只陳述「此 alert 在請求視窗內 firing」,`last_over_time` 不保留發生史 |
+| panel 時代的產生者(內建 fixture、既有部署前置的告警來源) | 將同一 alert 的重複發生聚合為單筆                    | `time_records`(或 legacy `time`)                                                             |
+
+因此 `name` 與 `severity` 是**唯二**必填欄位,**發生時間不是**。沒有發生時間的 alert 是一筆**完整**的 alert,MUST NOT 因此丟棄——丟棄會讓真實後端的整個 overlay 在 200 回應下靜默清空,而那正是 overlay 存在要揭露的狀態。規則:
 
 - 每筆 alert MUST 至少帶非空 `name` 與非空 `severity`(自由字串),否則丟棄。
 - 發生時間自上游 wire 欄位 `time_records`(數字陣列)取得:MUST 僅保留有限(`Number.isFinite`)且 ≥ 0 的值,並**升序排序**後存為 `timeRecords`。
 - **相容舊後端**:缺 `time_records`(或其元素全部無效)時,MUST 退讀 legacy scalar 欄位 `time`(Unix 秒,須有限且 ≥ 0)→ `timeRecords: [time]`。
-- 經上述過濾後 `timeRecords` 仍為空的 alert MUST 丟棄(沿用 partial-parse 契約,不拋例外)。
+- 經上述過濾後無任何有效發生時間時,`timeRecords` MUST **省略**(不得寫成 `[]`,亦不得寫成 `undefined` 值)——「無發生史」只有一種表示法,下游無須測試兩種。該 alert 本身 MUST 保留。
+- 上游的 `state` 欄(`firing` / `pending`)MUST NOT 投影至 `NodeAlert`:後端查詢帶固定 `alertstate="firing"` selector 且其 reader 會再測一次,抵達此處者皆已 firing,呈現該欄只會是一個常數。
 - `pod` / `service` / `id` 為選用字串,缺值則省略。
 - 分組容器(`cluster` / `namespace` / `application` / `controller`)MUST NOT 攜帶自身 `alerts`(即使上游帶亦丟棄;controller 的 alerts 改由 enrichment 自子 pod 聚合——見「controller 告警(alerts)自子 pod 聚合」)。
 
-下游(node-detail 的告警表格)由 `timeRecords` 衍生:Count = `timeRecords.length`、Last occurred = `max(timeRecords)`(因升序故為末元素),不另存欄位。
+下游(node-detail 的告警表格)由 `timeRecords` 衍生:Count = `timeRecords.length`、Last occurred = `max(timeRecords)`(因升序故為末元素),不另存欄位;`timeRecords` 缺漏時兩欄的降級呈現由 `node-detail` 規範。
 
 #### Scenario: time_records 解析為升序 timeRecords
 
@@ -416,10 +426,20 @@ Normalize boundary SHALL 於 anti-corruption boundary 將上游 leaf node 的選
 - **WHEN** 上游 alert `time_records: [1717500000, -5, NaN, 1717500300]`
 - **THEN** 產出 `timeRecords: [1717500000, 1717500300]`(濾掉 `-5` 與 `NaN`,升序)
 
-#### Scenario: 丟棄無有效發生時間的 alert
+#### Scenario: 保留無發生時間的 overlay alert
+
+- **WHEN** 上游 alert 為 `{ name: 'NetAppControllerDegraded', state: 'firing', severity: 'critical' }`(kube-state-graph overlay 的形狀,無 `time_records` 亦無 `time`)
+- **THEN** 該 alert 出現於 `data.alerts`,帶 `name` 與 `severity`,且 **MUST NOT** 帶 `timeRecords` 欄
+
+#### Scenario: 無有效發生時間時省略 timeRecords 而非寫成空陣列
 
 - **WHEN** 上游 alert 的 `time_records` 為 `[]` 或元素全部非有限 / 負值,且無有效 scalar `time`
-- **THEN** 該 alert 被丟棄,不出現於 `data.alerts`;同節點其餘合法 alert 不受影響
+- **THEN** 該 alert 仍出現於 `data.alerts`,且 **MUST NOT** 帶 `timeRecords` 欄(不得為 `[]`);同節點其餘 alert 不受影響
+
+#### Scenario: 不投影上游的 state 欄
+
+- **WHEN** 上游 alert 帶 `state: 'firing'`
+- **THEN** 產出的 `NodeAlert` **MUST NOT** 有 `state` 欄,其餘欄位照常解析
 
 #### Scenario: 缺 name / severity 的 alert 丟棄
 
