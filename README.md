@@ -59,6 +59,34 @@ Requests to `/api/…` are forwarded to `KSG_DEV_PROXY_TARGET` with the `/api` p
 - `src/shared/*` — tokens, wire types, fixtures, pure helpers
 - Runtime config is fetched from `<base>/config.json` on every full page load
 - Graph loads `endpoints.graph`; Sankey loads `endpoints.storageGraph` (lazy, after az/env are chosen). Both share the same normalize boundary.
+- `/graph` and `/sankey` are independent pages. Switching unmounts the previous page (switch = reset). The URL query is the snapshot: share it, refresh it, or press Back to restore scope and time range. View state (selection, collapse, viewport, search) is not in the URL and dies with the page.
+
+## URL parameters
+
+In-page changes replace the current history entry. Nav links go to the bare path (`/graph`, `/sankey`). Demo mode ignores scope parameters but still writes `from` / `to`. Unknown parameters are ignored and stripped on the next write.
+
+### Both pages
+
+| Parameter     | Meaning                                                                                                                 | Default               |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `from` / `to` | View time range. Relative: `from=now-1h\|now-6h\|now-24h\|now-7d` and `to=now`. Absolute: Unix seconds. Always written. | `from=now-24h&to=now` |
+
+### `/graph`
+
+| Parameter                           | Meaning                                                        | Default          |
+| ----------------------------------- | -------------------------------------------------------------- | ---------------- |
+| `cluster`, `az`, `env`, `namespace` | Repeated keys = OR within a dimension                          | omitted (all)    |
+| `edge_type`                         | Edge-type filter; no custom values                             | omitted          |
+| `prune`                             | `false` = full inventory. Default traffic graph is not written | omitted (`true`) |
+
+### `/sankey`
+
+| Parameter                                     | Meaning                                          | Default                                 |
+| --------------------------------------------- | ------------------------------------------------ | --------------------------------------- |
+| `az`, `env`                                   | Required single values                           | omitted (no request until both are set) |
+| `ontap_cluster`, `node`, `aggr`, `svm`, `pod` | Roots; `pod` must be `<namespace>/<pod>`         | omitted (whole estate)                  |
+| `cluster`, `namespace`                        | Optional narrowing                               | omitted                                 |
+| `mode`                                        | `read` or `write`. Default `both` is not written | omitted (`both`)                        |
 
 ## Linting & testing
 
@@ -92,4 +120,4 @@ See `deploy/README.md` for Kubernetes manifests, ConfigMap mounting, and the opt
 - **CORS errors with an absolute backend URL** — use `KSG_DEV_PROXY_TARGET` (or the container proxy) and root-relative endpoints, or allow the frontend origin on the backend.
 - **Full-screen configuration error** — `config.json` is missing, not JSON, or failed validation (for example `endpoints.graph` is required when `demoMode` is false). The screen names the path and the first problem; it never silently falls back to demo data.
 - **Sankey says the storage graph endpoint is not configured** — `endpoints.storageGraph` is missing or empty. Graph view is unaffected. Set a URL (for example `/api/v1/storage-graph` or `/demo/storage-graph.json`) and reload.
-- **Sankey asks for one az and one env** — `/v1/storage-graph` requires a single `az` and a single `env`. The controls are independent of the Graph filter bar. If `endpoints.labelValues` is unset they stay usable as free-text fields, because the endpoint needs both values whether or not anything can enumerate them; if it is set but points at the graph API, every dropdown comes up empty — label values need a Prometheus-compatible upstream (`KSG_METRICS_PROXY_TARGET`, see `deploy/README.md`).
+- **Sankey asks for one az and one env** — `/v1/storage-graph` requires a single `az` and a single `env`. The controls are independent of the Graph filter bar. If `endpoints.labelValues` is unset they still accept a typed custom value; if it is set but points at the graph API, every dropdown comes up empty — label values need a Prometheus-compatible upstream (`KSG_METRICS_PROXY_TARGET`, see `deploy/README.md`).

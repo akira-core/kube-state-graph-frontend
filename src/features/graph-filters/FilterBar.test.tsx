@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_GRAPH_FILTERS, type GraphFilters } from '../../shared/types/graphFilters';
@@ -27,33 +27,31 @@ function renderBar(filters: GraphFilters = DEFAULT_GRAPH_FILTERS) {
 describe('FilterBar', () => {
   it('defaults the projection to the traffic graph', () => {
     renderBar();
-    expect(screen.getByLabelText<HTMLSelectElement>('Projection').value).toBe('traffic');
+    expect(screen.getByRole('button', { name: 'Projection' })).toHaveTextContent('Traffic graph');
   });
 
   it('offers a control for every dimension the backend narrows on', () => {
     renderBar();
     for (const label of ['Cluster', 'AZ', 'Env', 'Namespace', 'Edge type', 'Projection']) {
-      expect(screen.getByLabelText(label)).toBeTruthy();
+      expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
   });
 
   it('offers the raw cluster name it was given, not a composed identity', () => {
     renderBar();
-    const values = Array.from(screen.getByLabelText<HTMLSelectElement>('Cluster').options, (o) => o.value);
-    expect(values).toEqual(['ksg-demo']);
+    fireEvent.click(screen.getByRole('button', { name: 'Cluster' }));
+    expect(screen.getByRole('option', { name: 'ksg-demo' })).toBeInTheDocument();
   });
 
   it('reports a selection to the caller under the dimension it belongs to', () => {
     const { onValues } = renderBar();
-    const namespace = screen.getByLabelText<HTMLSelectElement>('Namespace');
-    fireEvent.change(namespace, { target: { value: 'shop' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Namespace' }));
+    fireEvent.click(screen.getByRole('option', { name: 'shop' }));
     expect(onValues).toHaveBeenCalledWith('namespace', ['shop']);
   });
 
   it('offers Clear only once something is narrowed', () => {
     const { onClear } = renderBar();
-    // At the defaults there is nothing to clear, and an enabled button that does nothing
-    // reads as a filter still applied somewhere off screen.
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDisabled();
     expect(onClear).not.toHaveBeenCalled();
   });
@@ -68,15 +66,16 @@ describe('FilterBar', () => {
 
   it('switches the projection to the inventory', () => {
     const { onPrune } = renderBar();
-    fireEvent.change(screen.getByLabelText('Projection'), { target: { value: 'inventory' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Projection' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Full inventory' }));
     expect(onPrune).toHaveBeenCalledWith(false);
   });
 
   it('keeps a selected value listed even after it leaves the inventory', () => {
     renderBar({ ...DEFAULT_GRAPH_FILTERS, namespace: ['retired-ns'] });
-    const values = Array.from(screen.getByLabelText<HTMLSelectElement>('Namespace').options, (o) => o.value);
-    expect(values).toContain('retired-ns');
-    expect(values).toContain('shop');
+    fireEvent.click(screen.getByRole('button', { name: 'Namespace' }));
+    expect(screen.getByRole('option', { name: 'retired-ns' })).toHaveAttribute('data-unlisted', 'true');
+    expect(screen.getByRole('option', { name: 'shop' })).toBeInTheDocument();
   });
 
   it('names an unavailable option source instead of showing an empty control silently', () => {
@@ -92,9 +91,33 @@ describe('FilterBar', () => {
     expect(screen.getByTestId('filter-problems').textContent).toContain('1 filter source');
   });
 
+  it('accepts a custom identity value and refuses one on edge type', () => {
+    const { onValues } = renderBar();
+    fireEvent.click(screen.getByRole('button', { name: 'Cluster' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Cluster' }), { target: { value: 'staging' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "staging"' }));
+    expect(onValues).toHaveBeenCalledWith('cluster', ['staging']);
+
+    onValues.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Edge type' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Edge type' }), { target: { value: 'bogus-edge' } });
+    expect(screen.queryByRole('option', { name: /Use "/ })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search Edge type' }), { key: 'Enter' });
+    expect(onValues).not.toHaveBeenCalled();
+  });
+
+  it('summarises pill overflow on the trigger', () => {
+    renderBar({
+      ...DEFAULT_GRAPH_FILTERS,
+      namespace: ['shop', 'platform', 'infra', 'kube-system'],
+    });
+    const trigger = screen.getByRole('button', { name: 'Namespace' });
+    expect(within(trigger).getByText('shop')).toBeInTheDocument();
+    expect(within(trigger).getByText('platform')).toBeInTheDocument();
+    expect(within(trigger).getByText('+2')).toBeInTheDocument();
+  });
+
   it('a selection made here reaches the backend request', () => {
-    // The bar and the request builder are the two halves of one claim: a control that
-    // cannot move the graph must not ship. This asserts they meet.
     const filters: GraphFilters = { ...DEFAULT_GRAPH_FILTERS, namespace: ['shop'], prune: false };
     const url = buildGraphRequestUrl('/api/v1/graph', { kind: 'relative', window: '1h' }, filters);
     const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));

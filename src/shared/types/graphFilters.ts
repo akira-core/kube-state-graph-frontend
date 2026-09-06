@@ -26,6 +26,8 @@ export interface GraphFilters {
 /** The four dimensions whose options are read from the pod inventory. */
 export type IdentityDimension = 'cluster' | 'az' | 'env' | 'namespace';
 
+export type ListDimension = IdentityDimension | 'edgeType';
+
 export const IDENTITY_DIMENSIONS: readonly IdentityDimension[] = ['cluster', 'az', 'env', 'namespace'];
 
 export const DEFAULT_GRAPH_FILTERS: GraphFilters = {

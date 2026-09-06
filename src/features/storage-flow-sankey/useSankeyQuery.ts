@@ -30,10 +30,12 @@ export interface SankeyQueryController {
 }
 
 function pickSingleton(current: string | undefined, options: string[]): string | undefined {
-  if (current !== undefined && options.length > 0 && !options.includes(current)) {
-    return undefined;
+  // A selected value that left the option list stays selected and is marked unlisted.
+  // Clearing it would silently widen the request while the control still claimed a filter.
+  if (current !== undefined) {
+    return current;
   }
-  if (current === undefined && options.length === 1) {
+  if (options.length === 1) {
     return options[0];
   }
   return current;

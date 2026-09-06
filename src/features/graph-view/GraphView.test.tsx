@@ -31,16 +31,22 @@ const CONFIG: RuntimeConfig = {
   theme: 'system',
 };
 
-function firstPodId(): string {
-  const pod = elements.find((el) => el.group === 'nodes' && (el.data as cytoscape.NodeDataDefinition).kind === 'pod');
-  const id = (pod?.data as cytoscape.NodeDataDefinition | undefined)?.id;
+function firstIdOfKind(kind: string): string {
+  const node = elements.find((el) => el.group === 'nodes' && (el.data as cytoscape.NodeDataDefinition).kind === kind);
+  const id = (node?.data as cytoscape.NodeDataDefinition | undefined)?.id;
   if (typeof id !== 'string') {
-    throw new Error('fixture has no pod node');
+    throw new Error(`fixture has no ${kind} node`);
   }
   return id;
 }
 
-function view(props: { locateNodeId?: string | null; onLocateConsumed?: () => void } = {}): JSX.Element {
+function firstPodId(): string {
+  return firstIdOfKind('pod');
+}
+
+function view(
+  props: { locateNodeId?: string | null; onLocateConsumed?: () => void; hasPayload?: boolean } = {}
+): JSX.Element {
   return (
     <ThemeProvider>
       <GraphView
@@ -48,7 +54,7 @@ function view(props: { locateNodeId?: string | null; onLocateConsumed?: () => vo
         elements={elements}
         errors={[]}
         error={undefined}
-        hasPayload
+        hasPayload={props.hasPayload ?? true}
         status="ready"
         viewTimeRange={{ fromUnixSeconds: 1_700_000_000, toUnixSeconds: 1_700_003_600 }}
         onAlertTimeClick={vi.fn()}
@@ -86,6 +92,51 @@ describe('GraphView', () => {
 
     rerender(view({ locateNodeId: firstPodId() }));
     expect(screen.getByTestId('graph-search-input')).toHaveValue('');
+  });
+
+  it('reports a locate target that is not in the current graph result', () => {
+    // The banner is the only thing telling the user why nothing was selected. Without it
+    // a cross-view locate for a node the current filters or prune left out is silence.
+    const onLocateConsumed = vi.fn();
+    render(view({ locateNodeId: 'pod/nowhere/ghost', onLocateConsumed }));
+
+    const notice = screen.getByTestId('locate-missing');
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice).toHaveTextContent('not in the current graph result');
+    expect(screen.queryByTestId('locate-filter-hidden')).not.toBeInTheDocument();
+    expect(onLocateConsumed).toHaveBeenCalled();
+  });
+
+  it('holds a locate target while no graph body has landed yet', () => {
+    // A failed or still-flying first load has no result to be absent from. Claiming the
+    // node "is not in the current result" would be a statement about a result that does
+    // not exist, and consuming the target here would lose it before the retry lands.
+    const onLocateConsumed = vi.fn();
+    render(view({ locateNodeId: 'pod/nowhere/ghost', hasPayload: false, onLocateConsumed }));
+
+    expect(screen.queryByTestId('locate-missing')).not.toBeInTheDocument();
+    expect(onLocateConsumed).not.toHaveBeenCalled();
+  });
+
+  it('reports a locate target the current filters are hiding, and dismisses', async () => {
+    // A node the kind filter is hiding is a different answer from one the query never
+    // returned: the estate has it, this view is not drawing it. The two notices must not
+    // be interchangeable — one points at the filter rail, the other at the backend query.
+    // Driven through `service`, which the legend draws its own eye for; pods sit inside
+    // collapsed containers and get no toggle row.
+    const onLocateConsumed = vi.fn();
+    const { rerender } = render(view());
+    await userEvent.click(screen.getByTestId('node-legend-toggle-service'));
+
+    rerender(view({ locateNodeId: firstIdOfKind('service'), onLocateConsumed }));
+    const notice = screen.getByTestId('locate-filter-hidden');
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice).toHaveTextContent('hidden by the current filters');
+    expect(screen.queryByTestId('locate-missing')).not.toBeInTheDocument();
+    expect(onLocateConsumed).toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByTestId('locate-filter-hidden')).not.toBeInTheDocument();
   });
 
   it('also ends the search when locating from the in-view result list', async () => {

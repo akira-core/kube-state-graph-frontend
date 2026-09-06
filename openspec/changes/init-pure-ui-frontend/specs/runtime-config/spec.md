@@ -125,11 +125,11 @@ When `demoMode` is `false` (including the default when absent), `endpoints.graph
 
 ### Requirement: Absent optional endpoints disable the corresponding feature
 
-When any of `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.edgeTypes`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard` is absent (or an empty string), the feature depending on that endpoint MUST be disabled: the app MUST NOT issue any request to that endpoint, UI depending on its data MUST not render (it must not be replaced by an error message, a disabled-state button, or a spinner), and MUST NOT show the user any error. The mapping is as follows:
+When any of `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.edgeTypes`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard` is absent (or an empty string), the feature depending on that endpoint MUST be disabled: the app MUST NOT issue any request to that endpoint, UI depending on its data MUST not render (it must not be replaced by an error message, a disabled-state button, or a spinner), and MUST NOT show the user any error. "UI depending on its data" means UI that has no purpose without it: a dropdown that accepts a custom value still has one, because the value it sends is a raw label matcher and a typed value is as valid as an enumerated one — see the `labelValues` bullet. The mapping is as follows:
 
 - `endpoints.storageGraph` absent → the Sankey view MUST NOT issue any fetch request, and replaces the diagram with a "storage graph endpoint not configured" explanatory state; the nav bar's Sankey link MUST remain reachable (routing unchanged), and MUST NOT replace the whole app with the config error screen.
-- `endpoints.labelValues` absent → the Graph view filter bar's `cluster` / `az` / `env` / `namespace` controls and the Sankey's `cluster` / `namespace` narrowing controls do not render. **Exception: the Sankey's `az` / `env` MUST still render and still accept input (degrading to free text)** — the `storage-graph` endpoint requires those two values, and it is independently optional from `labelValues`; removing the controls would leave a deployment that has configured `storageGraph` permanently unable to fetch, with only a hint pointing at a control that does not exist. See `storage-flow-sankey`.
-- `endpoints.edgeTypes` absent → the filter bar's `edge_type` control does not render, and graph requests do not carry that parameter.
+- `endpoints.labelValues` absent → the Sankey's `cluster` / `namespace` narrowing controls do not render: they narrow an estate that `az` / `env` have already scoped, and with nothing to enumerate they add nothing. **The Graph view filter bar's `cluster` / `az` / `env` / `namespace` controls and the Sankey's `az` / `env` MUST still render, with an empty option list, and MUST still accept a custom value** (dropdown contract in `graph-filters`): these dimensions reach the upstream PromQL as raw label matchers, so a typed value is as usable as an enumerated one, and for the Sankey the `storage-graph` endpoint requires `az` / `env` while being independently optional from `labelValues` — removing those controls would leave a deployment that has configured `storageGraph` permanently unable to fetch, with only a hint pointing at a control that does not exist. No request is issued to any label-values URL either way. See `storage-flow-sankey` and `graph-filters`.
+- `endpoints.edgeTypes` absent → the filter bar's `edge_type` control renders with no options and offers **no** custom value — its catalogue and the backend's validation of `?edge_type=` are the same registry, so a typed value could only ever earn a 400. Nothing being selectable, graph requests carry no `edge_type` parameter.
 - `endpoints.codeChanges` absent → the node detail's code change history section does not render.
 - `endpoints.configChanges` absent → the node detail's config change history section does not render.
 - `endpoints.dashboard` absent → the Dashboard button does not render, and no dashboard URL prefetch is issued.
@@ -140,7 +140,7 @@ Each endpoint is judged independently: one endpoint being absent MUST NOT affect
 
 - **WHEN** the configuration document's `endpoints` contains only `graph`
 - **THEN** the graph loads normally; when any node's detail panel is opened, the change history sections and the Dashboard button do not render, and no request is issued to code_changes / config_changes / dashboard
-- **AND** the filter bar's identity dimensions and `edge_type` control do not render; switching to the Sankey view shows "storage graph endpoint not configured", and no storage-graph request is issued to any URL
+- **AND** the filter bar's identity dimensions render with no options and still accept a custom value, while `edge_type` renders with no options and no custom value; switching to the Sankey view shows "storage graph endpoint not configured", and no storage-graph request is issued to any URL
 
 #### Scenario: graph configured but storageGraph not configured
 
@@ -150,7 +150,7 @@ Each endpoint is judged independently: one endpoint being absent MUST NOT affect
 #### Scenario: storageGraph configured but labelValues not configured
 
 - **WHEN** `endpoints` contains `graph` and `storageGraph` but no `labelValues`
-- **THEN** the Sankey's `az` / `env` controls still render and accept input, and once both are filled in the storage-graph request is issued; the filter bar's identity dimension controls and the Sankey's `cluster` / `namespace` do not render, and no request is issued to any label-values URL
+- **THEN** the Sankey's `az` / `env` controls still render and accept a custom value, and once both are filled in the storage-graph request is issued; the filter bar's identity dimension controls render with no options and still accept custom values, the Sankey's `cluster` / `namespace` do not render, and no request is issued to any label-values URL
 
 #### Scenario: Partial endpoint configuration
 

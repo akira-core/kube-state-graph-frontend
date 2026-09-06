@@ -47,8 +47,10 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await expect(page.getByTestId('sankey-view')).toBeVisible();
   expect(storageUrls).toHaveLength(0);
 
-  await page.getByLabel('AZ').selectOption('local-a');
-  await page.getByLabel('Env').selectOption('demo');
+  await page.getByRole('button', { name: 'AZ' }).click();
+  await page.getByRole('option', { name: 'local-a' }).click();
+  await page.getByRole('button', { name: 'Env' }).click();
+  await page.getByRole('option', { name: 'demo' }).click();
   await expect.poll(() => storageUrls.length).toBe(1);
   await expect(page.getByTestId('sankey-node-aggr1')).toBeVisible();
   await expect(page.getByTestId('sankey-node-svm_shop')).toBeVisible();

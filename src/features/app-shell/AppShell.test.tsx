@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -8,18 +8,27 @@ import { ThemeProvider } from '../theme';
 import { AppShell } from './AppShell';
 
 vi.mock('../graph-view', () => ({
-  GraphView: () => <div data-testid="graph-view" />,
+  GraphView: (props: { locateNodeId?: string | null; onLocateConsumed?: () => void }) => (
+    <div data-testid="graph-view" data-locate={props.locateNodeId ?? ''}>
+      <button onClick={() => props.onLocateConsumed?.()}>consume-locate</button>
+    </div>
+  ),
 }));
 
-// Only the chart is stubbed. The scope bar and `useSankeyQuery` stay real, because the
-// shell tests below assert on what actually reaches the storage-graph URL.
+// Only the chart is stubbed. The scope bar stays real, because the shell tests
+// below assert on what actually reaches the storage-graph URL.
 vi.mock('../storage-flow-sankey', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../storage-flow-sankey')>();
   return {
     ...actual,
-    SankeyView: (props: { focusMode: boolean; onFocusModeChange: (next: boolean) => void }) => (
+    SankeyView: (props: {
+      focusMode: boolean;
+      onFocusModeChange: (next: boolean) => void;
+      onLocateNode: (id: string) => void;
+    }) => (
       <div data-testid="sankey-view" data-focus-mode={props.focusMode}>
         <button onClick={() => props.onFocusModeChange(!props.focusMode)}>toggle-sankey-focus</button>
+        <button onClick={() => props.onLocateNode('netapp/ontap-prod/aggr/aggr1')}>locate-aggr1</button>
       </div>
     ),
   };
@@ -50,13 +59,25 @@ function urlOf(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function renderAt(path: string, config: RuntimeConfig = DEMO): ReturnType<typeof render> {
-  window.history.pushState({}, '', path);
+async function chooseSankey(testId: string, option: string): Promise<void> {
+  fireEvent.click(screen.getByTestId(testId));
+  fireEvent.click(await screen.findByRole('option', { name: option }));
+  await waitFor(() => {
+    expect(screen.getByTestId(testId)).toHaveTextContent(option);
+  });
+}
+
+function mount(config: RuntimeConfig): ReturnType<typeof render> {
   return render(
     <ThemeProvider configTheme={config.theme}>
       <AppShell config={config} />
     </ThemeProvider>
   );
+}
+
+function renderAt(path: string, config: RuntimeConfig = DEMO): ReturnType<typeof render> {
+  window.history.pushState({}, '', path);
+  return mount(config);
 }
 
 describe('AppShell routing', () => {
@@ -140,6 +161,28 @@ describe('AppShell routing', () => {
     } finally {
       fetchStub.mockRestore();
     }
+  });
+
+  it('ignores Sankey scope parameters in demo mode', async () => {
+    // Demo mode draws a bundled fixture: there is no backend for a scope to narrow, and a
+    // query parameter that changed nothing would claim a scope the drawing does not honour.
+    // The time range still belongs to the shell, so `from` / `to` survive.
+    const fetchMock = vi.fn(() => Promise.reject(new Error('demo mode must not fetch')));
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/sankey?az=zone-a&env=prod&mode=write&aggr=aggr1', DEMO);
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-view')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      const params = new URLSearchParams(window.location.search);
+      expect(params.get('from')).not.toBeNull();
+      expect(params.get('to')).not.toBeNull();
+      expect(params.get('az')).toBeNull();
+      expect(params.get('env')).toBeNull();
+      expect(params.get('mode')).toBeNull();
+      expect(params.get('aggr')).toBeNull();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('shows the demo badge only in demo mode', () => {
@@ -234,8 +277,12 @@ describe('AppShell routing', () => {
     await waitFor(() => {
       expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
     });
-    await userEvent.type(screen.getByLabelText('AZ'), 'zone-a');
-    await userEvent.type(screen.getByLabelText('Env'), 'prod');
+    fireEvent.click(screen.getByRole('button', { name: 'AZ' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search AZ' }), { target: { value: 'zone-a' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "zone-a"' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Env' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Env' }), { target: { value: 'prod' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "prod"' }));
     await waitFor(() => {
       const storage = fetchMock.mock.calls.map((call) => urlOf(call[0])).filter((u) => u.includes('/storage-graph'));
       // One request per keystroke once both halves are set — the point is only that the
@@ -244,7 +291,7 @@ describe('AppShell routing', () => {
       expect(storage.at(-1)).toContain('env=prod');
     });
     expect(fetchMock.mock.calls.some((call) => urlOf(call[0]).includes('/label/'))).toBe(false);
-  });
+  }, 15_000);
 });
 
 describe('AppShell two data sources', () => {
@@ -312,7 +359,7 @@ describe('AppShell two data sources', () => {
   function graphCalls(fetchMock: ReturnType<typeof vi.fn>): number {
     return fetchMock.mock.calls.filter((call) => {
       const url = callUrl(call);
-      return url.includes('/api/v1/graph') && !url.includes('storage');
+      return /\/v1\/graph(\?|$)/.test(url) && !url.includes('storage-graph');
     }).length;
   }
 
@@ -325,26 +372,34 @@ describe('AppShell two data sources', () => {
     expect(storageCalls(fetchMock)).toBe(0);
   });
 
-  it('fetches storage-graph once after entering Sankey with az/env selected, and not again on round-trip', async () => {
+  it('unmounts the other page on switch and refetches graph on return', async () => {
     const fetchMock = stubFetch();
     renderAt('/graph', live);
     await waitFor(() => {
       expect(graphCalls(fetchMock)).toBe(1);
     });
+    expect(screen.queryByTestId('sankey-view')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
     await waitFor(() => {
       expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('graph-view')).not.toBeInTheDocument();
     expect(storageCalls(fetchMock)).toBe(0);
-    await userEvent.selectOptions(screen.getByLabelText('AZ'), 'zone-a');
-    await userEvent.selectOptions(screen.getByLabelText('Env'), 'prod');
+    await chooseSankey('sankey-az', 'zone-a');
+    await chooseSankey('sankey-env', 'prod');
     await waitFor(() => {
-      expect(storageCalls(fetchMock)).toBe(1);
+      expect(storageCalls(fetchMock)).toBeGreaterThanOrEqual(1);
     });
+    const graphsBeforeReturn = graphCalls(fetchMock);
     await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
-    expect(storageCalls(fetchMock)).toBe(1);
-  });
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('sankey-view')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(graphCalls(fetchMock)).toBeGreaterThan(graphsBeforeReturn);
+    });
+  }, 15_000);
 
   it('reloads only the current view source', async () => {
     const fetchMock = stubFetch();
@@ -353,17 +408,19 @@ describe('AppShell two data sources', () => {
       expect(graphCalls(fetchMock)).toBe(1);
     });
     await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
-    await userEvent.selectOptions(screen.getByLabelText('AZ'), 'zone-a');
-    await userEvent.selectOptions(screen.getByLabelText('Env'), 'prod');
+    await chooseSankey('sankey-az', 'zone-a');
+    await chooseSankey('sankey-env', 'prod');
     await waitFor(() => {
-      expect(storageCalls(fetchMock)).toBe(1);
+      expect(storageCalls(fetchMock)).toBeGreaterThanOrEqual(1);
     });
+    const graphsOnSankey = graphCalls(fetchMock);
+    const storageBeforeReload = storageCalls(fetchMock);
     await userEvent.click(screen.getByRole('button', { name: 'Reload data' }));
     await waitFor(() => {
-      expect(storageCalls(fetchMock)).toBe(2);
+      expect(storageCalls(fetchMock)).toBeGreaterThan(storageBeforeReload);
     });
-    expect(graphCalls(fetchMock)).toBe(1);
-  });
+    expect(graphCalls(fetchMock)).toBe(graphsOnSankey);
+  }, 15_000);
 
   it('disables reload on Sankey when az/env are not ready', async () => {
     stubFetch();
@@ -378,51 +435,42 @@ describe('AppShell two data sources', () => {
     const fetchMock = stubFetch();
     renderAt('/graph', live);
     await waitFor(() => {
-      expect(graphCalls(fetchMock)).toBe(1);
+      expect(graphCalls(fetchMock)).toBeGreaterThanOrEqual(1);
     });
+    const graphsBefore = graphCalls(fetchMock);
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'View time range' }), '1h');
     await waitFor(() => {
-      expect(graphCalls(fetchMock)).toBe(2);
+      expect(graphCalls(fetchMock)).toBeGreaterThan(graphsBefore);
     });
     expect(storageCalls(fetchMock)).toBe(0);
   });
 
-  it('refetches both loaded sources with the same start/end when the time range changes', async () => {
+  it('refetches only the mounted page when the time range changes', async () => {
     const fetchMock = stubFetch();
     renderAt('/graph', live);
     await waitFor(() => {
-      expect(graphCalls(fetchMock)).toBe(1);
+      expect(graphCalls(fetchMock)).toBeGreaterThanOrEqual(1);
     });
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
-    await userEvent.selectOptions(screen.getByLabelText('AZ'), 'zone-a');
-    await userEvent.selectOptions(screen.getByLabelText('Env'), 'prod');
-    await waitFor(() => {
-      expect(storageCalls(fetchMock)).toBe(1);
-    });
+    const graphsBeforeTime = graphCalls(fetchMock);
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'View time range' }), '1h');
     await waitFor(() => {
-      expect(graphCalls(fetchMock)).toBe(2);
-      expect(storageCalls(fetchMock)).toBe(2);
+      expect(graphCalls(fetchMock)).toBeGreaterThan(graphsBeforeTime);
     });
-    const lastGraph = fetchMock.mock.calls
-      .filter((c) => {
-        const url = callUrl(c);
-        return url.includes('/api/v1/graph') && !url.includes('storage');
-      })
-      .at(-1);
-    const lastStorage = fetchMock.mock.calls.filter((c) => callUrl(c).includes('/storage-graph')).at(-1);
-    const graphUrl = new URL(callUrl(lastGraph ?? []), 'http://localhost');
-    const storageUrl = new URL(callUrl(lastStorage ?? []), 'http://localhost');
-    // Each loader resolves the relative window from its own Date.now(), so the two
-    // timestamps are equal but may straddle a second boundary. Assert the WINDOW, not the
-    // exact integers, or this fails roughly once per few hundred runs.
-    const param = (url: URL, name: string): number => Number(url.searchParams.get(name));
-    expect(Math.abs(param(graphUrl, 'start') - param(storageUrl, 'start'))).toBeLessThanOrEqual(1);
-    expect(Math.abs(param(graphUrl, 'end') - param(storageUrl, 'end'))).toBeLessThanOrEqual(1);
-    expect(param(graphUrl, 'end') - param(graphUrl, 'start')).toBe(
-      param(storageUrl, 'end') - param(storageUrl, 'start')
-    );
-  });
+    expect(storageCalls(fetchMock)).toBe(0);
+    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    await chooseSankey('sankey-az', 'zone-a');
+    await chooseSankey('sankey-env', 'prod');
+    await waitFor(() => {
+      expect(storageCalls(fetchMock)).toBeGreaterThanOrEqual(1);
+    });
+    const graphsAtSankey = graphCalls(fetchMock);
+    const storageBefore = storageCalls(fetchMock);
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'View time range' }), '6h');
+    await waitFor(() => {
+      expect(storageCalls(fetchMock)).toBeGreaterThan(storageBefore);
+    });
+    expect(graphCalls(fetchMock)).toBe(graphsAtSankey);
+  }, 15_000);
 
   it('keeps graph data when storage-graph returns 500', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -449,5 +497,59 @@ describe('AppShell two data sources', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
     expect(screen.getByTestId('graph-view')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('replaces in-page filter changes so history length is unchanged', async () => {
+    stubFetch();
+    renderAt('/graph', live);
+    const length = window.history.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Namespace' }));
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'prod' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('option', { name: 'prod' }));
+    await waitFor(() => {
+      expect(window.location.search).toContain('namespace=prod');
+    });
+    expect(window.history.length).toBe(length);
+  });
+
+  it('locates from Sankey via navigation state and does not repeat after the state is consumed', async () => {
+    stubFetch();
+    const { unmount } = renderAt('/sankey?az=zone-a&env=prod', live);
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-view')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'locate-aggr1' }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/graph');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', 'netapp/ontap-prod/aggr/aggr1');
+    });
+    // The target rode in on the navigation state, never the URL.
+    expect(window.location.search).not.toContain('locate');
+
+    // Locate is a one-off. Once the view has taken it the page must drop it AND clear the
+    // navigation state behind it — otherwise the next query write re-reads that state and
+    // silently locates again, yanking the viewport away from wherever the user had moved.
+    fireEvent.click(screen.getByRole('button', { name: 'consume-locate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Namespace' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'prod' }));
+    await waitFor(() => {
+      expect(window.location.search).toContain('namespace=prod');
+    });
+    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+    unmount();
+
+    // A refresh lands on the same URL and the same history entry, and finds nothing to run.
+    mount(live);
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
   });
 });

@@ -37,7 +37,6 @@ function baseProps(overrides: Overrides = {}): SankeyViewProps {
     error: undefined,
     hasPayload: true,
     demoMode: true,
-    visible: true,
     focusMode: false,
     onFocusModeChange: vi.fn(),
     endpointConfigured: true,

@@ -18,14 +18,14 @@ describe('useSankeyQuery', () => {
     expect(result.current.azEnvReady).toBe(false);
   });
 
-  it('clears a selection that disappeared from the options', () => {
+  it('keeps a selection that disappeared from the options', () => {
     const { result, rerender } = renderHook(
       ({ az }: { az: string[] }) => useSankeyQuery({ az, env: ['demo'], cluster: [], namespace: [] }),
       { initialProps: { az: ['zone-b'] } }
     );
     expect(result.current.query.az).toBe('zone-b');
     rerender({ az: ['zone-a'] });
-    expect(result.current.query.az).toBeUndefined();
+    expect(result.current.query.az).toBe('zone-b');
   });
 
   it('rejects an invalid pod root in place and keeps other roots', () => {

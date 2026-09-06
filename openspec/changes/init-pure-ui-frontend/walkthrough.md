@@ -4,37 +4,41 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## app-shell
 
-| Requirement                                                     | Evidence                                                                                                |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Config gate before any view / backend fetch                     | `src/app/App.test.tsx` (hanging config fetch; 404 error screen)                                         |
-| Retry re-fetches config                                         | `src/app/App.test.tsx` Retry                                                                            |
-| `/` replace → `/graph`                                          | `src/features/app-shell/AppShell.test.tsx`                                                              |
-| Trailing slash `/graph/`                                        | `AppShell.test.tsx`; ViewHost `pathKey`                                                                 |
-| `/sankey` + `aria-current`                                      | `AppShell.test.tsx`; e2e `tests/demo.spec.ts`                                                           |
-| Unknown path + back link                                        | `AppShell.test.tsx`                                                                                     |
-| `/sankey` reload                                                | e2e `sankey deep link reloads`                                                                          |
-| Demo badge                                                      | `AppShell.test.tsx`; e2e demo-badge                                                                     |
-| Theme user → config → system                                    | `src/features/theme/useThemeController.test.tsx`                                                        |
-| Loading screen uses ThemeProvider                               | `src/app/App.tsx`                                                                                       |
-| View time range default 24h, persist, resolve-at-read, absolute | `useViewTimeRange.test.ts`, `NavBar.test.tsx`                                                           |
-| Shared loader: demo, in-flight, stale-on-fail                   | `useGraphLoader.test.ts`                                                                                |
-| Two independent loaders; storage-graph lazy                     | `AppShell.test.tsx` “two data sources”; `useGraphLoader` `enabled`                                      |
-| Reload / auto-refresh only the current view                     | `AppShell.test.tsx` reload; `NavBar` `reloadDisabled`                                                   |
-| Time range refetches loaded sources only                        | `AppShell.test.tsx` time-range change                                                                   |
-| Keep-alive views                                                | `AppShell.tsx` `graphMounted` / `sankeyMounted` + `hidden`; e2e round-trip                              |
-| Landmarks                                                       | `NavBar.test.tsx` navigation; `AppShell.tsx` `<main>`                                                   |
-| Routes relative to the app base URL                             | `AppShell.test.tsx` (`BASE_URL=/ksg/`: `/ksg/sankey` renders Sankey, `/ksg/` redirects to `/ksg/graph`) |
+| Requirement                                                     | Evidence                                                                                                                        |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Config gate before any view / backend fetch                     | `src/app/App.test.tsx` (hanging config fetch; 404 error screen)                                                                 |
+| Retry re-fetches config                                         | `src/app/App.test.tsx` Retry                                                                                                    |
+| `/` replace → `/graph`                                          | `src/features/app-shell/AppShell.test.tsx`                                                                                      |
+| Trailing slash `/graph/`                                        | `AppShell.test.tsx`; layout `pathKey`                                                                                           |
+| `/sankey` + `aria-current`                                      | `AppShell.test.tsx`; e2e `tests/demo.spec.ts`                                                                                   |
+| Unknown path + back link                                        | `AppShell.test.tsx`                                                                                                             |
+| `/sankey` reload                                                | e2e `sankey deep link reloads`                                                                                                  |
+| Demo badge                                                      | `AppShell.test.tsx`; e2e demo-badge                                                                                             |
+| Theme user → config → system                                    | `src/features/theme/useThemeController.test.tsx`                                                                                |
+| Loading screen uses ThemeProvider                               | `src/app/App.tsx`                                                                                                               |
+| View time range default 24h, persist, URL-first, absolute       | `useViewTimeRange.test.tsx`, `NavBar.test.tsx`; e2e `tests/url-scope.spec.ts`                                                   |
+| Shared loader: demo, in-flight, stale-on-fail, abort on unmount | `useGraphLoader.test.ts`                                                                                                        |
+| Two independent page-owned loaders; storage-graph lazy          | `AppShell.test.tsx` “two data sources”; `GraphPage` / `SankeyPage`                                                              |
+| Reload / auto-refresh only the current view                     | `AppShell.test.tsx` reload; `NavBar` `reloadDisabled`                                                                           |
+| Time range refetches the mounted page only                      | `AppShell.test.tsx` time-range change                                                                                           |
+| Switch = reset (non-current page absent; return refetches)      | `AppShell.test.tsx` unmount/refetch; e2e round-trip                                                                             |
+| URL scope replace + deep link                                   | `graphUrlScope.test.ts`, `sankeyUrlScope.test.ts`, `AppShell.test.tsx`, e2e `tests/url-scope.spec.ts`                           |
+| Locate via navigation state, one-off                            | `AppShell.test.tsx` locate-aggr1 (consume → stays cleared through a query write and a refresh); e2e locate then Back            |
+| Locate rejections: not-in-result, filter-hidden, held pre-load  | `GraphView.test.tsx` `locate-missing` / `locate-filter-hidden` / no notice while `hasPayload` is false; `locateOutcome.test.ts` |
+| Landmarks                                                       | `NavBar.test.tsx` navigation; page `<main>`                                                                                     |
+| Routes relative to the app base URL                             | `AppShell.test.tsx` (`BASE_URL=/ksg/`: `/ksg/sankey` renders Sankey, `/ksg/` redirects to `/ksg/graph`)                         |
 
 ## runtime-config
 
-| Requirement                                       | Evidence                                                          |
-| ------------------------------------------------- | ----------------------------------------------------------------- |
-| Types                                             | `src/features/runtime-config/types.ts` + `npm run typecheck`      |
-| Validator (no coercion, URL forms, first error)   | `validate.test.ts`                                                |
-| `endpoints.storageGraph` optional, empty = absent | `validate.test.ts` storageGraph cases                             |
-| Load `<base>/config.json`                         | `load.test.ts`                                                    |
-| Error screen, never silent demo                   | `ConfigErrorScreen.test.tsx`, `App.test.tsx`                      |
-| `dev/config.json` + local override + `/api` proxy | `vite.config.ts`, `dev/config.json`; `dist/` has no `config.json` |
+| Requirement                                                                       | Evidence                                                                                                                                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Types                                                                             | `src/features/runtime-config/types.ts` + `npm run typecheck`                                                                                            |
+| Validator (no coercion, URL forms, first error)                                   | `validate.test.ts`                                                                                                                                      |
+| `endpoints.storageGraph` optional, empty = absent                                 | `validate.test.ts` storageGraph cases                                                                                                                   |
+| Absent `labelValues` / `edgeTypes` keep the filter bar rendering, with no options | `FilterBar.test.tsx`, `ScopeSelect.test.tsx` zero-option cases; `AppShell.test.tsx` "keeps Sankey az / env usable when only storageGraph is configured" |
+| Load `<base>/config.json`                                                         | `load.test.ts`                                                                                                                                          |
+| Error screen, never silent demo                                                   | `ConfigErrorScreen.test.tsx`, `App.test.tsx`                                                                                                            |
+| `dev/config.json` + local override + `/api` proxy                                 | `vite.config.ts`, `dev/config.json`; `dist/` has no `config.json`                                                                                       |
 
 ## graph-data-source
 
@@ -94,7 +98,7 @@ Each capability below is mapped to the test or observable behavior that covers i
 | Requirement                                   | Evidence                                                                                     |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Open/close without clearing select            | `NodeDetailPanel.test.tsx`                                                                   |
-| Alerts table + last-occurred ±300s            | `AlertTable.test.tsx`, `useViewTimeRange.test.ts` `setAround`                                |
+| Alerts table + last-occurred ±300s            | `AlertTable.test.tsx`, `useViewTimeRange.test.tsx` `setAround`                               |
 | Application / containers links                | `ApplicationTable.test.tsx`, `ContainerTable.test.tsx`                                       |
 | Change-history gated by endpoints             | `useNodeDetailUrls.test.ts`                                                                  |
 | Dashboard eligibility + params + single/multi | `assembleDashboardParams.test.ts`, `useNodeDashboardUrl.test.ts`, `DashboardButton.test.tsx` |
@@ -103,9 +107,10 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 | Requirement                                                             | Evidence                                                                                               |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Input is storage-graph, not `/v1/graph`                                 | `AppShell.tsx` second loader; `SankeyView.test.tsx`; e2e `tests/storage-graph.spec.ts`                 |
-| az / env single-select, auto-preselect, independent of Graph filter bar | `useSankeyQuery.test.ts`, `SankeyControlBar.test.tsx`, `AppShell.test.tsx`                             |
+| Input is storage-graph, not `/v1/graph`                                 | `SankeyPage.tsx` loader; `SankeyView.test.tsx`; e2e `tests/storage-graph.spec.ts`                      |
+| az / env single-select, auto-preselect, independent of Graph filter bar | `useSankeyQuery.test.ts`, `SankeyScopeBar.test.tsx`, `AppShell.test.tsx`                               |
 | Roots mixed, invalid pod refused, empty roots legal                     | `useSankeyQuery.test.ts`, `storageGraphRequestUrl.test.ts`                                             |
+| Demo mode is exempt from the URL scope (`from` / `to` still written)    | `AppShell.test.tsx` "ignores Sankey scope parameters in demo mode"                                     |
 | cluster / namespace as request params, not client filter                | `storageGraphRequestUrl.test.ts`; no `clusterFilter` in `deriveSankey.ts`                              |
 | Six tiers from `labels.tier`, FlexGroup / unscheduled / no-flow root    | `deriveSankey.test.ts`                                                                                 |
 | Weights taken from edge metrics; split attribution                      | `deriveSankey.test.ts`; `SankeyView.test.tsx` split estimate                                           |
@@ -120,12 +125,13 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 | Requirement                                        | Evidence                                                                                                  |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Filter bar controls, Clear, hidden in demo mode    | `FilterBar.test.tsx`; `AppShell.tsx` renders it only when `demoMode` is false                             |
+| Filter bar controls, Clear, hidden in demo mode    | `FilterBar.test.tsx`; `GraphPage.tsx` renders it only when `demoMode` is false                            |
+| Grafana-style dropdown contract                    | `ScopeSelect.test.tsx`; `FilterBar.test.tsx` custom / no-custom / pill overflow                           |
 | Selection reaches the backend as query parameters  | `graphRequestUrl.test.ts` (repeated keys OR within a name; empty dimensions omitted; `prune` always sent) |
 | Identity options from `kube_pod_info` label values | `labelValues.test.ts` (URL shape, Prometheus envelope, `status: error` is a failure not an empty list)    |
 | Edge-type options from the backend catalogue       | `edgeTypes.test.ts`                                                                                       |
 | A failing source never becomes a missing graph     | `useFilterOptions.test.ts` (per-source `problems`, empty control, load still completes)                   |
-| Selection is not persisted                         | `useGraphFilters.ts` — held in component state only; no storage write, no URL write                       |
+| Selection syncs to the URL, not local storage      | `graphUrlScope.test.ts`; `AppShell.test.tsx` replace; e2e `tests/url-scope.spec.ts`                       |
 
 ## container-deployment
 

@@ -34,6 +34,47 @@ export function resolveViewTimeRange(range: ViewTimeRange, nowMs: number = Date.
   };
 }
 
+const RELATIVE_WINDOWS: readonly RelativeWindow[] = ['1h', '6h', '24h', '7d'];
+
+export function isRelativeWindow(value: string): value is RelativeWindow {
+  return (RELATIVE_WINDOWS as readonly string[]).includes(value);
+}
+
+/**
+ * URL `from`/`to`. Invalid combinations (one half missing, unparseable, `from >= to`,
+ * unknown relative form) are rejected as a pair — never take one half.
+ */
+export function parseTimeQuery(params: URLSearchParams): ViewTimeRange | undefined {
+  const from = params.get('from');
+  const to = params.get('to');
+  if (from === null && to === null) {
+    return undefined;
+  }
+  if (from === null || to === null) {
+    return undefined;
+  }
+  const relative = /^now-(1h|6h|24h|7d)$/.exec(from);
+  if (relative !== null && to === 'now' && isRelativeWindow(relative[1] ?? '')) {
+    return { kind: 'relative', window: relative[1] as RelativeWindow };
+  }
+  if (!/^-?\d+$/.test(from) || !/^-?\d+$/.test(to)) {
+    return undefined;
+  }
+  const fromUnixSeconds = Number(from);
+  const toUnixSeconds = Number(to);
+  if (!Number.isFinite(fromUnixSeconds) || !Number.isFinite(toUnixSeconds) || fromUnixSeconds >= toUnixSeconds) {
+    return undefined;
+  }
+  return { kind: 'absolute', window: { fromUnixSeconds, toUnixSeconds } };
+}
+
+export function serializeTimeQuery(range: ViewTimeRange): { from: string; to: string } {
+  if (range.kind === 'relative') {
+    return { from: `now-${range.window}`, to: 'now' };
+  }
+  return { from: String(range.window.fromUnixSeconds), to: String(range.window.toUnixSeconds) };
+}
+
 export function parseStoredViewTimeRange(raw: string | null): ViewTimeRange {
   if (raw === null || raw === '') {
     return DEFAULT_VIEW_TIME_RANGE;

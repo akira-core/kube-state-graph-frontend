@@ -1,5 +1,7 @@
 import { useState, type JSX } from 'react';
 
+import { Button } from '../../shared/ui/Button';
+import { ScopeSelect } from '../../shared/ui/ScopeSelect';
 import type { StorageGraphRoots } from '../graph-data';
 
 import type { SankeyIdentityOptions, SankeyQueryController, SankeyRootKind } from './useSankeyQuery';
@@ -17,101 +19,14 @@ const ROOT_KINDS: ReadonlyArray<{ kind: SankeyRootKind; label: string }> = [
   { kind: 'pod', label: 'Pod' },
 ];
 
-function selectedValues(select: HTMLSelectElement): string[] {
-  return Array.from(select.selectedOptions, (option) => option.value);
+const ROOT_KIND_VALUES = ROOT_KINDS.map((item) => item.kind);
+
+function rootKindLabel(value: string): string {
+  return ROOT_KINDS.find((item) => item.kind === value)?.label ?? value;
 }
 
-function MultiSelect({
-  label,
-  values,
-  available,
-  onChange,
-}: Readonly<{
-  label: string;
-  values: string[];
-  available: string[];
-  onChange: (values: string[]) => void;
-}>): JSX.Element {
-  const shown = [...new Set([...available, ...values])];
-  return (
-    <label className="flex flex-col text-xs text-secondary">
-      <span>
-        {label}
-        {values.length > 0 ? ` (${values.length})` : ''}
-      </span>
-      <select
-        multiple
-        aria-label={label}
-        className="mt-0.5 h-16 min-w-28 rounded border border-medium bg-canvas px-1 py-0.5 text-primary"
-        value={values}
-        onChange={(e) => onChange(selectedValues(e.currentTarget))}
-      >
-        {shown.map((value) => (
-          <option key={value} value={value}>
-            {value}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/**
- * `az` / `env`. Both are REQUIRED by the storage-graph endpoint, so this control has to stay
- * operable even when nothing can be enumerated — `endpoints.labelValues` is independently
- * optional from `endpoints.storageGraph`, and a dropdown with no options would leave the
- * empty state telling the operator to pick an az and env next to a control that cannot pick
- * one. With options it is a select; without them it falls back to free text, which is what
- * the backend matches on anyway.
- */
-function SingleSelect({
-  label,
-  value,
-  available,
-  onChange,
-}: Readonly<{
-  label: string;
-  value: string | undefined;
-  available: string[];
-  onChange: (value: string | undefined) => void;
-}>): JSX.Element {
-  const testId = `sankey-${label.toLowerCase()}`;
-  const commit = (raw: string): void => onChange(raw.trim() === '' ? undefined : raw.trim());
-  if (available.length === 0) {
-    return (
-      <label className="flex flex-col text-xs text-secondary">
-        <span>{label}</span>
-        <input
-          aria-label={label}
-          data-testid={testId}
-          placeholder="Type a value"
-          className="mt-0.5 min-w-28 rounded border border-medium bg-canvas px-1 py-1 text-primary"
-          value={value ?? ''}
-          onChange={(e) => commit(e.currentTarget.value)}
-        />
-      </label>
-    );
-  }
-  const shown = value !== undefined && !available.includes(value) ? [value, ...available] : available;
-  return (
-    <label className="flex flex-col text-xs text-secondary">
-      <span>{label}</span>
-      <select
-        aria-label={label}
-        data-testid={testId}
-        className="mt-0.5 min-w-28 rounded border border-medium bg-canvas px-1 py-1 text-primary"
-        value={value ?? ''}
-        onChange={(e) => commit(e.currentTarget.value)}
-      >
-        <option value="">Select…</option>
-        {shown.map((item) => (
-          <option key={item} value={item}>
-            {item}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function asSingle(value: string | undefined): string[] {
+  return value === undefined || value === '' ? [] : [value];
 }
 
 function rootEntries(roots: StorageGraphRoots): Array<{ kind: SankeyRootKind; value: string }> {
@@ -124,21 +39,44 @@ function rootEntries(roots: StorageGraphRoots): Array<{ kind: SankeyRootKind; va
   return out;
 }
 
+/**
+ * Sankey estate / root / narrowing. `az` / `env` stay operable with zero options
+ * because custom values are allowed — the backend requires both, and a dropdown
+ * that cannot accept a value would strand the view on the "pick an az and env" hint.
+ */
 export function SankeyScopeBar({ options, controller }: Readonly<SankeyScopeBarProps>): JSX.Element {
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
   const [rootValue, setRootValue] = useState('');
+  const showCluster = options.cluster.length > 0 || controller.query.cluster.length > 0;
+  const showNamespace = options.namespace.length > 0 || controller.query.namespace.length > 0;
   return (
     <div
       aria-label="Sankey scope"
       data-testid="sankey-controls"
       className="flex shrink-0 flex-wrap items-end gap-3 border-b border-weak bg-surface px-3 py-2"
     >
-      <SingleSelect label="AZ" value={controller.query.az} available={options.az} onChange={controller.setAz} />
-      <SingleSelect label="Env" value={controller.query.env} available={options.env} onChange={controller.setEnv} />
-      <div className="flex flex-col text-xs text-secondary">
-        <span>Root</span>
+      <ScopeSelect
+        label="AZ"
+        mode="single"
+        options={options.az}
+        value={asSingle(controller.query.az)}
+        onChange={(next) => controller.setAz(next[0])}
+        allowCustom
+        testId="sankey-az"
+      />
+      <ScopeSelect
+        label="Env"
+        mode="single"
+        options={options.env}
+        value={asSingle(controller.query.env)}
+        onChange={(next) => controller.setEnv(next[0])}
+        allowCustom
+        testId="sankey-env"
+      />
+      <div className="flex flex-col gap-1 text-xs text-secondary">
+        <span className="text-[10px] font-semibold uppercase tracking-eyebrow">Root</span>
         <form
-          className="mt-0.5 flex items-center gap-1"
+          className="flex items-center gap-1"
           onSubmit={(e) => {
             e.preventDefault();
             if (controller.addRoot(rootKind, rootValue)) {
@@ -146,30 +84,33 @@ export function SankeyScopeBar({ options, controller }: Readonly<SankeyScopeBarP
             }
           }}
         >
-          <select
-            aria-label="Root kind"
-            className="rounded border border-medium bg-canvas px-1 py-1 text-primary"
-            value={rootKind}
-            onChange={(e) => setRootKind(e.currentTarget.value as SankeyRootKind)}
-          >
-            {ROOT_KINDS.map((item) => (
-              <option key={item.kind} value={item.kind}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <ScopeSelect
+            label="Root kind"
+            mode="single"
+            options={ROOT_KIND_VALUES}
+            optionLabel={rootKindLabel}
+            value={[rootKind]}
+            onChange={(next) => {
+              const kind = next[0];
+              if (kind === 'ontap_cluster' || kind === 'node' || kind === 'aggr' || kind === 'svm' || kind === 'pod') {
+                setRootKind(kind);
+              }
+            }}
+            allowCustom={false}
+            testId="sankey-root-kind"
+          />
           <input
             aria-label="Root value"
-            className="min-w-32 rounded border border-medium bg-canvas px-1 py-1 text-primary"
+            className="h-8 min-w-32 rounded-md border border-hairline-strong bg-raised px-2 text-xs text-primary"
             value={rootValue}
             onChange={(e) => setRootValue(e.currentTarget.value)}
           />
-          <button type="submit" className="rounded border border-medium px-2 py-1 text-primary">
+          <Button type="submit" size="md">
             Add
-          </button>
+          </Button>
         </form>
         {controller.podError !== undefined && (
-          <span className="mt-0.5 text-[var(--ksg-status-warning)]" data-testid="sankey-pod-error">
+          <span className="text-[var(--ksg-status-warning)]" data-testid="sankey-pod-error">
             {controller.podError}
           </span>
         )}
@@ -184,22 +125,26 @@ export function SankeyScopeBar({ options, controller }: Readonly<SankeyScopeBarP
           {entry.kind}:{entry.value} ×
         </button>
       ))}
-      {/* Optional narrowing over an enumerated set, unlike az / env: with nothing to
-          enumerate there is nothing to narrow to, and the request is valid without them. */}
-      {(options.cluster.length > 0 || controller.query.cluster.length > 0) && (
-        <MultiSelect
+      {showCluster && (
+        <ScopeSelect
           label="Cluster"
-          values={controller.query.cluster}
-          available={options.cluster}
+          mode="multi"
+          options={options.cluster}
+          value={controller.query.cluster}
           onChange={controller.setCluster}
+          allowCustom
+          testId="sankey-cluster"
         />
       )}
-      {(options.namespace.length > 0 || controller.query.namespace.length > 0) && (
-        <MultiSelect
+      {showNamespace && (
+        <ScopeSelect
           label="Namespace"
-          values={controller.query.namespace}
-          available={options.namespace}
+          mode="multi"
+          options={options.namespace}
+          value={controller.query.namespace}
           onChange={controller.setNamespace}
+          allowCustom
+          testId="sankey-namespace"
         />
       )}
       <p className="max-w-md text-[11px] leading-snug text-secondary">

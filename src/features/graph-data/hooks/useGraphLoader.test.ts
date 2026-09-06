@@ -267,4 +267,50 @@ describe('useGraphLoader', () => {
     });
     expect(requestedWindow(fetchMock, 1).end).toBe(requestedWindow(fetchMock, 0).end + 3600);
   });
+
+  it('aborts an in-flight request on unmount and does not update afterwards', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>(() => undefined);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount, result } = renderHook(() =>
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => '/api/v1/graph',
+        requestKey: '/api/v1/graph',
+        refreshIntervalSeconds: 0,
+      })
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    expect(result.current.state.status).toBe('loading');
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    expect(result.current.state.status).toBe('loading');
+  });
+
+  it('clears the auto-refresh timer on unmount', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(SHOWCASE_GRAPH));
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = renderHook(() =>
+      useGraphLoader({
+        demoMode: false,
+        makeUrl: () => '/api/v1/graph',
+        requestKey: '/api/v1/graph',
+        refreshIntervalSeconds: 30,
+      })
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

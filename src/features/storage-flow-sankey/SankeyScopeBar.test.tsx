@@ -21,30 +21,31 @@ function Harness({
 describe('SankeyScopeBar', () => {
   it('does not preselect when there are several az / env options', () => {
     render(<Harness />);
-    expect(screen.getByLabelText<HTMLSelectElement>('AZ').value).toBe('');
-    expect(screen.getByLabelText<HTMLSelectElement>('Env').value).toBe('');
+    expect(screen.getByRole('button', { name: 'AZ' })).toHaveTextContent('All');
+    expect(screen.getByRole('button', { name: 'Env' })).toHaveTextContent('All');
   });
 
   it('auto-selects a lone az / env option', () => {
     render(<Harness az={['local-a']} env={['demo']} />);
-    expect(screen.getByLabelText<HTMLSelectElement>('AZ').value).toBe('local-a');
-    expect(screen.getByLabelText<HTMLSelectElement>('Env').value).toBe('demo');
+    expect(screen.getByRole('button', { name: 'AZ' })).toHaveTextContent('local-a');
+    expect(screen.getByRole('button', { name: 'Env' })).toHaveTextContent('demo');
   });
 
-  it('falls back to free text when az / env cannot be enumerated', () => {
-    // `endpoints.labelValues` is optional independently of `endpoints.storageGraph`, but the
-    // endpoint still requires one az and one env — so the control has to stay operable.
+  it('still accepts a typed value when az / env cannot be enumerated', () => {
     render(<Harness az={[]} env={[]} />);
-    const az = screen.getByLabelText<HTMLInputElement>('AZ');
-    expect(az.tagName).toBe('INPUT');
-    fireEvent.change(az, { target: { value: 'local-a' } });
-    fireEvent.change(screen.getByLabelText('Env'), { target: { value: 'demo' } });
-    expect(screen.getByLabelText<HTMLInputElement>('AZ').value).toBe('local-a');
-    expect(screen.getByLabelText<HTMLInputElement>('Env').value).toBe('demo');
+    fireEvent.click(screen.getByRole('button', { name: 'AZ' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search AZ' }), { target: { value: 'zone-a' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "zone-a"' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Env' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Env' }), { target: { value: 'prod' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "prod"' }));
+    expect(screen.getByRole('button', { name: 'AZ' })).toHaveTextContent('zone-a');
+    expect(screen.getByRole('button', { name: 'Env' })).toHaveTextContent('prod');
+    expect(screen.getByRole('button', { name: 'AZ' }).querySelector('[data-unlisted="true"]')).toBeTruthy();
   });
 
   it('drops the optional cluster / namespace narrowing when there is nothing to enumerate', () => {
-    const controllerless = (
+    render(
       <SankeyScopeBar
         options={{ az: [], env: [], cluster: [], namespace: [] }}
         controller={{
@@ -61,16 +62,16 @@ describe('SankeyScopeBar', () => {
         }}
       />
     );
-    render(controllerless);
-    expect(screen.getByLabelText('AZ')).toBeInTheDocument();
-    expect(screen.getByLabelText('Env')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Cluster')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Namespace')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AZ' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Env' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cluster' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Namespace' })).not.toBeInTheDocument();
   });
 
   it('keeps an invalid pod root out of the request and shows an inline error', () => {
     render(<Harness az={['local-a']} env={['demo']} />);
-    fireEvent.change(screen.getByLabelText('Root kind'), { target: { value: 'pod' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Pod' }));
     fireEvent.change(screen.getByLabelText('Root value'), { target: { value: 'orders-0' } });
     fireEvent.submit(screen.getByLabelText('Root value').closest('form')!);
     expect(screen.getByTestId('sankey-pod-error')).toHaveTextContent('<namespace>/<pod>');
@@ -79,7 +80,6 @@ describe('SankeyScopeBar', () => {
 
   it('adds a valid root and keeps empty roots legal', () => {
     render(<Harness az={['local-a']} env={['demo']} />);
-    fireEvent.change(screen.getByLabelText('Root kind'), { target: { value: 'aggr' } });
     fireEvent.change(screen.getByLabelText('Root value'), { target: { value: 'aggr1' } });
     fireEvent.submit(screen.getByLabelText('Root value').closest('form')!);
     expect(screen.getByRole('button', { name: /aggr:aggr1/ })).toBeInTheDocument();

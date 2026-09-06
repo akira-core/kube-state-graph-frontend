@@ -35,9 +35,10 @@ export interface SankeyViewProps {
   error: string | undefined;
   hasPayload: boolean;
   demoMode: boolean;
-  visible: boolean;
   focusMode: boolean;
   onFocusModeChange: (next: boolean) => void;
+  mode?: SankeyMode;
+  onModeChange?: (mode: SankeyMode) => void;
   /** `endpoints.storageGraph` is configured (or demo mode supplies a fixture). */
   endpointConfigured: boolean;
   /** Both halves of the required scope are chosen, so a request has been sent. */
@@ -134,16 +135,24 @@ export function SankeyView({
   error,
   hasPayload,
   demoMode,
-  visible,
   focusMode,
   onFocusModeChange,
+  mode: modeProp,
+  onModeChange,
   endpointConfigured,
   azEnvReady,
   roots = EMPTY_STORAGE_GRAPH_ROOTS,
   onLocateNode,
 }: Readonly<SankeyViewProps>): JSX.Element {
   const tokens = useThemeTokens();
-  const [mode, setMode] = useState<SankeyMode>('both');
+  const [localMode, setLocalMode] = useState<SankeyMode>(modeProp ?? 'both');
+  const mode = modeProp ?? localMode;
+  const setMode = (next: SankeyMode): void => {
+    if (modeProp === undefined) {
+      setLocalMode(next);
+    }
+    onModeChange?.(next);
+  };
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
@@ -157,9 +166,6 @@ export function SankeyView({
   // early returns below have passed, so a first-load effect with a null ref must re-run
   // once the box actually mounts, not just once at first render.
   useEffect(() => {
-    if (!visible) {
-      return;
-    }
     const el = boxRef.current;
     if (el === null) {
       return;
@@ -176,7 +182,7 @@ export function SankeyView({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [visible, status, hasPayload]);
+  }, [status, hasPayload]);
 
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's

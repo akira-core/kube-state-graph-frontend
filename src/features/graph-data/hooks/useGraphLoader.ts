@@ -94,6 +94,7 @@ export function useGraphLoader({
   const inflightRef = useRef(false);
   const mountedRef = useRef(true);
   const generationRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   // Held in a ref so a caller may hand a fresh closure every render without that alone
   // counting as a new request. What counts as a new request is requestKey.
   const makeUrlRef = useRef(makeUrl);
@@ -122,6 +123,8 @@ export function useGraphLoader({
     if (url === undefined || url === '') {
       return;
     }
+    const ac = new AbortController();
+    abortRef.current = ac;
     inflightRef.current = true;
     const gen = generationRef.current;
     setState((prev) => ({
@@ -131,8 +134,8 @@ export function useGraphLoader({
       error: prev.hasPayload ? prev.error : undefined,
     }));
     try {
-      const payload = await fetchJson(url);
-      if (!mountedRef.current || gen !== generationRef.current) {
+      const payload = await fetchJson(url, { signal: ac.signal });
+      if (!mountedRef.current || gen !== generationRef.current || ac.signal.aborted) {
         return;
       }
       const next = normalizePayload(payload);
@@ -181,7 +184,9 @@ export function useGraphLoader({
             }
       );
     } finally {
-      inflightRef.current = false;
+      if (abortRef.current === ac) {
+        inflightRef.current = false;
+      }
     }
   }, []);
 
@@ -200,12 +205,15 @@ export function useGraphLoader({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      abortRef.current?.abort();
     };
   }, []);
 
   useEffect(() => {
     // requestKey is this effect's identity: a new selection is a new request.
     void requestKey;
+    abortRef.current?.abort();
+    abortRef.current = null;
     // Bump the generation BEFORE the enabled guard: a request already in flight when the
     // loader is disabled must not commit its response afterwards. Returning first would
     // leave that fetch on the current generation and let it land into a disabled loader.
