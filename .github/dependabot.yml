@@ -1,0 +1,13 @@
+# Both Dockerfile bases are pinned by digest (see the comments there). A digest
+# pin only stays CVE-free while something moves it, and this is that something:
+# a weekly PR bumping tag + digest together, which the `image` workflow's Trivy
+# gate then scans before anything is pushed.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      base-images:
+        patterns: ['*']

@@ -130,6 +130,15 @@ deep link with no further configuration.
 
 See `deploy/README.md` for Kubernetes manifests, ConfigMap mounting, and the optional `KSG_API_PROXY_TARGET` reverse proxy.
 
+### Image hygiene
+
+The runtime base is `nginx-unprivileged:*-alpine-slim`, pinned by digest in the `Dockerfile`, and
+the `image` workflow runs Trivy against the freshly built image before anything is pushed: a
+vulnerability with a fix available fails the job at any severity. Dependabot bumps both base
+digests weekly, which is what keeps the pin from drifting back into CVEs. Reproduce the gate
+locally with `make scan` (needs `trivy`), and accept a known finding by adding its CVE id to a
+`.trivyignore` at the repository root — with a comment saying why.
+
 ## Troubleshooting
 
 - **Dev server port in use** — Vite will pick the next port; open the URL it prints.

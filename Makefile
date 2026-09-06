@@ -3,7 +3,7 @@
 
 IMAGE ?= kube-state-graph-frontend:local
 
-.PHONY: help install dev lint typecheck test e2e build fixture-build fixture-check check image image-push deploy
+.PHONY: help install dev lint typecheck test e2e build fixture-build fixture-check check image scan image-push deploy
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_.-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -40,6 +40,9 @@ check: ## Full local gate (lint, typecheck, fixture:check, unit tests)
 
 image: ## Build the container image (IMAGE=registry/repo:tag)
 	docker build -t $(IMAGE) .
+
+scan: ## Scan the built image for CVEs the same way CI does (needs trivy)
+	trivy image --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --ignore-unfixed --exit-code 1 $(IMAGE)
 
 image-push: ## Push the container image
 	docker push $(IMAGE)
