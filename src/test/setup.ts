@@ -69,6 +69,12 @@ afterEach(() => {
   }
 });
 
+// jsdom's selector engine (nwsapi) is pinned to 2.2.20 in package.json `overrides`. Later
+// versions answer `:modal` / `:fullscreen` by calling `Element.matches` again, which re-enters
+// the same handler until the stack overflows. Floating UI probes `element.matches(':modal')` on
+// every reposition, so each Radix popover open cost ~1.7s of that recursion. See README
+// "Linting & testing" before changing the pin.
+
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {
     observe(): void {}

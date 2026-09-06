@@ -99,6 +99,15 @@ npm run e2e         # Playwright, starts the dev server
 make check          # lint + typecheck + fixture:check + test:ci
 ```
 
+`package.json` pins `nwsapi` to `2.2.20` through `overrides`. It is jsdom's selector engine, and
+from `2.2.21` its `:modal` / `:fullscreen` handling calls back into `Element.matches`, which
+re-enters the same handler — an unbounded mutual recursion that only stops when the stack
+overflows and the `try`/`catch` swallows it. Floating UI asks `element.matches(':modal')` on
+every reposition, so every Radix popover in the suite (`ScopeSelect`, and so `FilterBar`,
+`SankeyScopeBar` and `AppShell`) paid ~1.7s per open — under 5s locally, well over it on a
+two-core CI runner, where the tests timed out rather than failed. Do not lift the pin without
+re-running `npm run test:ci` and checking the suite still finishes in seconds.
+
 ## Build & deploy
 
 ```sh

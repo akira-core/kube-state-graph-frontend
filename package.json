@@ -66,5 +66,8 @@
     "typescript-eslint": "^8.43.0",
     "vite": "^7.1.5",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "nwsapi": "2.2.20"
   }
 }
