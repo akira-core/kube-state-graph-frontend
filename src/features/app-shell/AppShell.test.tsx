@@ -292,6 +292,51 @@ describe('AppShell routing', () => {
     });
     expect(fetchMock.mock.calls.some((call) => urlOf(call[0]).includes('/label/'))).toBe(false);
   }, 15_000);
+
+  it('seeds a sole az / env once and lets the operator clear it again', async () => {
+    // A one-az, one-env estate is the demo's own shape. Seeding is a convenience; a seed that
+    // re-applies itself makes the pill's remove button look broken, because every later scope
+    // write would put the only candidate straight back.
+    const single: RuntimeConfig = {
+      ...DEMO,
+      demoMode: false,
+      endpoints: { graph: '/api/v1/graph', storageGraph: '/api/v1/storage-graph', labelValues: '/prom' },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = urlOf(input);
+        if (url.includes('/label/az/')) {
+          return Promise.resolve(jsonResponse({ status: 'success', data: ['zone-a'] }));
+        }
+        if (url.includes('/label/env/')) {
+          return Promise.resolve(jsonResponse({ status: 'success', data: ['prod'] }));
+        }
+        if (url.includes('/label/')) {
+          return Promise.resolve(jsonResponse({ status: 'success', data: [] }));
+        }
+        return Promise.resolve(jsonResponse({ elements: { nodes: [], edges: [] } }));
+      })
+    );
+    renderAt('/sankey', single);
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('az')).toBe('zone-a');
+    });
+    expect(new URLSearchParams(window.location.search).get('env')).toBe('prod');
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Remove AZ zone-a' }));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('az')).toBeNull();
+    });
+
+    // Clearing env is a second scope write, and every effect listing the URL setter re-runs on
+    // it. The az seed must not ride along with that.
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Remove Env prod' }));
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('env')).toBeNull();
+    });
+    expect(new URLSearchParams(window.location.search).get('az')).toBeNull();
+  }, 15_000);
 });
 
 describe('AppShell two data sources', () => {

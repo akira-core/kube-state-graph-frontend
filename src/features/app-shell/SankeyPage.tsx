@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router';
 
 import { DEMO_IDENTITY_OPTIONS, SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
@@ -104,19 +104,31 @@ export function SankeyPage(): JSX.Element {
   const storageConfigured = config.demoMode || storageEndpoint !== undefined;
   const azEnvReady = controller.azEnvReady;
 
+  // An estate that offers exactly one az (or env) is seeded with it, because the endpoint
+  // requires both and making the operator pick the only candidate teaches nothing. It is a
+  // seed, not a constraint: clearing the pill must stick. `seeded` records the option this
+  // effect has already offered, so a re-run — a new time range, a re-render — cannot put back
+  // what the operator just removed, while a genuinely new sole option still seeds.
+  const soleAz = identity.az.length === 1 ? identity.az[0] : undefined;
+  const soleEnv = identity.env.length === 1 ? identity.env[0] : undefined;
+  const seeded = useRef<{ az: string | undefined; env: string | undefined }>({ az: undefined, env: undefined });
+
   useEffect(() => {
-    if (config.demoMode) {
+    const azIsNew = soleAz !== undefined && soleAz !== seeded.current.az;
+    const envIsNew = soleEnv !== undefined && soleEnv !== seeded.current.env;
+    seeded.current = { az: soleAz, env: soleEnv };
+    if (config.demoMode || (!azIsNew && !envIsNew)) {
       return;
     }
     setUrlScope((prev) => {
-      const az = prev.query.az === undefined && identity.az.length === 1 ? identity.az[0] : prev.query.az;
-      const env = prev.query.env === undefined && identity.env.length === 1 ? identity.env[0] : prev.query.env;
+      const az = azIsNew && prev.query.az === undefined ? soleAz : prev.query.az;
+      const env = envIsNew && prev.query.env === undefined ? soleEnv : prev.query.env;
       if (az === prev.query.az && env === prev.query.env) {
         return prev;
       }
       return { ...prev, query: { ...prev.query, az, env } };
     });
-  }, [config.demoMode, identity.az, identity.env, setUrlScope]);
+  }, [config.demoMode, setUrlScope, soleAz, soleEnv]);
 
   const makeUrl = useCallback(
     () =>

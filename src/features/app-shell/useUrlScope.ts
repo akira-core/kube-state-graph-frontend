@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 
 import type { ViewTimeRange } from '../../shared/time/viewTimeRange';
@@ -22,9 +22,17 @@ export function useUrlScope<T>(
   );
   const canonical = buildSearchString(writeScope ? serialize(value) : [], range);
 
+  // The setter reads all of this at call time, so holding it in a ref keeps the setter's
+  // identity stable. A setter that changed whenever the scope did would re-run every effect
+  // that lists it, and an effect that seeds a value would then undo the user's own clearing
+  // of it on the very next write.
+  const latest = useRef({ value, range, serialize, writeScope });
+  latest.current = { value, range, serialize, writeScope };
+
   const replaceCanonical = useCallback(
     (nextValue: T): void => {
-      const next = buildSearchString(writeScope ? serialize(nextValue) : [], range);
+      const { range: currentRange, serialize: currentSerialize, writeScope: currentWriteScope } = latest.current;
+      const next = buildSearchString(currentWriteScope ? currentSerialize(nextValue) : [], currentRange);
       setSearchParams(
         (prev) => {
           if (prev.toString() === next) {
@@ -35,7 +43,7 @@ export function useUrlScope<T>(
         { replace: true }
       );
     },
-    [range, serialize, setSearchParams, writeScope]
+    [setSearchParams]
   );
 
   useEffect(() => {
@@ -52,10 +60,10 @@ export function useUrlScope<T>(
 
   const setValue = useCallback(
     (next: T | ((prev: T) => T)): void => {
-      const resolved = typeof next === 'function' ? (next as (prev: T) => T)(value) : next;
+      const resolved = typeof next === 'function' ? (next as (prev: T) => T)(latest.current.value) : next;
       replaceCanonical(resolved);
     },
-    [replaceCanonical, value]
+    [replaceCanonical]
   );
 
   return [value, setValue];
