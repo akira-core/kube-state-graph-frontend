@@ -1,0 +1,1708 @@
+{
+  "apiVersion": "v1",
+  "clusters": [
+    "prod",
+    "dr"
+  ],
+  "elements": {
+    "nodes": [
+      {
+        "data": {
+          "id": "net/fabric",
+          "name": "physical network",
+          "type": "network"
+        }
+      },
+      {
+        "data": {
+          "id": "sw/core",
+          "name": "core",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "4",
+            "role": "core"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/spine-a",
+          "name": "spine-a",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "3",
+            "role": "spine"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/spine-b",
+          "name": "spine-b",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "3",
+            "role": "spine"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/dist-a",
+          "name": "dist-a",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "2",
+            "role": "distribution"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/dist-b",
+          "name": "dist-b",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "2",
+            "role": "distribution"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/access-a",
+          "name": "access-a",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "1",
+            "role": "access"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/access-b",
+          "name": "access-b",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "1",
+            "role": "access"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/tor-a",
+          "name": "tor-a",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "0",
+            "role": "tor"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/tor-b",
+          "name": "tor-b",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "0",
+            "role": "tor"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/tor-c",
+          "name": "tor-c",
+          "type": "switch",
+          "parent": "net/fabric",
+          "labels": {
+            "level": "0",
+            "role": "tor"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "cluster/prod",
+          "name": "prod",
+          "type": "cluster"
+        }
+      },
+      {
+        "data": {
+          "id": "cluster/dr",
+          "name": "dr",
+          "type": "cluster"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ns/prod",
+          "name": "prod",
+          "type": "namespace",
+          "parent": "cluster/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/mongodb",
+          "name": "mongodb",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/gateway",
+          "name": "gateway",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/mesh-gateway",
+          "name": "mesh-gateway",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/StatefulSet/mongodb",
+          "name": "mongodb",
+          "type": "controller",
+          "parent": "prod/app/mongodb"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/Deployment/gateway",
+          "name": "gateway",
+          "type": "controller",
+          "parent": "prod/app/gateway"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/Deployment/mesh-gateway",
+          "name": "mesh-gateway",
+          "type": "controller",
+          "parent": "prod/app/mesh-gateway"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/platform",
+          "name": "platform",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/DaemonSet/node-exporter",
+          "name": "node-exporter",
+          "type": "controller",
+          "parent": "prod/app/platform"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/Job/db-migrate",
+          "name": "db-migrate",
+          "type": "controller",
+          "parent": "prod/app/platform"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/CronJob/nightly-backup",
+          "name": "nightly-backup",
+          "type": "controller",
+          "parent": "prod/app/platform"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/Job/batch",
+          "name": "batch",
+          "type": "controller",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "pod/node-exporter-0",
+          "name": "node-exporter-0",
+          "type": "pod",
+          "parent": "prod/ctrl/DaemonSet/node-exporter",
+          "status": "normal",
+          "application": "platform",
+          "owner": {
+            "kind": "DaemonSet",
+            "name": "node-exporter"
+          },
+          "ipaddress": [
+            "10.244.1.60"
+          ],
+          "labels": {
+            "app": "node-exporter",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          },
+          "containers": [
+            {
+              "name": "node-exporter",
+              "image": "quay.io/prometheus/node-exporter:v1.8.2"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/db-migrate-x9k2",
+          "name": "db-migrate-x9k2",
+          "type": "pod",
+          "parent": "prod/ctrl/Job/db-migrate",
+          "status": "normal",
+          "application": "platform",
+          "owner": {
+            "kind": "Job",
+            "name": "db-migrate"
+          },
+          "ipaddress": [
+            "10.244.1.61"
+          ],
+          "labels": {
+            "app": "db-migrate",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          },
+          "containers": [
+            {
+              "name": "migrate",
+              "image": "registry.local/db-migrate:2.1.0"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/nightly-backup-28471",
+          "name": "nightly-backup-28471",
+          "type": "pod",
+          "parent": "prod/ctrl/CronJob/nightly-backup",
+          "status": "warning",
+          "application": "platform",
+          "owner": {
+            "kind": "CronJob",
+            "name": "nightly-backup"
+          },
+          "ipaddress": [
+            "10.244.1.62"
+          ],
+          "labels": {
+            "app": "nightly-backup",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          },
+          "containers": [
+            {
+              "name": "backup",
+              "image": "registry.local/backup:1.0.3"
+            }
+          ],
+          "alerts": [
+            {
+              "name": "CronJobLastRunFailed",
+              "severity": "warning",
+              "time_records": [
+                1748688000,
+                1748691600
+              ],
+              "pod": "nightly-backup-28471"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "node/worker-0",
+          "name": "worker-0",
+          "type": "node",
+          "parent": "cluster/prod",
+          "status": "normal",
+          "ready_status": "Ready",
+          "ipaddress": [
+            "10.0.1.10"
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "node/worker-1",
+          "name": "worker-1",
+          "type": "node",
+          "parent": "cluster/prod",
+          "status": "warning",
+          "ready_status": "NotReady",
+          "ipaddress": [
+            "10.0.1.11"
+          ],
+          "alerts": [
+            {
+              "name": "KubeNodeMemoryPressure",
+              "severity": "warning",
+              "time": 1748692200
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/mongo-0",
+          "name": "mongo-0",
+          "type": "pod",
+          "parent": "prod/ctrl/StatefulSet/mongodb",
+          "status": "normal",
+          "application": "mongodb",
+          "owner": {
+            "name": "mongodb",
+            "kind": "StatefulSet"
+          },
+          "ipaddress": [
+            "10.244.1.20"
+          ],
+          "labels": {
+            "app": "mongodb",
+            "version": "6.0",
+            "namespace": "prod",
+            "role": "primary",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          },
+          "containers": [
+            {
+              "name": "mongod",
+              "image": "mongo:6.0"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/mongo-1",
+          "name": "mongo-1",
+          "type": "pod",
+          "parent": "prod/ctrl/StatefulSet/mongodb",
+          "status": "normal",
+          "application": "mongodb",
+          "owner": {
+            "name": "mongodb",
+            "kind": "StatefulSet"
+          },
+          "ipaddress": [
+            "10.244.2.21"
+          ],
+          "labels": {
+            "app": "mongodb",
+            "version": "6.0",
+            "namespace": "prod",
+            "role": "secondary",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          },
+          "containers": [
+            {
+              "name": "mongod",
+              "image": "mongo:6.0"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/mongo-2",
+          "name": "mongo-2",
+          "type": "pod",
+          "parent": "prod/ctrl/StatefulSet/mongodb",
+          "status": "critical",
+          "application": "mongodb",
+          "owner": {
+            "name": "mongodb",
+            "kind": "StatefulSet"
+          },
+          "labels": {
+            "app": "mongodb",
+            "version": "6.0",
+            "namespace": "prod",
+            "role": "secondary",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          },
+          "containers": [
+            {
+              "name": "mongod",
+              "image": "mongo:6.0"
+            },
+            {
+              "name": "backup-agent",
+              "image": "registry.local/backup-agent:0.3.1"
+            }
+          ],
+          "alerts": [
+            {
+              "name": "KubePodCrashLooping",
+              "severity": "critical",
+              "time_records": [
+                1748691780,
+                1748692230,
+                1748692680
+              ],
+              "pod": "mongo-2"
+            },
+            {
+              "name": "KubeContainerOOMKilled",
+              "severity": "warning",
+              "time": 1748691900,
+              "pod": "mongo-2"
+            },
+            {
+              "name": "KubePodNotReady",
+              "severity": "info",
+              "time": 1748691000,
+              "pod": "mongo-2"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/gateway",
+          "name": "gateway",
+          "type": "pod",
+          "parent": "prod/ctrl/Deployment/gateway",
+          "status": "normal",
+          "application": "gateway",
+          "owner": {
+            "name": "gateway",
+            "kind": "Deployment"
+          },
+          "ipaddress": [
+            "10.244.1.30"
+          ],
+          "labels": {
+            "app": "gateway",
+            "version": "1.4.2",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          },
+          "containers": [
+            {
+              "name": "gateway",
+              "image": "registry.local/gateway:1.4.2"
+            },
+            {
+              "name": "envoy-sidecar",
+              "image": "envoyproxy/envoy:v1.30"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/mesh-gateway-0",
+          "name": "mesh-gateway-0",
+          "type": "pod",
+          "parent": "prod/ctrl/Deployment/mesh-gateway",
+          "status": "warning",
+          "application": "mesh-gateway",
+          "owner": {
+            "name": "mesh-gateway",
+            "kind": "Deployment"
+          },
+          "labels": {
+            "app": "mesh-gateway",
+            "version": "3.2.0",
+            "namespace": "prod",
+            "role": "edge",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          },
+          "containers": [
+            {
+              "name": "mesh-gateway",
+              "image": "ghcr.io/acme/mesh-gateway:3.2.0"
+            },
+            {
+              "name": "istio-proxy",
+              "image": "docker.io/istio/proxyv2:1.22.1"
+            },
+            {
+              "name": "oauth-proxy",
+              "image": "quay.io/oauth2-proxy/oauth2-proxy:7.6.0"
+            },
+            {
+              "name": "vault-agent",
+              "image": "hashicorp/vault:1.16.2"
+            },
+            {
+              "name": "config-reloader",
+              "image": "jimmidyson/configmap-reload:0.12.0"
+            },
+            {
+              "name": "log-shipper",
+              "image": "grafana/promtail:3.0.0"
+            },
+            {
+              "name": "metrics-exporter",
+              "image": "prom/statsd-exporter:0.27.0"
+            },
+            {
+              "name": "trace-agent",
+              "image": "jaegertracing/jaeger-agent:1.57"
+            },
+            {
+              "name": "envoy-sidecar",
+              "image": "envoyproxy/envoy:v1.31.0"
+            },
+            {
+              "name": "fluent-bit",
+              "image": "fluent/fluent-bit:3.0.7"
+            },
+            {
+              "name": "redis-cache",
+              "image": "redis:7.2-alpine"
+            },
+            {
+              "name": "cert-renewer",
+              "image": "registry.local/cert-renewer:0.4.1"
+            }
+          ],
+          "alerts": [
+            {
+              "name": "KubePodCrashLooping",
+              "severity": "critical",
+              "time_records": [
+                1748691060,
+                1748691510,
+                1748691960
+              ],
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubeContainerOOMKilled",
+              "severity": "critical",
+              "time_records": [
+                1748691120,
+                1748691720
+              ],
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "TargetDown",
+              "severity": "critical",
+              "time": 1748691200,
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubeContainerWaiting",
+              "severity": "warning",
+              "time": 1748691240,
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubeDeploymentReplicasMismatch",
+              "severity": "warning",
+              "time_records": [
+                1748691300,
+                1748691900
+              ],
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubeMemoryOvercommit",
+              "severity": "warning",
+              "time": 1748691360,
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "CPUThrottlingHigh",
+              "severity": "warning",
+              "time": 1748691420,
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubePodNotReady",
+              "severity": "info",
+              "time": 1748691480,
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubePodNotScheduled",
+              "severity": "info",
+              "time": 1748691540,
+              "pod": "mesh-gateway-0"
+            },
+            {
+              "name": "KubeletTooManyPods",
+              "severity": "info",
+              "time": 1748691600,
+              "pod": "mesh-gateway-0"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "service/mongo-svc",
+          "name": "mongo-svc",
+          "type": "service",
+          "parent": "prod/app/mongodb",
+          "application": "mongodb",
+          "labels": {
+            "type": "ClusterIP",
+            "namespace": "prod"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-mongo-0",
+          "name": "data-mongo-0",
+          "type": "pvc",
+          "parent": "prod/app/mongodb",
+          "status": "normal",
+          "application": "mongodb",
+          "storageclass": "netapp-nas",
+          "usage": {
+            "used_bytes": 7516192768,
+            "capacity_bytes": 10737418240
+          },
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-9f3a1b2c",
+            "svm": "svm-prod-nas"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-mongo-1",
+          "name": "data-mongo-1",
+          "type": "pvc",
+          "parent": "prod/app/mongodb",
+          "status": "normal",
+          "application": "mongodb",
+          "storageclass": "netapp-nas",
+          "usage": {
+            "used_bytes": 2147483648,
+            "capacity_bytes": 10737418240
+          },
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-7e5d4c3b",
+            "svm": "svm-prod-nas"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-mongo-2",
+          "name": "data-mongo-2",
+          "type": "pvc",
+          "parent": "prod/app/mongodb",
+          "status": "warning",
+          "application": "mongodb",
+          "storageclass": "netapp-nas",
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-1a2b3c4d"
+          },
+          "alerts": [
+            {
+              "name": "VolumeNearFull",
+              "severity": "warning",
+              "time_records": [
+                1748691600,
+                1748692500
+              ],
+              "pod": "mongo-2"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-scratch",
+          "name": "data-scratch",
+          "type": "pvc",
+          "parent": "prod/app/mongodb",
+          "status": "normal",
+          "application": "mongodb",
+          "storageclass": "netapp-nas",
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-scratch"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/orphan-0",
+          "name": "orphan-0",
+          "type": "pod",
+          "parent": "prod/ctrl/Job/batch",
+          "status": "normal",
+          "owner": {
+            "name": "batch",
+            "kind": "Job"
+          },
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/batch-pending",
+          "name": "batch-pending",
+          "type": "pod",
+          "parent": "prod/ctrl/Job/batch",
+          "status": "warning",
+          "owner": {
+            "name": "batch",
+            "kind": "Job"
+          },
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-orphan",
+          "name": "data-orphan",
+          "type": "pvc",
+          "parent": "prod/ns/prod",
+          "status": "normal",
+          "storageclass": "netapp-nas",
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-orphan"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-pending",
+          "name": "data-pending",
+          "type": "pvc",
+          "parent": "prod/ns/prod",
+          "status": "normal",
+          "storageclass": "netapp-nas",
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-pending"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "dr/ns/dr",
+          "name": "dr",
+          "type": "namespace",
+          "parent": "cluster/dr"
+        }
+      },
+      {
+        "data": {
+          "id": "dr/app/nats",
+          "name": "nats",
+          "type": "application",
+          "parent": "dr/ns/dr"
+        }
+      },
+      {
+        "data": {
+          "id": "dr/app/consumer",
+          "name": "consumer",
+          "type": "application",
+          "parent": "dr/ns/dr"
+        }
+      },
+      {
+        "data": {
+          "id": "dr/ctrl/StatefulSet/nats",
+          "name": "nats",
+          "type": "controller",
+          "parent": "dr/app/nats"
+        }
+      },
+      {
+        "data": {
+          "id": "dr/ctrl/Deployment/consumer",
+          "name": "consumer",
+          "type": "controller",
+          "parent": "dr/app/consumer"
+        }
+      },
+      {
+        "data": {
+          "id": "node/worker-2",
+          "name": "worker-2",
+          "type": "node",
+          "parent": "cluster/dr",
+          "status": "normal",
+          "ready_status": "Unknown",
+          "ipaddress": [
+            "10.0.2.10"
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/nats-0",
+          "name": "nats-0",
+          "type": "pod",
+          "parent": "dr/ctrl/StatefulSet/nats",
+          "status": "normal",
+          "application": "nats",
+          "owner": {
+            "name": "nats",
+            "kind": "StatefulSet"
+          },
+          "labels": {
+            "app": "nats",
+            "version": "2.10",
+            "namespace": "dr",
+            "cluster": "dr",
+            "node": "node/worker-2"
+          },
+          "containers": [
+            {
+              "name": "nats",
+              "image": "nats:2.10"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/nats-1",
+          "name": "nats-1",
+          "type": "pod",
+          "parent": "dr/ctrl/StatefulSet/nats",
+          "status": "normal",
+          "application": "nats",
+          "owner": {
+            "name": "nats",
+            "kind": "StatefulSet"
+          },
+          "labels": {
+            "app": "nats",
+            "version": "2.10",
+            "namespace": "dr",
+            "cluster": "dr",
+            "node": "node/worker-2"
+          },
+          "containers": [
+            {
+              "name": "nats",
+              "image": "nats:2.10"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/nats-2",
+          "name": "nats-2",
+          "type": "pod",
+          "parent": "dr/ctrl/StatefulSet/nats",
+          "status": "warning",
+          "application": "nats",
+          "owner": {
+            "name": "nats",
+            "kind": "StatefulSet"
+          },
+          "labels": {
+            "app": "nats",
+            "version": "2.10",
+            "namespace": "dr",
+            "cluster": "dr",
+            "node": "node/worker-2"
+          },
+          "containers": [
+            {
+              "name": "nats",
+              "image": "nats:2.10"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/consumer",
+          "name": "consumer",
+          "type": "pod",
+          "parent": "dr/ctrl/Deployment/consumer",
+          "status": "normal",
+          "application": "consumer",
+          "owner": {
+            "name": "consumer",
+            "kind": "Deployment"
+          },
+          "labels": {
+            "app": "consumer",
+            "version": "0.9.0",
+            "namespace": "dr",
+            "cluster": "dr",
+            "node": "node/worker-2"
+          },
+          "containers": [
+            {
+              "name": "consumer",
+              "image": "registry.local/consumer:0.9.0"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "service/nats-svc",
+          "name": "nats-svc",
+          "type": "service",
+          "parent": "dr/app/nats",
+          "application": "nats",
+          "labels": {
+            "type": "ClusterIP",
+            "namespace": "dr"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "ext/payments",
+          "name": "api.payments.io",
+          "type": "external",
+          "labels": {
+            "endpoint": "https://api.payments.io"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/ingress",
+          "name": "ingress",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/Deployment/ingress",
+          "name": "ingress",
+          "type": "controller",
+          "parent": "prod/app/ingress"
+        }
+      },
+      {
+        "data": {
+          "id": "service/ingress-svc",
+          "name": "ingress-svc",
+          "type": "service",
+          "parent": "prod/app/ingress",
+          "application": "ingress",
+          "labels": {
+            "type": "ClusterIP",
+            "namespace": "prod",
+            "role": "ingress-gateway"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/ingress-0",
+          "name": "ingress-0",
+          "type": "pod",
+          "parent": "prod/ctrl/Deployment/ingress",
+          "status": "normal",
+          "application": "ingress",
+          "owner": {
+            "name": "ingress",
+            "kind": "Deployment"
+          },
+          "ipaddress": [
+            "10.244.1.40"
+          ],
+          "labels": {
+            "app": "ingress",
+            "version": "1.10.1",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          },
+          "containers": [
+            {
+              "name": "nginx-ingress",
+              "image": "registry.k8s.io/ingress-nginx/controller:v1.10.1"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "service/nginx-lb",
+          "name": "nginx-lb",
+          "type": "service",
+          "parent": "prod/app/ingress",
+          "application": "ingress",
+          "labels": {
+            "type": "LoadBalancer",
+            "namespace": "prod",
+            "role": "ingress-lb"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/nginx-lb-0",
+          "name": "nginx-lb-0",
+          "type": "pod",
+          "parent": "prod/ctrl/Deployment/ingress",
+          "status": "normal",
+          "application": "ingress",
+          "owner": {
+            "name": "ingress",
+            "kind": "Deployment"
+          },
+          "ipaddress": [
+            "10.244.1.41"
+          ],
+          "labels": {
+            "app": "nginx-lb",
+            "version": "1.10.1",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          },
+          "containers": [
+            {
+              "name": "nginx-ingress",
+              "image": "registry.k8s.io/ingress-nginx/controller:v1.10.1"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/reporting",
+          "name": "reporting",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ctrl/Deployment/reporting",
+          "name": "reporting",
+          "type": "controller",
+          "parent": "prod/app/reporting"
+        }
+      },
+      {
+        "data": {
+          "id": "pod/reporting",
+          "name": "reporting",
+          "type": "pod",
+          "parent": "prod/ctrl/Deployment/reporting",
+          "status": "normal",
+          "application": "reporting",
+          "owner": {
+            "name": "reporting",
+            "kind": "Deployment"
+          },
+          "ipaddress": [
+            "10.244.1.50"
+          ],
+          "labels": {
+            "app": "reporting",
+            "version": "0.9.0",
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          },
+          "containers": [
+            {
+              "name": "reporting",
+              "image": "registry.local/reporting:0.9.0"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "storage-cluster/ontap-prod",
+          "name": "ontap-prod",
+          "type": "storage-cluster"
+        }
+      },
+      {
+        "data": {
+          "id": "netapp/ontap-prod/ontap-prod-01",
+          "name": "ontap-prod-01",
+          "type": "netapp-node",
+          "parent": "storage-cluster/ontap-prod",
+          "health": "online",
+          "labels": {
+            "ontap_cluster": "ontap-prod"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "netapp/ontap-prod/ontap-prod-02",
+          "name": "ontap-prod-02",
+          "type": "netapp-node",
+          "parent": "storage-cluster/ontap-prod",
+          "health": "degraded",
+          "labels": {
+            "ontap_cluster": "ontap-prod"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "netapp/ontap-prod/aggr/aggr1",
+          "name": "aggr1",
+          "type": "netapp-aggr",
+          "parent": "netapp/ontap-prod/ontap-prod-01",
+          "health": "online",
+          "usage": {
+            "used_bytes": 700000000000,
+            "capacity_bytes": 1000000000000
+          },
+          "labels": {
+            "ontap_cluster": "ontap-prod",
+            "node": "ontap-prod-01"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "netapp/ontap-prod/aggr/aggr2",
+          "name": "aggr2",
+          "type": "netapp-aggr",
+          "parent": "netapp/ontap-prod/ontap-prod-02",
+          "health": "online",
+          "usage": {
+            "used_bytes": 400000000000,
+            "capacity_bytes": 2000000000000
+          },
+          "labels": {
+            "ontap_cluster": "ontap-prod",
+            "node": "ontap-prod-02"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "id": "e-sw-0",
+          "type": "switch-to-switch",
+          "source": "sw/tor-a",
+          "target": "sw/access-a"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-1",
+          "type": "switch-to-switch",
+          "source": "sw/tor-b",
+          "target": "sw/access-a"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-2",
+          "type": "switch-to-switch",
+          "source": "sw/tor-c",
+          "target": "sw/access-b"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-3",
+          "type": "switch-to-switch",
+          "source": "sw/access-a",
+          "target": "sw/dist-a"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-4",
+          "type": "switch-to-switch",
+          "source": "sw/access-b",
+          "target": "sw/dist-b"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-5",
+          "type": "switch-to-switch",
+          "source": "sw/dist-a",
+          "target": "sw/spine-a"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-6",
+          "type": "switch-to-switch",
+          "source": "sw/dist-b",
+          "target": "sw/spine-b"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-7",
+          "type": "switch-to-switch",
+          "source": "sw/spine-a",
+          "target": "sw/core"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sw-8",
+          "type": "switch-to-switch",
+          "source": "sw/spine-b",
+          "target": "sw/core"
+        }
+      },
+      {
+        "data": {
+          "id": "e-up-0",
+          "type": "node-to-switch",
+          "source": "node/worker-0",
+          "target": "sw/tor-a"
+        }
+      },
+      {
+        "data": {
+          "id": "e-up-1",
+          "type": "node-to-switch",
+          "source": "node/worker-1",
+          "target": "sw/tor-b"
+        }
+      },
+      {
+        "data": {
+          "id": "e-up-2",
+          "type": "node-to-switch",
+          "source": "node/worker-2",
+          "target": "sw/tor-c"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-0",
+          "type": "pod-to-node",
+          "source": "pod/mongo-0",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-1",
+          "type": "pod-to-node",
+          "source": "pod/mongo-1",
+          "target": "node/worker-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-2",
+          "type": "pod-to-node",
+          "source": "pod/mongo-2",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-3",
+          "type": "pod-to-node",
+          "source": "pod/gateway",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-4",
+          "type": "pod-to-node",
+          "source": "pod/mesh-gateway-0",
+          "target": "node/worker-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-5",
+          "type": "pod-to-node",
+          "source": "pod/nats-0",
+          "target": "node/worker-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-6",
+          "type": "pod-to-node",
+          "source": "pod/nats-1",
+          "target": "node/worker-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-7",
+          "type": "pod-to-node",
+          "source": "pod/nats-2",
+          "target": "node/worker-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-8",
+          "type": "pod-to-node",
+          "source": "pod/consumer",
+          "target": "node/worker-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-orphan",
+          "type": "pod-to-node",
+          "source": "pod/orphan-0",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-0",
+          "type": "service-selects-pod",
+          "source": "service/mongo-svc",
+          "target": "pod/mongo-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-1",
+          "type": "service-selects-pod",
+          "source": "service/mongo-svc",
+          "target": "pod/mongo-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-2",
+          "type": "service-selects-pod",
+          "source": "service/mongo-svc",
+          "target": "pod/mongo-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-3",
+          "type": "service-selects-pod",
+          "source": "service/nats-svc",
+          "target": "pod/nats-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-4",
+          "type": "service-selects-pod",
+          "source": "service/nats-svc",
+          "target": "pod/nats-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-5",
+          "type": "service-selects-pod",
+          "source": "service/nats-svc",
+          "target": "pod/nats-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-0",
+          "type": "pod-mounts-pvc",
+          "source": "pod/mongo-0",
+          "target": "pvc/data-mongo-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-1",
+          "type": "pod-mounts-pvc",
+          "source": "pod/mongo-1",
+          "target": "pvc/data-mongo-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-2",
+          "type": "pod-mounts-pvc",
+          "source": "pod/mongo-2",
+          "target": "pvc/data-mongo-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-orphan",
+          "type": "pod-mounts-pvc",
+          "source": "pod/orphan-0",
+          "target": "pvc/data-orphan"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-pending",
+          "type": "pod-mounts-pvc",
+          "source": "pod/batch-pending",
+          "target": "pvc/data-pending"
+        }
+      },
+      {
+        "data": {
+          "id": "e-svc-0",
+          "type": "pod-calls-service",
+          "source": "pod/gateway",
+          "target": "service/mongo-svc",
+          "metrics": {
+            "rate": 9.99,
+            "error_rate": 0.15,
+            "p90_server_ms": 420
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-svc-1",
+          "type": "pod-calls-service",
+          "labels": {
+            "relation": "transport"
+          },
+          "source": "pod/consumer",
+          "target": "service/nats-svc",
+          "metrics": {
+            "rate": 42.7,
+            "error_rate": 0
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-svc-2",
+          "type": "pod-calls-service",
+          "source": "pod/mesh-gateway-0",
+          "target": "service/mongo-svc",
+          "metrics": {
+            "rate": 3.2,
+            "error_rate": 0.07,
+            "p90_server_ms": 2500
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-svc-3",
+          "type": "pod-calls-service",
+          "labels": {
+            "relation": "transport"
+          },
+          "source": "pod/gateway",
+          "target": "service/nats-svc",
+          "metrics": {
+            "rate": 3.86e-7,
+            "error_rate": 6.7e-8,
+            "p90_server_ms": 36.7
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-p2p-0",
+          "type": "pod-calls-pod",
+          "labels": {
+            "relation": "link"
+          },
+          "source": "pod/gateway",
+          "target": "pod/consumer"
+        }
+      },
+      {
+        "data": {
+          "id": "e-p2p-1",
+          "type": "pod-calls-pod",
+          "source": "pod/consumer",
+          "target": "ext/payments"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ing-0",
+          "type": "pod-calls-service",
+          "source": "pod/gateway",
+          "target": "service/ingress-svc",
+          "metrics": {
+            "rate": 128
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-6",
+          "type": "service-selects-pod",
+          "source": "service/ingress-svc",
+          "target": "pod/ingress-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ing-1",
+          "type": "pod-calls-service",
+          "source": "pod/ingress-0",
+          "target": "service/mongo-svc",
+          "metrics": {
+            "rate": 5,
+            "error_rate": 0.02,
+            "p90_server_ms": 45
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-9",
+          "type": "pod-to-node",
+          "source": "pod/nginx-lb-0",
+          "target": "node/worker-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-10",
+          "type": "pod-to-node",
+          "source": "pod/reporting",
+          "target": "node/worker-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-11",
+          "type": "pod-to-node",
+          "source": "pod/node-exporter-0",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-12",
+          "type": "pod-to-node",
+          "source": "pod/db-migrate-x9k2",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-ptn-13",
+          "type": "pod-to-node",
+          "source": "pod/nightly-backup-28471",
+          "target": "node/worker-1"
+        }
+      },
+      {
+        "data": {
+          "id": "e-lb-0",
+          "type": "pod-calls-service",
+          "source": "pod/reporting",
+          "target": "service/nginx-lb",
+          "metrics": {
+            "rate": 18.4,
+            "error_rate": 0,
+            "p90_server_ms": 62
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-sel-7",
+          "type": "service-selects-pod",
+          "source": "service/nginx-lb",
+          "target": "pod/nginx-lb-0"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pts-0",
+          "type": "pvc-to-netapp-aggr",
+          "source": "pvc/data-mongo-0",
+          "target": "netapp/ontap-prod/aggr/aggr1",
+          "metrics": {
+            "read_ops": 150,
+            "write_ops": 40,
+            "read_latency_us": 830,
+            "write_latency_us": 1200,
+            "read_bytes_per_sec": 5242880,
+            "write_bytes_per_sec": 1048576,
+            "max_iops": 5000,
+            "max_bytes_per_sec": 104857600
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-pts-1",
+          "type": "pvc-to-netapp-aggr",
+          "source": "pvc/data-mongo-1",
+          "target": "netapp/ontap-prod/aggr/aggr2",
+          "metrics": {
+            "read_ops": 12,
+            "write_ops": 3,
+            "read_latency_us": 410,
+            "write_latency_us": 6500,
+            "read_bytes_per_sec": 262144,
+            "write_bytes_per_sec": 49152
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "e-pts-scratch",
+          "type": "pvc-to-netapp-aggr",
+          "source": "pvc/data-scratch",
+          "target": "netapp/ontap-prod/aggr/aggr1"
+        }
+      }
+    ]
+  }
+}

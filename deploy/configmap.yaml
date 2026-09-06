@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-state-graph-frontend
+data:
+  config.json: |
+    {
+      "endpoints": {
+        "graph": "/api/v1/graph/service_graph",
+        "storageGraph": "/api/v1/storage-graph",
+        "labelValues": "/metrics-api",
+        "edgeTypes": "/api/v1/edge-types",
+        "codeChanges": "/api/v1/graph/code_changes",
+        "configChanges": "/api/v1/graph/config_changes",
+        "dashboard": "/api/dashboard"
+      },
+      "demoMode": true,
+      "refreshIntervalSeconds": 0,
+      "defaultLayout": "fcose",
+      "theme": "system"
+    }

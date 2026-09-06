@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+#
+# Version-controlled git hook (lives in git, reviewable, team-consistent).
+# Enabled automatically by the `prepare` npm script — `npm install` points
+# core.hooksPath here — or manually via `npm run init-hooks`.
+#
+# Mirrors the GitHub Actions CI gates so a push is unlikely to fail CI: lint,
+# typecheck, the generated-fixture freshness check, then the test suite. Runs
+# once per push, not per commit. The `&&` chain short-circuits, so the first
+# failing gate fails the push. Bypass ad hoc with `git push --no-verify`.
+npm run lint && npm run typecheck && npm run fixture:check && npm run test:ci
