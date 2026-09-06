@@ -21,7 +21,15 @@ import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink } from './layoutSank
 import { SankeyChart, type HoverLit } from './SankeyChart';
 import { SankeyControlBar } from './SankeyControlBar';
 import { SankeySummary, type NamespaceSubtotalRow, type NodeSummaryRow } from './SankeySummary';
-import { openingViewport, useZoomPan } from './useZoomPan';
+import { openingViewport, useZoomPan, type Size } from './useZoomPan';
+
+/**
+ * Stands in for the chart box only while it has never been measured. Nothing opens against
+ * it — the opening viewport waits for a real measurement — so it is reached solely by the
+ * zoom controls in an environment that reports no layout at all, where a zero-sized
+ * container would make `fit` a no-op and the controls untestable.
+ */
+const UNMEASURED_CONTAINER: Size = { w: 800, h: 480 };
 
 const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
   { value: 'read', label: 'Read' },
@@ -159,7 +167,16 @@ export function SankeyView({
   const boxRef = useRef<HTMLDivElement>(null);
   const chartHostRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState({ w: 800, h: 480 });
+  /**
+   * `null` until the chart box has actually been measured, and deliberately not a
+   * plausible-looking placeholder. The opening viewport fits against this and then locks
+   * itself, so a placeholder is not a harmless default — it is the size the diagram gets
+   * fitted to. Seeded at 800x480 it opened every estate at that ratio and never revisited
+   * it: 2096-wide content drew at 38% in a 1600px-wide window instead of 76%, off-centre,
+   * looking exactly like a chart too big for its area. Environments with no layout (jsdom)
+   * measure nothing and stay `null`, which is what `UNMEASURED_CONTAINER` below is for.
+   */
+  const [containerSize, setContainerSize] = useState<Size | null>(null);
   const openedRef = useRef(false);
 
   // See SankeyView.test.tsx: the ref'd box only renders once the loading / fatal-error
@@ -169,6 +186,13 @@ export function SankeyView({
     const el = boxRef.current;
     if (el === null) {
       return;
+    }
+    // Measured up front, not only from the observer's callback. The opening viewport is a
+    // separate effect that runs in the same commit as this one, so it would otherwise fit
+    // and lock against whatever the state held before the observer's first delivery.
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setContainerSize({ w: rect.width, h: rect.height });
     }
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -203,7 +227,7 @@ export function SankeyView({
   );
   const layout = useMemo(() => layoutSankey(graph, namespacePalette), [graph, namespacePalette]);
 
-  const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize);
+  const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize ?? UNMEASURED_CONTAINER);
   // A fresh `zoom` object comes back every render; pull out just the one stable setter the
   // opening-viewport effect below needs so its dep array doesn't chase the whole object.
   const { setViewport } = zoom;
@@ -212,7 +236,13 @@ export function SankeyView({
   // and a real container measurement are both available, then never touched again by data
   // changes — mode/cluster/refresh/theme/resize all preserve whatever the user set after.
   useEffect(() => {
-    if (openedRef.current || layout.nodes.length === 0 || containerSize.w < 40 || containerSize.h < 40) {
+    if (
+      openedRef.current ||
+      layout.nodes.length === 0 ||
+      containerSize === null ||
+      containerSize.w < 40 ||
+      containerSize.h < 40
+    ) {
       return;
     }
     setViewport(openingViewport({ w: layout.width, h: layout.height }, containerSize));

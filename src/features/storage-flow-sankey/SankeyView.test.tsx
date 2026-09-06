@@ -48,6 +48,9 @@ function baseProps(overrides: Overrides = {}): SankeyViewProps {
   };
 }
 
+/** Mirrors `UNMEASURED_CONTAINER` — what the zoom controls fall back to with no layout. */
+const UNMEASURED = { w: 800, h: 480 };
+
 /** The `scale(...)` factor the viewport transform is actually drawing at. */
 function scaleOf(svg: HTMLElement): number {
   const transform = svg.querySelector('g')?.getAttribute('transform') ?? '';
@@ -269,14 +272,45 @@ describe('SankeyView', () => {
     expect(svg).not.toHaveAttribute('viewBox');
 
     // And the numbers the transform carries are container pixels: fit scales the
-    // layout to sit inside the 800x480 box `renderSankey` provides, not past it.
+    // layout to sit inside the box, not past it, and the readout matches what is drawn.
     const host = screen.getByTestId('sankey-chart-host');
     fireEvent.keyDown(host, { key: '0' });
     const fitted = scaleOf(svg);
     expect(fitted).toBeGreaterThan(0);
-    expect(layoutSize().w * fitted).toBeLessThanOrEqual(800 + 0.5);
-    expect(layoutSize().h * fitted).toBeLessThanOrEqual(480 + 0.5);
+    expect(layoutSize().w * fitted).toBeLessThanOrEqual(UNMEASURED.w + 0.5);
+    expect(layoutSize().h * fitted).toBeLessThanOrEqual(UNMEASURED.h + 0.5);
     expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent(`${Math.round(fitted * 100)}%`);
+  });
+
+  it('opens fitted to the container it measured, never to a placeholder size', () => {
+    // The opening viewport fits once and then locks, so the size it reads is the size the
+    // diagram is stuck at. Seeded with a plausible placeholder it opened every estate at
+    // that ratio and never revisited it — 38% in a window that had room for 76%.
+    const measured = { w: 1600, h: 982 };
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: ResizeObserverCallback) {}
+        observe(): void {
+          this.cb(
+            [{ contentRect: { width: measured.w, height: measured.h } }] as unknown as ResizeObserverEntry[],
+            this
+          );
+        }
+        unobserve(): void {}
+        disconnect(): void {}
+      }
+    );
+    try {
+      renderSankey();
+      const { w, h } = layoutSize();
+      const expected = Math.min(measured.w / w, measured.h / h);
+      expect(scaleOf(screen.getByTestId('sankey-svg'))).toBeCloseTo(expected, 6);
+      // Explicitly not the placeholder's answer, which is what the bug drew.
+      expect(expected).not.toBeCloseTo(Math.min(UNMEASURED.w / w, UNMEASURED.h / h), 2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('resets to 1:1 on the "1" key and does not intercept it when a form control has focus', () => {
