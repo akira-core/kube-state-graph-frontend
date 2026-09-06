@@ -1,5 +1,7 @@
 import type cytoscape from 'cytoscape';
 
+import { isNodeStatus, rankToStatus, STATUS_RANK } from '../../shared/constants/colorByStatus';
+import type { NodeStatus } from '../../shared/constants/types';
 import { formatBytes } from '../../shared/format/measurements';
 import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
 
@@ -37,6 +39,15 @@ export interface SankeyNode {
   ontapCluster?: string;
   usage?: { usedBytes?: number; capacityBytes?: number };
   health?: string;
+  /**
+   * The backend's folded verdict (`graph.FoldStatus`), passed through untouched — the same
+   * field Graph view borders a node by, so the two views cannot disagree about an estate.
+   * Absent on every node the backend sends none for (SVMs, synthesised compounds), which
+   * draws the neutral border rather than a green one it has no evidence for. On a card that
+   * HIDES other nodes (`application` / `namespace`, and the Node-layout wrapper) it is the
+   * worst status of the members instead, matching a collapsed compound in Graph view.
+   */
+  status?: NodeStatus;
   hardware?: cytoscape.NodeDataDefinition['hardware'];
   perf?: cytoscape.NodeDataDefinition['perf'];
   alerts?: cytoscape.NodeDataDefinition['alerts'];
@@ -65,6 +76,8 @@ export interface SankeyK8sNode {
   id: string;
   label: string;
   podIds: string[];
+  /** Worst status among the pods this wrapper draws, plus the node's own. */
+  status?: NodeStatus;
   noFlow?: boolean;
 }
 
@@ -85,6 +98,7 @@ interface NodeRec {
   ontapCluster?: string;
   usage?: { usedBytes?: number; capacityBytes?: number };
   health?: string;
+  status?: NodeStatus;
   hardware?: cytoscape.NodeDataDefinition['hardware'];
   perf?: cytoscape.NodeDataDefinition['perf'];
   alerts?: cytoscape.NodeDataDefinition['alerts'];
@@ -143,6 +157,7 @@ function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<strin
       ...(ontapCluster !== undefined ? { ontapCluster } : {}),
       ...(d.usage !== undefined ? { usage: d.usage } : {}),
       ...(typeof d.health === 'string' ? { health: d.health } : {}),
+      ...(isNodeStatus(d.status) ? { status: d.status } : {}),
       ...(d.hardware !== undefined ? { hardware: d.hardware } : {}),
       ...(d.perf !== undefined ? { perf: d.perf } : {}),
       ...(d.alerts !== undefined ? { alerts: d.alerts } : {}),
@@ -247,6 +262,7 @@ function toSankeyNode(rec: NodeRec, noFlow: boolean, k8sNodeId?: string): Sankey
     ...(rec.ontapCluster !== undefined ? { ontapCluster: rec.ontapCluster } : {}),
     ...(rec.usage !== undefined ? { usage: rec.usage } : {}),
     ...(rec.health !== undefined ? { health: rec.health } : {}),
+    ...(rec.status !== undefined ? { status: rec.status } : {}),
     ...(rec.hardware !== undefined ? { hardware: rec.hardware } : {}),
     ...(rec.perf !== undefined ? { perf: rec.perf } : {}),
     ...(rec.alerts !== undefined ? { alerts: rec.alerts } : {}),
@@ -279,7 +295,27 @@ function touchGroup(map: Map<string, GroupAgg>, rec: NodeRec, podId: string, nam
   return created;
 }
 
-function toDerivedNode(agg: GroupAgg, kind: 'application' | 'namespace'): SankeyNode {
+/**
+ * Worst status over a set of ids, or `undefined` when none of them carries one.
+ *
+ * Absent must NOT collapse to `normal`: a green border on a card whose members the backend
+ * never judged claims a verdict nobody made. That is the same reason `FALLBACK_STATUS` is
+ * an aggregation default only — it counts an unjudged member as healthy INSIDE a fold that
+ * already has evidence, never as evidence of its own.
+ */
+function worstStatusOf(nodes: Map<string, NodeRec>, ids: Iterable<string>): NodeStatus | undefined {
+  let rank: number | undefined;
+  for (const id of ids) {
+    const status = nodes.get(id)?.status;
+    if (status === undefined) {
+      continue;
+    }
+    rank = rank === undefined ? STATUS_RANK[status] : Math.max(rank, STATUS_RANK[status]);
+  }
+  return rank === undefined ? undefined : rankToStatus(rank);
+}
+
+function toDerivedNode(agg: GroupAgg, kind: 'application' | 'namespace', status: NodeStatus | undefined): SankeyNode {
   return {
     id: agg.rec.id,
     label: agg.rec.label,
@@ -287,6 +323,7 @@ function toDerivedNode(agg: GroupAgg, kind: 'application' | 'namespace'): Sankey
     derived: true,
     memberPodCount: agg.members.size,
     ...(agg.namespace !== undefined ? { namespace: agg.namespace } : {}),
+    ...(status !== undefined ? { status } : {}),
   };
 }
 
@@ -531,10 +568,10 @@ export function deriveSankey(
   }
 
   for (const agg of applications.values()) {
-    kept.push(toDerivedNode(agg, 'application'));
+    kept.push(toDerivedNode(agg, 'application', worstStatusOf(nodes, agg.members)));
   }
   for (const agg of namespaces.values()) {
-    kept.push(toDerivedNode(agg, 'namespace'));
+    kept.push(toDerivedNode(agg, 'namespace', worstStatusOf(nodes, agg.members)));
   }
 
   const keptPodIds = new Set(kept.filter((n) => n.kind === 'pod').map((n) => n.id));
@@ -548,10 +585,14 @@ export function deriveSankey(
     if (members.length === 0 && !isRoot) {
       continue;
     }
+    // The node's OWN status folds in beside its pods': the wrapper is the only thing drawn
+    // for it, so a degraded node holding healthy pods must still read as degraded.
+    const worst = worstStatusOf(nodes, [rec.id, ...members]);
     k8sNodes.push({
       id: rec.id,
       label: rec.label,
       podIds: members,
+      ...(worst !== undefined ? { status: worst } : {}),
       ...(members.length === 0 ? { noFlow: true } : {}),
     });
   }

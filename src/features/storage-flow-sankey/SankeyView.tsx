@@ -10,6 +10,7 @@ import {
   type MouseEvent,
 } from 'react';
 
+import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
@@ -144,6 +145,10 @@ function nodeTooltip(node: SankeyNode | undefined, id: string, flowLines: readon
     ...(isNetapp && node.ontapCluster !== undefined ? [`ontap_cluster: ${node.ontapCluster}`] : []),
     ...flowLines,
     ...(usage !== undefined && usage.length > 0 ? [usage] : []),
+    // `status` is the backend's fold; `health` is one of the three signals it folded. Both
+    // are shown because they answer different questions — a NetApp node can be
+    // `health online` and still `status critical` off a firing alert.
+    ...(node.status !== undefined ? [`status ${node.status}`] : []),
     ...(node.health !== undefined ? [`health ${node.health}`] : []),
     ...(node.hardware?.model !== undefined ? [`model ${node.hardware.model}`] : []),
     ...raw('cpu_busy_pct', node.perf?.cpuBusyPct, String),
@@ -168,6 +173,7 @@ function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): str
     `${node.kind} / ${node.label}`,
     ...(node.kind === 'application' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
     ...members,
+    ...(node.status !== undefined ? [`status ${node.status} (worst of member pods)`] : []),
     ...flowLines.map((line) => `${line} (derived from member pods)`),
     ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
   ];
@@ -378,6 +384,7 @@ export function SankeyView({
           inbound: inbound.get(ln.id) ?? 0,
           outbound: outbound.get(ln.id) ?? 0,
           ...(usageText !== undefined ? { usage: usageText } : {}),
+          ...(ln.status !== undefined ? { status: ln.status } : {}),
           ...(gn?.health !== undefined ? { health: gn.health } : {}),
           ...(ln.derived === true || gn?.derived === true ? { derived: true } : {}),
         };
@@ -388,6 +395,7 @@ export function SankeyView({
         label: w.label,
         inbound: w.podIds.reduce((sum, id) => sum + (inbound.get(id) ?? 0), 0),
         outbound: w.podIds.reduce((sum, id) => sum + (outbound.get(id) ?? 0), 0),
+        ...(w.status !== undefined ? { status: w.status } : {}),
         derived: true,
       })),
     ];
@@ -481,6 +489,7 @@ export function SankeyView({
         text: [
           `node / ${wrapper.label}`,
           wrapper.podIds.length === 1 ? '1 pod' : `${String(wrapper.podIds.length)} pods`,
+          ...(wrapper.status !== undefined ? [`status ${wrapper.status} (worst of node and member pods)`] : []),
           ...flowLines.map((line) => `${line} (derived from member pods)`),
           ...(wrapper.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
         ],
@@ -596,6 +605,23 @@ export function SankeyView({
             data-testid="sankey-layout"
           />
           <div className="ml-auto flex items-center gap-3">
+            {/* Border colours are the backend's folded `data.status`, the same three bands
+                Graph view borders by. Without this strip a green card and a red one are two
+                unexplained decorations. */}
+            <span className="flex items-center gap-2" data-testid="sankey-status-legend">
+              {Object.entries(STATUS_COLOR).map(([status, color]) => (
+                <span key={status} className="flex items-center gap-1 text-[11px] text-secondary">
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
+                    data-testid={`sankey-status-swatch-${status}`}
+                  />
+                  {status}
+                </span>
+              ))}
+            </span>
+            <span aria-hidden className="h-4 border-l border-medium" />
             {(mode === 'both' || mode === 'read') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
                 <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>

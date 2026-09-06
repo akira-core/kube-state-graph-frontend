@@ -4,7 +4,7 @@ import { APPLICATION_BEARING_KINDS } from '../../shared/constants/applicationBea
 import { APPLICATION_COLOR } from '../../shared/constants/applicationPalette';
 import { CLUSTER_COLOR } from '../../shared/constants/clusterPalette';
 import { isTrafficEdgeType } from '../../shared/constants/colorByEdgeType';
-import { FALLBACK_STATUS } from '../../shared/constants/colorByStatus';
+import { FALLBACK_STATUS, isNodeStatus, rankToStatus, STATUS_RANK } from '../../shared/constants/colorByStatus';
 import { RELATION_LABEL_KEY } from '../../shared/constants/edgeRelation';
 import { NAMESPACE_COLOR } from '../../shared/constants/namespacePalette';
 import { STORAGE_CLUSTER_COLOR } from '../../shared/constants/storageClusterPalette';
@@ -125,10 +125,6 @@ function parseIoMetrics(v: Record<string, unknown>): cytoscape.EdgeIoMetrics | u
     ...(isFiniteNumber(maxBytesPerSec) ? { maxBytesPerSec } : {}),
   };
   return Object.keys(io).length > 0 ? io : undefined;
-}
-
-function isNodeStatus(v: unknown): v is NodeStatus {
-  return v === 'normal' || v === 'warning' || v === 'critical';
 }
 
 // Backend D6 compound group `data.type` literals — all are kind-less at parse time and
@@ -344,15 +340,6 @@ function parseContainers(v: unknown): ContainerSpec[] | undefined {
     }
   }
   return containers.length > 0 ? containers : undefined;
-}
-
-// Node-STATUS rank for the collapsed-container tint (higher = worse): a collapsed
-// container borders by the worst status it HIDES. STATUS, not alert severity, is the
-// signal — every node has a status (default normal) on a uniform scale, and a pod can
-// be warning/critical without any alert.
-const STATUS_RANK: Record<NodeStatus, number> = { normal: 0, warning: 1, critical: 2 };
-function rankToStatus(rank: number): NodeStatus {
-  return rank >= 2 ? 'critical' : rank === 1 ? 'warning' : 'normal';
 }
 
 // Pod controller owner from typed `data.owner` or legacy `labels.owner_kind/_name`

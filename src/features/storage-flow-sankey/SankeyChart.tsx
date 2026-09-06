@@ -1,5 +1,6 @@
 import type { JSX, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react';
 
+import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
 import type { ThemeTokens } from '../../shared/theme/tokens';
 
 import { formatBytesPerSec } from './deriveSankey';
@@ -36,6 +37,14 @@ export interface SankeyChartProps {
 
 const WRAPPER_TITLE_H = 40;
 
+/**
+ * Neutral border weight. A card carrying a status gets STATUS_BORDER_W instead — the same
+ * "thicker AND coloured" pairing cytoscape draws in Graph view, so the two views read as
+ * one estate rather than two opinions of it.
+ */
+const NEUTRAL_BORDER_W = 1.2;
+const STATUS_BORDER_W = 2.4;
+
 function wrapperBox(
   wrapper: LayoutWrapper,
   tokens: ThemeTokens,
@@ -44,11 +53,13 @@ function wrapperBox(
   onLeave: () => void,
   onClick: (id: string) => void
 ): JSX.Element {
+  const statusStroke = wrapper.status === undefined ? undefined : STATUS_COLOR[wrapper.status];
   return (
     <g
       key={wrapper.id}
       data-testid={`sankey-wrapper-${wrapper.label}`}
       data-kind="node"
+      data-status={wrapper.status}
       style={{ opacity: faded ? 0.3 : 1 }}
     >
       <rect
@@ -59,8 +70,8 @@ function wrapperBox(
         rx={12}
         fill={tokens.sankey.nodeFill}
         fillOpacity={0.35}
-        stroke={tokens.sankey.nodeStroke}
-        strokeWidth={1.2}
+        stroke={statusStroke === undefined ? tokens.sankey.nodeStroke : statusStroke}
+        strokeWidth={statusStroke === undefined ? NEUTRAL_BORDER_W : STATUS_BORDER_W}
         className="pointer-events-none"
       />
       <g
@@ -104,11 +115,13 @@ function nodeCard(
   onLeave: () => void,
   onClick: (id: string) => void
 ): JSX.Element {
+  const statusStroke = node.status === undefined ? undefined : STATUS_COLOR[node.status];
   return (
     <g
       key={node.id}
       data-testid={`sankey-node-${node.label}`}
       data-kind={node.kind}
+      data-status={node.status}
       data-locatable={node.locatable ? 'true' : 'false'}
       onMouseEnter={(evt) => onEnter(node.id, evt)}
       onMouseLeave={onLeave}
@@ -134,8 +147,8 @@ function nodeCard(
         height={node.height}
         rx={9}
         fill={tokens.sankey.nodeFill}
-        stroke={tokens.sankey.nodeStroke}
-        strokeWidth={1.2}
+        stroke={statusStroke === undefined ? tokens.sankey.nodeStroke : statusStroke}
+        strokeWidth={statusStroke === undefined ? NEUTRAL_BORDER_W : STATUS_BORDER_W}
         strokeDasharray={node.dashed ? '6 4' : undefined}
       />
       <line x1={node.x} y1={node.y + 22} x2={node.x + node.width} y2={node.y + 22} stroke={tokens.border.weak} />

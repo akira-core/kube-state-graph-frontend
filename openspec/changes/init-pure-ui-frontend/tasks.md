@@ -293,6 +293,27 @@ leaf-card and header text), `app-shell` (layout in the transient list), `graph-d
 - [x] 27.8 Performance: the synthetic 3000-edge body gains `pod-node` edges and a full parent chain over 100 applications / 20 namespaces; first draw ≤ 1000 ms at seven columns `5 / 25 / 10 / 500 / 1000 / 100 / 20`, layout switch ≤ 500 ms with 50 wrappers, hover / zoom still 0 layout calls; Verify: the performance spec asserts the new counts and the switch bound
 - [x] 27.9 Docs: README's Sankey section describes the seven columns, the derived sums and their marker, the `Layout` control and that it is not in the URL; walkthrough rows for every requirement revised in this section; Verify: the walkthrough maps each to a test or observable behaviour
 
+## 28. Sankey scope-bar alignment, a folded summary, and status on the cards
+
+Three things the Sankey did not do that the Graph view already did. The scope bar nested its
+root controls under a `Root` heading of their own, putting a second label rank into a row that
+otherwise reads as one — every control after it sat off the baseline. The summary tables were
+always open and, at seven tiers, took roughly half the column from the chart the page exists
+to draw. And nothing on a card showed `data.status`, so an estate whose bands the backend had
+already folded read as uniformly grey here while the Graph view bordered the same nodes in
+three colours; the spec's tooltip requirement had asked for "the node marked with the status
+color" all along. `isNodeStatus` / `STATUS_RANK` / `rankToStatus` move out of `normalize.ts`
+into `shared/constants/colorByStatus.ts`, which already claimed to be the single source of
+truth "so DOM, cytoscape, and Sankey stay in lockstep". Specs revised:
+`storage-flow-sankey` (box cards, numeric summary, tooltips, root selector).
+
+- [x] 28.1 Scope bar: one row of label-over-control columns on a shared baseline, matching the Graph filter bar's frame (eyebrow + icon, `bg-rail`, hairline); the `Root` group heading is gone and the root value input carries its own label of the same rank; roots, the inline pod error and the explanatory text move to rows below; Verify: component tests assert `AZ` / `Env` / `Root kind` / the root value input / `Add` share one row, that no `Root` group heading is rendered, and that an added root's pill lands outside the control row
+- [x] 28.2 Summary panel folds, and opens folded: a disclosure header naming the row counts stays drawn while collapsed, the tables render only when expanded, and the state is page-transient like `Layout` (no URL, no storage, reset on remount); Verify: component tests assert `aria-expanded` starts `false` with no table in the document, that toggling draws and removes them, and an e2e asserts the same on the demo estate
+- [x] 28.3 `data.status` reaches the cards: `deriveSankey` passes the backend's fold through untouched (dropping a value `STATUS_COLOR` cannot draw rather than painting a wrong colour), and folds the worst member status onto the derived `application` / `namespace` cards and onto the `Node` wrapper, whose own node status folds in beside its pods'; an unjudged node stays without one; Verify: unit tests assert `aggr1` warning / `ontap-prod-02` critical / `svm_shop` undefined, an unrecognised status dropped, `namespace/prod` folding to warning off `batch-pending`, and `worker-1` folding to its own warning over normal pods
+- [x] 28.4 `SankeyChart` borders a card in `STATUS_COLOR[status]` at a thicker stroke, leaving an unjudged card on the neutral one; the three bands are named beside the read / write legend; status joins health in the node, container and wrapper tooltips and gains its own column in the node summary table; Verify: component tests assert the drawn stroke equals `STATUS_COLOR.warning` on `aggr1` and that `svm_shop`'s is none of the three, the legend lists all three swatches, and the tooltip shows status beside health
+- [x] 28.5 `isNodeStatus` / `STATUS_RANK` / `rankToStatus` move to `shared/constants/colorByStatus.ts` (keyed off `STATUS_COLOR` so a paintable status and a recognised one cannot drift apart) and `normalize.ts` imports them; `WireNodeData.status`'s "PANEL-ONLY, the backend emits no health status field" comment was stale and now describes the fold; Verify: the existing `normalize` and `getStylesheet` suites pass unchanged
+- [x] 28.6 Fixture: `SHOWCASE_STORAGE_GRAPH` gains `status` on every kind the backend judges, matching `SHOWCASE_GRAPH` where the ids overlap and the NetApp tiers' own `health` / `alerts` otherwise, with all three bands populated; the SVMs stay unjudged; Verify: the e2e asserts `aggr1` warning and `ontap-prod-02` critical against the demo fixture, so demo mode exercises the border rather than drawing every card green
+
 ## 17. Overall acceptance
 
 - [x] 17.1 Full-chain verification: on a clean checkout run `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` with everything passing, and unit test coverage reaching 80%
@@ -305,3 +326,4 @@ leaf-card and header text), `app-shell` (layout in the transient list), `graph-d
 - [x] 17.8 Full-chain re-run after §25 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%
 - [x] 17.9 Full-chain re-run after §26 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%, and the Sankey confirmed against the real demo estate to draw at the percentage its control bar reports
 - [x] 17.10 Full-chain re-run after §27 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%, and the Sankey confirmed against the real demo estate to draw the `application` / `namespace` columns and to wrap pods under the `Node` layout
+- [x] 17.11 Full-chain re-run after §28 (`typecheck`, `lint`, `test:ci`, `e2e`, `build`); Verify: CI chain green, and the Sankey confirmed in the browser to open with an aligned scope bar, a folded summary, and warning / critical / normal borders distinguishable on the cards

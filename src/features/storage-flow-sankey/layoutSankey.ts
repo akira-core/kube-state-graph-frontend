@@ -1,3 +1,4 @@
+import type { NodeStatus } from '../../shared/constants/types';
 import { formatBytes } from '../../shared/format/measurements';
 
 import {
@@ -71,6 +72,8 @@ export interface LayoutNode {
   kind: SankeyKind;
   namespace?: string;
   namespaceColor?: string;
+  /** Border colour, from the backend's folded verdict. Absent = neutral border. */
+  status?: NodeStatus;
   subtitle: string;
   dashed: boolean;
   isLeaf: boolean;
@@ -94,6 +97,7 @@ export interface LayoutWrapper {
   label: string;
   subtitle: string;
   locatable: true;
+  status?: NodeStatus;
   noFlow?: boolean;
   x: number;
   y: number;
@@ -363,6 +367,7 @@ function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: P
     height,
     leftSlots,
     rightSlots,
+    ...(node.status !== undefined ? { status: node.status } : {}),
     ...(node.derived === true ? { derived: true } : {}),
     ...(node.kind === 'pod' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
     ...(node.kind === 'namespace' ? { namespace: node.namespace ?? node.label } : {}),
@@ -404,6 +409,7 @@ function layoutPodWrappers(
       label: k8s.label,
       subtitle: k8s.noFlow === true ? 'node · no flow' : `node · ${podWord(inner.length)}`,
       locatable: true,
+      ...(k8s.status !== undefined ? { status: k8s.status } : {}),
       x: columnX,
       y: wrapperY,
       width: CARD_W,

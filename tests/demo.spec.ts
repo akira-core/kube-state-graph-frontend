@@ -6,6 +6,25 @@ test('sankey deep link reloads into the Sankey view', async ({ page }) => {
   await expect(page.getByTestId('sankey-view')).toBeVisible({ timeout: 30_000 });
 });
 
+test('Sankey opens with the summary folded and borders its cards by status', async ({ page }) => {
+  await page.goto('/sankey');
+  await expect(page.getByTestId('sankey-view')).toBeVisible({ timeout: 30_000 });
+
+  // Folded on arrival: the chart is what the page is for, and six tiers of tables took half
+  // the column. The strip stays drawn so a folded panel is not mistaken for an absent one.
+  const toggle = page.getByTestId('sankey-summary-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('table')).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(await page.getByRole('table').count()).toBeGreaterThan(0);
+
+  // Same field, and therefore the same verdict, as the border Graph view draws.
+  await expect(page.getByTestId('sankey-node-aggr1')).toHaveAttribute('data-status', 'warning');
+  await expect(page.getByTestId('sankey-node-ontap-prod-02')).toHaveAttribute('data-status', 'critical');
+  await expect(page.getByTestId('sankey-status-swatch-critical')).toBeVisible();
+});
+
 test('demo mode renders the graph and round-trips to sankey', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/graph/);

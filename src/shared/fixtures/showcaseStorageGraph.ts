@@ -10,6 +10,14 @@ import type { WireGraph } from '../types/wire';
  * Weights are conserved per intermediate node (in = out per direction), with a
  * FlexGroup path that starts at `svm-pvc` and a `pvc-pod` hop marked
  * `attribution: "split"`.
+ *
+ * `status` is stamped to the SAME value the matching id carries in `SHOWCASE_GRAPH`, and
+ * on the NetApp tiers to whatever the `health` / `alerts` already on the node would fold
+ * to. All three bands are populated on purpose (warning on `aggr1` / `worker-1` /
+ * `batch-pending`, critical on `ontap-prod-02`, normal elsewhere): a fixture where every
+ * card is green cannot tell a working status fold from one that stopped running. The SVMs
+ * keep no status — the backend judges none, and inventing one here would teach the demo a
+ * verdict live data never carries.
  */
 export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
   apiVersion: 'v1',
@@ -20,6 +28,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'netapp/ontap-prod/ontap-prod-01',
+          status: 'normal',
           name: 'ontap-prod-01',
           type: 'netapp-node',
           parent: 'storage-cluster/ontap-prod',
@@ -31,6 +40,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'netapp/ontap-prod/ontap-prod-02',
+          status: 'critical',
           name: 'ontap-prod-02',
           type: 'netapp-node',
           parent: 'storage-cluster/ontap-prod',
@@ -52,6 +62,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'netapp/ontap-prod/aggr/aggr1',
+          status: 'warning',
           name: 'aggr1',
           type: 'netapp-aggr',
           parent: 'netapp/ontap-prod/ontap-prod-01',
@@ -68,6 +79,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'netapp/ontap-prod/aggr/aggr2',
+          status: 'normal',
           name: 'aggr2',
           type: 'netapp-aggr',
           parent: 'netapp/ontap-prod/ontap-prod-02',
@@ -116,6 +128,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'node/worker-0',
+          status: 'normal',
           name: 'worker-0',
           type: 'node',
           parent: 'cluster/prod',
@@ -125,6 +138,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'node/worker-1',
+          status: 'warning',
           name: 'worker-1',
           type: 'node',
           parent: 'cluster/prod',
@@ -134,6 +148,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pod/mongo-0',
+          status: 'normal',
           name: 'mongo-0',
           type: 'pod',
           parent: 'prod/ctrl/StatefulSet/mongodb',
@@ -143,6 +158,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pod/mongo-1',
+          status: 'normal',
           name: 'mongo-1',
           type: 'pod',
           parent: 'prod/ctrl/StatefulSet/mongodb',
@@ -152,6 +168,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pvc/data-mongo-0',
+          status: 'normal',
           name: 'data-mongo-0',
           type: 'pvc',
           parent: 'prod/app/mongodb',
@@ -163,6 +180,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pvc/data-mongo-1',
+          status: 'normal',
           name: 'data-mongo-1',
           type: 'pvc',
           parent: 'prod/app/mongodb',
@@ -174,6 +192,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pvc/data-scratch',
+          status: 'normal',
           name: 'data-scratch',
           type: 'pvc',
           parent: 'prod/app/mongodb',
@@ -193,6 +212,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pod/orphan-0',
+          status: 'normal',
           name: 'orphan-0',
           type: 'pod',
           parent: 'prod/ctrl/Job/batch',
@@ -202,6 +222,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pod/batch-pending',
+          status: 'warning',
           name: 'batch-pending',
           type: 'pod',
           parent: 'prod/ctrl/Job/batch',
@@ -211,6 +232,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pvc/data-orphan',
+          status: 'normal',
           name: 'data-orphan',
           type: 'pvc',
           parent: 'prod/ns/prod',
@@ -221,6 +243,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       {
         data: {
           id: 'pvc/data-pending',
+          status: 'normal',
           name: 'data-pending',
           type: 'pvc',
           parent: 'prod/ns/prod',

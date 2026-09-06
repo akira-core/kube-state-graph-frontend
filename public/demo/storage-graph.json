@@ -15,6 +15,7 @@
       {
         "data": {
           "id": "netapp/ontap-prod/ontap-prod-01",
+          "status": "normal",
           "name": "ontap-prod-01",
           "type": "netapp-node",
           "parent": "storage-cluster/ontap-prod",
@@ -31,6 +32,7 @@
       {
         "data": {
           "id": "netapp/ontap-prod/ontap-prod-02",
+          "status": "critical",
           "name": "ontap-prod-02",
           "type": "netapp-node",
           "parent": "storage-cluster/ontap-prod",
@@ -64,6 +66,7 @@
       {
         "data": {
           "id": "netapp/ontap-prod/aggr/aggr1",
+          "status": "warning",
           "name": "aggr1",
           "type": "netapp-aggr",
           "parent": "netapp/ontap-prod/ontap-prod-01",
@@ -87,6 +90,7 @@
       {
         "data": {
           "id": "netapp/ontap-prod/aggr/aggr2",
+          "status": "normal",
           "name": "aggr2",
           "type": "netapp-aggr",
           "parent": "netapp/ontap-prod/ontap-prod-02",
@@ -165,6 +169,7 @@
       {
         "data": {
           "id": "node/worker-0",
+          "status": "normal",
           "name": "worker-0",
           "type": "node",
           "parent": "cluster/prod",
@@ -176,6 +181,7 @@
       {
         "data": {
           "id": "node/worker-1",
+          "status": "warning",
           "name": "worker-1",
           "type": "node",
           "parent": "cluster/prod",
@@ -187,6 +193,7 @@
       {
         "data": {
           "id": "pod/mongo-0",
+          "status": "normal",
           "name": "mongo-0",
           "type": "pod",
           "parent": "prod/ctrl/StatefulSet/mongodb",
@@ -200,6 +207,7 @@
       {
         "data": {
           "id": "pod/mongo-1",
+          "status": "normal",
           "name": "mongo-1",
           "type": "pod",
           "parent": "prod/ctrl/StatefulSet/mongodb",
@@ -213,6 +221,7 @@
       {
         "data": {
           "id": "pvc/data-mongo-0",
+          "status": "normal",
           "name": "data-mongo-0",
           "type": "pvc",
           "parent": "prod/app/mongodb",
@@ -231,6 +240,7 @@
       {
         "data": {
           "id": "pvc/data-mongo-1",
+          "status": "normal",
           "name": "data-mongo-1",
           "type": "pvc",
           "parent": "prod/app/mongodb",
@@ -249,6 +259,7 @@
       {
         "data": {
           "id": "pvc/data-scratch",
+          "status": "normal",
           "name": "data-scratch",
           "type": "pvc",
           "parent": "prod/app/mongodb",
@@ -274,6 +285,7 @@
       {
         "data": {
           "id": "pod/orphan-0",
+          "status": "normal",
           "name": "orphan-0",
           "type": "pod",
           "parent": "prod/ctrl/Job/batch",
@@ -287,6 +299,7 @@
       {
         "data": {
           "id": "pod/batch-pending",
+          "status": "warning",
           "name": "batch-pending",
           "type": "pod",
           "parent": "prod/ctrl/Job/batch",
@@ -299,6 +312,7 @@
       {
         "data": {
           "id": "pvc/data-orphan",
+          "status": "normal",
           "name": "data-orphan",
           "type": "pvc",
           "parent": "prod/ns/prod",
@@ -313,6 +327,7 @@
       {
         "data": {
           "id": "pvc/data-pending",
+          "status": "normal",
           "name": "data-pending",
           "type": "pvc",
           "parent": "prod/ns/prod",

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type cytoscape from 'cytoscape';
 import { describe, expect, it, vi } from 'vitest';
 
+import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
 import { ThemeProvider } from '../theme';
@@ -46,6 +47,11 @@ function baseProps(overrides: Overrides = {}): SankeyViewProps {
     onLocateNode: vi.fn(),
     ...overrides,
   };
+}
+
+/** The summary opens folded; every assertion about a table has to open it first. */
+function openSummary(): void {
+  fireEvent.click(screen.getByTestId('sankey-summary-toggle'));
 }
 
 /** Mirrors `UNMEASURED_CONTAINER` — what the zoom controls fall back to with no layout. */
@@ -246,12 +252,68 @@ describe('SankeyView', () => {
     expect(stripes.length).toBeLessThanOrEqual(podCards.length + nsCards.length);
   });
 
+  it('borders a card in its status colour and leaves an unjudged card neutral', () => {
+    renderSankey();
+    const aggr1 = screen.getByTestId('sankey-node-aggr1');
+    expect(aggr1).toHaveAttribute('data-status', 'warning');
+    expect(aggr1.querySelector('rect[stroke]')?.getAttribute('stroke')).toBe(STATUS_COLOR.warning);
+
+    const critical = screen.getByTestId('sankey-node-ontap-prod-02');
+    expect(critical.querySelector('rect[stroke]')?.getAttribute('stroke')).toBe(STATUS_COLOR.critical);
+
+    // The backend judges no SVM. Its card must NOT borrow a status colour — a green border
+    // there would be a verdict nobody made, and the three bands would stop meaning anything.
+    const svm = screen.getByTestId('sankey-node-svm_shop');
+    expect(svm).not.toHaveAttribute('data-status');
+    const svmStroke = svm.querySelector('rect[stroke]')?.getAttribute('stroke');
+    expect(Object.values(STATUS_COLOR)).not.toContain(svmStroke);
+  });
+
+  it('names the three status bands in the toolbar so a coloured border is readable', () => {
+    renderSankey();
+    const legend = screen.getByTestId('sankey-status-legend');
+    for (const status of Object.keys(STATUS_COLOR)) {
+      expect(legend).toHaveTextContent(status);
+      expect(within(legend).getByTestId(`sankey-status-swatch-${status}`)).toBeInTheDocument();
+    }
+  });
+
+  it('reports status beside health in a node tooltip, since one folds the other', () => {
+    renderSankey();
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr1'));
+    const tip = screen.getByRole('tooltip');
+    expect(tip).toHaveTextContent('status warning');
+    expect(tip).toHaveTextContent('health online');
+  });
+
+  it('lists each drawn card status in the summary table', () => {
+    renderSankey();
+    openSummary();
+    expect(screen.getAllByTestId('sankey-summary-status-warning').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('sankey-summary-status-critical').length).toBeGreaterThan(0);
+  });
+
   it('shows the node flow summary table and hides it once the graph is empty', () => {
     const { unmount } = renderSankey();
     expect(screen.getByTestId('sankey-summary')).toBeInTheDocument();
     unmount();
     renderSankey({ elements: [] });
     expect(screen.queryByTestId('sankey-summary')).not.toBeInTheDocument();
+  });
+
+  it('opens the summary folded and draws its tables only once it is expanded', () => {
+    renderSankey();
+    const toggle = screen.getByTestId('sankey-summary-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // Folded is not hidden: the strip still says what the tables would hold, so an estate
+    // with no numbers stays distinguishable from a panel that was merely closed.
+    expect(screen.getByTestId('sankey-summary')).toHaveTextContent(/nodes/);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('table').length).toBeGreaterThan(0);
+    fireEvent.click(toggle);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('shows the zoom control bar only while a chart is actually drawn', () => {
@@ -555,6 +617,7 @@ describe('SankeyView', () => {
 
   it('lists derived application rows in the summary and hides the table when no pod has an application', () => {
     const { unmount } = renderSankey();
+    openSummary();
     const table = screen.getByTestId('sankey-application-subtotal');
     expect(table).toHaveTextContent('mongodb');
     expect(table).toHaveTextContent('prod');
@@ -576,6 +639,7 @@ describe('SankeyView', () => {
         },
       ],
     });
+    openSummary();
     expect(screen.queryByTestId('sankey-application-subtotal')).not.toBeInTheDocument();
   });
 

@@ -91,13 +91,18 @@ Every kind may be repeated and mixed. The control MUST state explicitly that `no
 
 A `pod` value MUST be validated before sending as containing exactly one `/` with both segments non-empty; when invalid it MUST prompt inline and MUST NOT be sent (the backend would reject the whole request with 400 `invalid_scope`, taking the other valid roots down with it).
 
-The root kind is chosen with the shared dropdown (single-select, custom values not allowed); the root value is free text (there is no listable source). The root selection MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys); on page mount it is read from the URL, and an invalid `pod` value in the URL MUST not be sent and MUST prompt inline.
+The root kind is chosen with the shared dropdown (single-select, custom values not allowed); the root value is free text (there is no listable source), and it MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error and the explanatory text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The root selection MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys); on page mount it is read from the URL, and an invalid `pod` value in the URL MUST not be sent and MUST prompt inline.
 
 All roots empty is equivalent to "the complete storage flow of that estate" and MUST be a valid state rather than an error. A root change MUST trigger one refetch. The app MUST NOT further filter the elements returned by the backend by root on the client side — the projection has already been done by the backend, and client-side filtering would break weight conservation.
 
 The view SHALL additionally provide optional `cluster` and `namespace` narrowing controls (multi-select dropdowns, contract see `graph-filters`, options from `endpoints.labelValues`; the selection syncs to the URL's `cluster` / `namespace`), sent as request parameters when non-empty. They MUST NOT filter on the client side — for the same reason as above.
 
 Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can be listed and there is currently no selection, they MUST NOT render (there is nothing to narrow, and the request does not need them anyway).
+
+#### Scenario: One row, one baseline
+
+- **WHEN** the user views the scope bar
+- **THEN** `AZ`, `Env`, `Root kind`, the root value input and `Add` are in the same row with their labels on one baseline, no control sits under a group heading of its own, and adding a root puts its removable pill on a row below rather than between the controls
 
 #### Scenario: Storage-side root
 
@@ -372,6 +377,10 @@ Links MUST enter and leave through **slots** on the card's edges: inbound edges 
 
 Node kinds MUST be distinguished by a stroke vocabulary, and the distinction MUST NOT rely on hue alone: `netapp-node`, `netapp-aggr` and `netapp-svm` are not Kubernetes resources and use a **dashed** stroke; `pvc`, `pod`, `application` and `namespace` use a **solid** stroke. The `netapp-node` cards on the leftmost column are the flow's origin and carry only right-edge slots. The `namespace` cards on the rightmost column are the flow's terminus and MUST be presented as smaller **leaf cards** (title, kind, member pod count and that namespace's total inflow in the current mode, with no right-edge slots). Under the `Node` layout a wrapper is a larger solid-stroked box in the pod column whose title row names the Kubernetes node and whose body holds the member pod cards; it carries no slots of its own.
 
+A card whose node carries `data.status` MUST be bordered in that status's color, from the **same** palette the Graph view borders by, and with a thicker stroke than the neutral border so the distinction does not rest on hue alone. `status` MUST be passed through as the backend folded it (worst-wins over alert severity, NetApp `health` and Kubernetes readiness) — the app MUST NOT derive, adjust or re-fold it from `health`, `alerts` or `perf`. A node the backend sends no `status` for (an `netapp-svm`, for instance) MUST keep the neutral border: an absent verdict is not a healthy one, and painting it green would claim a judgement nobody made. The three status colors MUST be named in the toolbar, otherwise a colored border is an unexplained decoration.
+
+A card that HIDES other cards — the derived `application` and `namespace` cards, and the `Node` layout's wrapper — MUST border by the **worst** status among the nodes it hides (the wrapper additionally folding the Kubernetes node's own status, since the wrapper is the only thing drawn for it), exactly as a collapsed container does in the Graph view. When none of the hidden nodes carries a status, the container MUST keep the neutral border rather than fall back to normal.
+
 No text inside a box card MUST receive pointer events (`pointer-events: none`): text that takes events would cut off the hover highlight and tooltip of the ribbon beneath it.
 
 #### Scenario: The three rows of a pvc box card
@@ -398,6 +407,16 @@ No text inside a box card MUST receive pointer events (`pointer-events: none`): 
 
 - **WHEN** the user views `ontap-prod-01`
 - **THEN** that card has a dashed stroke, right-edge slots for its `node-aggr` links and no left-edge slots
+
+#### Scenario: Status colors the border, and an unjudged node keeps the neutral one
+
+- **WHEN** the fixture is drawn, in which `aggr1` carries `status: "warning"`, `ontap-prod-02` carries `status: "critical"` and `svm_shop` carries no `status`
+- **THEN** the `aggr1` card's border is the warning color and `ontap-prod-02`'s the critical color, both from the same palette the Graph view uses; the `svm_shop` card's border is the neutral one and is none of the three status colors; and the toolbar names `normal` / `warning` / `critical` beside a swatch of each
+
+#### Scenario: A container borders by the worst status it hides
+
+- **WHEN** the namespace `prod` holds pods `mongo-0` / `mongo-1` (`normal`) and `batch-pending` (`warning`)
+- **THEN** the `namespace` card's border is the warning color; under the `Node` layout the `worker-1` wrapper, whose own status is `warning` while every pod it draws is `normal`, is likewise bordered warning
 
 #### Scenario: A wrapper holds its pod cards
 
@@ -490,11 +509,23 @@ The order after grouping MUST still be deterministic: groups are ordered by "the
 
 **Below** the chart there MUST be a separate numeric summary; these numbers MUST NOT be stuffed into node box cards:
 
-- **Node summary table**: one row per drawn card, including the derived `application` / `namespace` cards (the tier column names their column) and, under the `Node` layout, one row per wrapper (tier `node`, inflow being the sum of its pods' inflow, marked derived), with columns tier, `label`, total inflow and total outflow in the current mode; `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
+- **Node summary table**: one row per drawn card, including the derived `application` / `namespace` cards (the tier column names their column) and, under the `Node` layout, one row per wrapper (tier `node`, inflow being the sum of its pods' inflow, marked derived), with columns tier, `label`, total inflow and total outflow in the current mode, and the card's `status` shown as the same colored dot the border uses; `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Status and health are separate columns and MUST NOT be merged: `health` is one of the signals the backend folded into `status`, and a `netapp-node` can be `online` while its status is `critical`. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
 - **Application subtotal table**: one row per application on the application column, with columns application, namespace, pod count and total flow in the current mode, ordered by total descending. When no drawn pod has an `application` ancestor, the whole table MUST NOT be drawn.
 - **Namespace subtotal table**: one row per namespace on the pod tier, with columns namespace, pod count and total flow in the current mode, ordered by total descending. When the pod tier has no pod carrying a namespace, the whole table MUST NOT be drawn.
 
-All tables MUST update in step with mode, layout, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), no table MUST be drawn.
+The summary MUST be **collapsible and MUST open collapsed**: the chart is what the view is for, and seven tiers make these tables tall enough to take half the column from it. Its header strip MUST stay drawn while collapsed, naming how many rows each table holds — a summary that vanishes entirely is indistinguishable from an estate that has no numbers. The collapsed / expanded state is transient view state like the layout switch: it MUST NOT be written to the URL and MUST NOT be persisted, and it MUST return to collapsed after navigating away or a full refresh. Expanding or collapsing it changes the chart area's height and therefore MUST NOT move the zoom / pan viewport (see "Sizing and container resize").
+
+All tables MUST update in step with mode, layout, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), neither the tables nor the header strip MUST be drawn.
+
+#### Scenario: The summary opens collapsed
+
+- **WHEN** the user opens the Sankey view on an estate that draws a chart
+- **THEN** the summary's header strip is shown, stating the row counts, and no table is drawn; activating it expands the tables, and activating it again collapses them; the chart's zoom readout is unchanged across both
+
+#### Scenario: Status sits beside health, not instead of it
+
+- **WHEN** the fixture is drawn and the summary is expanded
+- **THEN** the `aggr1` row shows status `warning` beside health `online`, and the `ontap-prod-02` row status `critical` beside health `degraded`
 
 #### Scenario: Summary tables follow the mode
 
@@ -518,6 +549,7 @@ Every node MUST show its `label`. On hovering a node the tooltip MUST show:
 - The node kind and `label`; `pod` / `pvc` additionally show `namespace`; `netapp-aggr` / `netapp-svm` / `netapp-node` additionally show `ontap_cluster`.
 - Total inflow and total outflow in bytes/sec for the current mode (in Both mode read / write listed separately).
 - `pvc` / `netapp-aggr`: when `usage` is present, show `used_bytes` / `capacity_bytes`; when `usage` or either field is missing, omit the item, and MUST NOT fill in `0`.
+- Any node: when `status` is present, show it as-is, next to `health` rather than in place of it — `health` is one of the signals folded into `status`, and the two answer different questions. On a container card (`application` / `namespace` / wrapper) the status item MUST say it is the worst of the members, the same way its flow items say they are derived from them.
 - `netapp-aggr` / `netapp-node`: when `health` is present, show it as-is; when missing, omit it, and MUST NOT fill in `unknown` or `degraded`.
 - `netapp-node`: when `hardware` is present, show the fields it has (at least `model`); when `perf` is present, show the fields it has (`cpu_busy_pct` / `total_ops` / `total_latency_us` / `total_bytes_per_sec`) marked as raw readings. The app MUST NOT derive a health verdict from `perf`, and MUST NOT color by threshold or add a warning icon — thresholds are model- and estate-specific, and verdicts arrive via `alerts`.
 - When any node's `alerts` is present and non-empty, its alerts (name and severity) MUST be shown, and the node marked with the status color.
@@ -530,7 +562,7 @@ On hovering a link the tooltip MUST show the source `label`, target `label`, tie
 #### Scenario: Hovering an aggregate node
 
 - **WHEN** the user hovers `aggr1` in Read mode
-- **THEN** the tooltip shows `netapp-aggr` / `aggr1` / `ontap_cluster: ontap-prod`, inflow `5.24 MB/s`, outflow `5.24 MB/s`, usage `700 GB / 1 TB`, health `online`
+- **THEN** the tooltip shows `netapp-aggr` / `aggr1` / `ontap_cluster: ontap-prod`, inflow `5.24 MB/s`, outflow `5.24 MB/s`, usage `700 GB / 1 TB`, status `warning` and health `online`
 
 #### Scenario: Hovering a netapp-node shows hardware and performance readings
 

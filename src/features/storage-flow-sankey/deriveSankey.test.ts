@@ -16,6 +16,60 @@ function wire(nodes: unknown[], edges: unknown[]): unknown {
 describe('deriveSankey', () => {
   const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 
+  it('passes the backend status through untouched and leaves an unjudged node without one', () => {
+    const graph = deriveSankey(elements, 'both');
+    const byLabel = new Map(graph.nodes.map((n) => [n.label, n]));
+    expect(byLabel.get('aggr1')?.status).toBe('warning');
+    expect(byLabel.get('ontap-prod-02')?.status).toBe('critical');
+    expect(byLabel.get('ontap-prod-01')?.status).toBe('normal');
+    // The backend judges no SVM, so nothing here may invent one — an absent status draws
+    // the neutral border rather than a green one claiming a verdict nobody made.
+    expect(byLabel.get('svm_shop')?.status).toBeUndefined();
+  });
+
+  it('drops a status the palette cannot draw rather than painting a wrong colour', () => {
+    const graph = deriveSankey(
+      normalizeGraph(
+        wire(
+          [
+            { id: 'c', name: 'c', type: 'pvc', status: 'catastrophic' },
+            { id: 'p', name: 'p', type: 'pod', status: 'critical' },
+          ],
+          [
+            {
+              id: 'e',
+              type: 'storage-flow',
+              source: 'c',
+              target: 'p',
+              labels: { tier: 'pvc-pod' },
+              metrics: { read_bytes_per_sec: 10 },
+            },
+          ]
+        )
+      ).elements,
+      'both'
+    );
+    expect(graph.nodes.find((n) => n.id === 'c')?.status).toBeUndefined();
+    expect(graph.nodes.find((n) => n.id === 'p')?.status).toBe('critical');
+  });
+
+  it('folds a derived application / namespace card to the worst status among its member pods', () => {
+    const graph = deriveSankey(elements, 'both');
+    const byLabel = new Map(graph.nodes.map((n) => [`${n.kind}/${n.label}`, n]));
+    // mongo-0 / mongo-1 are normal; batch-pending is warning and shares the namespace.
+    expect(byLabel.get('application/mongodb')?.status).toBe('normal');
+    expect(byLabel.get('namespace/prod')?.status).toBe('warning');
+  });
+
+  it('folds a node wrapper to the worst of the node and the pods it draws', () => {
+    const graph = deriveSankey(elements, 'both');
+    const byLabel = new Map(graph.k8sNodes.map((n) => [n.label, n]));
+    expect(byLabel.get('worker-0')?.status).toBe('normal');
+    // worker-1 is warning itself while every pod on it is normal — the wrapper is the only
+    // thing drawn for the node, so its own verdict has to survive the fold.
+    expect(byLabel.get('worker-1')?.status).toBe('warning');
+  });
+
   it('does not mutate the shared graph', () => {
     const before = clonePlain(elements);
     deriveSankey(elements, 'both');

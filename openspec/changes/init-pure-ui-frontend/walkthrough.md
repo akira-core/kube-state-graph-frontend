@@ -126,6 +126,10 @@ Each capability below is mapped to the test or observable behavior that covers i
 | Locate: filter-hidden vs missing vs SVM not clickable                    | `locateOutcome.test.ts`, `SankeyView.test.tsx` `data-locatable`                                        |
 | Hover state cleared when its node disappears                             | `SankeyView.test.tsx` (tooltip closes and fade lifts on refresh; a surviving node keeps its highlight) |
 | Box cards, ribbons, column headers, namespace stripes, summary tables    | `layoutSankey.test.ts`, `SankeyView.test.tsx`                                                          |
+| Scope bar is one row on one baseline; roots below it                     | `SankeyScopeBar.test.tsx` (one-row membership, no `Root` heading, pill outside the control row)        |
+| Summary opens folded; header strip stays drawn                           | `SankeyView.test.tsx` `sankey-summary-toggle`; e2e `demo.spec.ts` "opens with the summary folded"      |
+| Status border from the backend fold; unjudged stays neutral              | `deriveSankey.test.ts`, `SankeyView.test.tsx` (`STATUS_COLOR` stroke, legend, tooltip), `demo.spec.ts` |
+| Container cards border by the worst status they hide                     | `deriveSankey.test.ts` (`namespace/prod` warning, `worker-1` wrapper warning)                          |
 | Zoom / pan / zoom control bar / focus mode                               | `useZoomPan.test.ts`, `SankeyView.test.tsx`                                                            |
 
 ## graph-filters

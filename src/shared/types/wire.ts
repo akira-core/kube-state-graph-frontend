@@ -127,7 +127,14 @@ export interface WireNodeData {
     total_latency_us?: number;
     total_bytes_per_sec?: number;
   };
-  /** PANEL-ONLY, like `alerts` — the backend emits no health status field. */
+  /**
+   * The backend's folded verdict (`graph.FoldStatus`): worst-wins over alert severity,
+   * NetApp `health` and Kubernetes readiness. Present on the kinds it can judge (pod,
+   * node, pvc, netapp-node, netapp-aggr) and absent on the rest — services, externals,
+   * SVMs and synthesised compounds — which is not a regression, it is the absence of a
+   * judgement. Graph view borders a node by it; the Sankey borders its cards by the same
+   * field, so the two views cannot disagree about an estate.
+   */
   status?: string;
   /** PANEL-ONLY. See WireAlert. */
   alerts?: WireAlert[];

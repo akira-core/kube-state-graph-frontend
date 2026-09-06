@@ -85,6 +85,31 @@ describe('SankeyScopeBar', () => {
     expect(screen.getByRole('button', { name: /aggr:aggr1/ })).toBeInTheDocument();
   });
 
+  it('puts every control in ONE labelled row, with no nested group heading above it', () => {
+    render(<Harness />);
+    const row = screen.getByRole('button', { name: 'AZ' }).closest('[data-testid="sankey-controls"] > div');
+    expect(row).not.toBeNull();
+    // AZ, Env, Root kind, the root value input and Add all live in the same flex row, so
+    // their labels share one baseline. "Root" used to be a group heading ABOVE "Root kind",
+    // which put a second label rank into a row that reads as one and threw the whole bar
+    // out of alignment.
+    for (const name of ['Env', 'Root kind']) {
+      expect(row?.contains(screen.getByRole('button', { name }))).toBe(true);
+    }
+    expect(row?.contains(screen.getByLabelText('Root value'))).toBe(true);
+    expect(row?.contains(screen.getByRole('button', { name: 'Add' }))).toBe(true);
+    expect(screen.queryByText('Root', { selector: 'span, label, h3' })).not.toBeInTheDocument();
+  });
+
+  it('moves added roots off the control row so a growing pill list cannot reflow it', () => {
+    render(<Harness az={['local-a']} env={['demo']} />);
+    fireEvent.change(screen.getByLabelText('Root value'), { target: { value: 'aggr1' } });
+    fireEvent.submit(screen.getByLabelText('Root value').closest('form')!);
+    const pill = screen.getByRole('button', { name: /aggr:aggr1/ });
+    const controlRow = screen.getByRole('button', { name: 'AZ' }).closest('[data-testid="sankey-controls"] > div');
+    expect(controlRow?.contains(pill)).toBe(false);
+  });
+
   it('explains that node matches both sides and mixed roots take the intersection', () => {
     render(<Harness />);
     expect(screen.getByText(/NetApp controllers and Kubernetes nodes/)).toBeInTheDocument();

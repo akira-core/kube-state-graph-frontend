@@ -90,6 +90,10 @@ In-page changes replace the current history entry. Nav links go to the bare path
 
 The Sankey draws seven columns, storage → workload: NetApp node, aggregate, SVM, PVC, Pod, Application, Namespace. The last two are **derived** — walked up each pod's `data.parent` chain and summed per direction from that pod's drawn `pvc-pod` weights. Derived values are marked "derived from member pods" in tooltips and tables; they never rewrite a backend-tier weight. A `Layout` control (`Flat` / `Node`) wraps pods in their Kubernetes node under `Node`. That choice is page-transient: it is not a URL parameter, is not persisted, and returns to `Flat` on remount.
 
+Card borders carry `data.status` — the backend's own fold over alert severity, NetApp `health` and Kubernetes readiness — in the same three colours the Graph view borders by, named in the toolbar. Nothing here derives or re-folds it, and a node the backend judges none for (an SVM, say) keeps the neutral border rather than a green one: an absent verdict is not a healthy one. A card that hides others — `application`, `namespace`, and the `Node` layout's wrapper — borders by the worst status among its members, like a collapsed container in the Graph view.
+
+The numeric summary below the chart is **folded on arrival** and its header strip names the row counts; seven tiers of tables otherwise take about half the column from the diagram. Opening it is page-transient like `Layout`, and does not move the zoom / pan viewport — press `0` (Fit) after expanding if you want the chart refitted to what is left.
+
 ## Linting & testing
 
 ```sh
