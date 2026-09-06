@@ -36,7 +36,7 @@ Trailing slashes MUST be treated as equivalent (`/graph/` is the same as `/graph
 
 Each route MUST render **its own page component**; the page of a non-current route MUST NOT stay mounted and MUST NOT exist hidden in the DOM. Switching routes unmounts the previous page and mounts the new one — **switch = reset**. The nav bar's two view links MUST point to the **bare paths** (`/graph`, `/sankey`, without query); clicking one enters that page with its initial scope.
 
-The route's **query string is the carrier of that page's scope and view time range** (the Grafana dashboard-variable model): for the Graph page, the filter parameters specified by `graph-filters`; for the Sankey page, the estate / root / narrowing / `mode` specified by `storage-flow-sankey`; both additionally carry `from` / `to` (see "View time range"). Parameter names MUST mirror the backend request parameter names (multiple values expressed as repeated keys), with no prefix. Changes from in-page controls MUST update the query with **replace** (no new history entry); switching between routes MUST be a push. The query carries only scope and time range — selection, collapse, viewport, search, legend, pod-parent mode and focus mode MUST NOT enter the URL. A page MUST ignore parameters it does not recognize, and strip them on its next write of the query.
+The route's **query string is the carrier of that page's scope and view time range** (the Grafana dashboard-variable model): for the Graph page, the filter parameters specified by `graph-filters`; for the Sankey page, the estate / root / narrowing / `mode` specified by `storage-flow-sankey`; both additionally carry `from` / `to` (see "View time range"). Parameter names MUST mirror the backend request parameter names (multiple values expressed as repeated keys), with no prefix. Changes from in-page controls MUST update the query with **replace** (no new history entry); switching between routes MUST be a push. The query carries only scope and time range — selection, collapse, viewport, search, legend, pod-parent mode, the Sankey layout (`Flat` / `Node`) and focus mode MUST NOT enter the URL. A page MUST ignore parameters it does not recognize, and strip them on its next write of the query.
 
 #### Scenario: Root path redirects to the Graph view
 
@@ -323,7 +323,7 @@ The view area below the nav bar MUST fill the entire remaining height of the win
 
 ### Requirement: Page transient state lives and dies with the route
 
-Each page's transient state — the Graph page's selection, collapse set, kind / edge type / ingress visibility, pod-parent mode, search string, legend collapse; the Sankey page's zoom / pan viewport, hover, focus mode — SHALL be created when the page mounts and discarded when it unmounts. On leaving and returning to a page, the user MUST see that page's initial state (the Graph's initial layout algorithm value comes from the configured `defaultLayout`; pod-parent mode is `controller`). The only things that survive across unmount are **the scope, mode and time range carried by the URL query** — they are not transient state but the page's inputs.
+Each page's transient state — the Graph page's selection, collapse set, kind / edge type / ingress visibility, pod-parent mode, search string, legend collapse; the Sankey page's zoom / pan viewport, hover, layout (`Flat` / `Node`), focus mode — SHALL be created when the page mounts and discarded when it unmounts. On leaving and returning to a page, the user MUST see that page's initial state (the Graph's initial layout algorithm value comes from the configured `defaultLayout`; pod-parent mode is `controller`; the Sankey layout is `Flat`). The only things that survive across unmount are **the scope, mode and time range carried by the URL query** — they are not transient state but the page's inputs.
 
 The transient state above MUST NOT be persisted to browser local storage and MUST NOT be written to the URL; after a full refresh it MUST all return to initial values, while scope / mode / time range are restored from the URL. A data reload MUST NOT actively clear this state; how individual state maps after the data changes (for example a selected node that no longer exists) is specified by each view.
 
@@ -339,8 +339,8 @@ The transient state above MUST NOT be persisted to browser local storage and MUS
 
 #### Scenario: After a refresh the scope is restored and transient state reset
 
-- **WHEN** the user, on `/sankey?az=zone-a&env=prod&mode=write`, zooms / pans and enters focus mode, then does a full refresh
-- **THEN** the Sankey fetches and draws with `az=zone-a` / `env=prod` / `mode=write`; the viewport is initial and focus mode is not active
+- **WHEN** the user, on `/sankey?az=zone-a&env=prod&mode=write`, zooms / pans, switches the layout to `Node` and enters focus mode, then does a full refresh
+- **THEN** the Sankey fetches and draws with `az=zone-a` / `env=prod` / `mode=write`; the viewport is initial, the layout is `Flat` and focus mode is not active
 
 ### Requirement: Shell registers no global keyboard shortcuts
 

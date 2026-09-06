@@ -172,6 +172,14 @@ export const SHOWCASE_GRAPH: WireGraph = {
       },
       {
         data: {
+          id: 'prod/ctrl/Job/batch',
+          name: 'batch',
+          type: 'controller',
+          parent: 'prod/ns/prod',
+        },
+      },
+      {
+        data: {
           id: 'pod/node-exporter-0',
           name: 'node-exporter-0',
           type: 'pod',
@@ -458,6 +466,50 @@ export const SHOWCASE_GRAPH: WireGraph = {
           labels: { namespace: 'prod', volumename: 'pvc-scratch' },
         },
       },
+      {
+        data: {
+          id: 'pod/orphan-0',
+          name: 'orphan-0',
+          type: 'pod',
+          parent: 'prod/ctrl/Job/batch',
+          status: 'normal',
+          owner: { name: 'batch', kind: 'Job' },
+          labels: { namespace: 'prod', cluster: 'prod', node: 'node/worker-0' },
+        },
+      },
+      {
+        data: {
+          id: 'pod/batch-pending',
+          name: 'batch-pending',
+          type: 'pod',
+          parent: 'prod/ctrl/Job/batch',
+          status: 'warning',
+          owner: { name: 'batch', kind: 'Job' },
+          labels: { namespace: 'prod', cluster: 'prod' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-orphan',
+          name: 'data-orphan',
+          type: 'pvc',
+          parent: 'prod/ns/prod',
+          status: 'normal',
+          storageclass: 'netapp-nas',
+          labels: { namespace: 'prod', volumename: 'pvc-orphan' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-pending',
+          name: 'data-pending',
+          type: 'pvc',
+          parent: 'prod/ns/prod',
+          status: 'normal',
+          storageclass: 'netapp-nas',
+          labels: { namespace: 'prod', volumename: 'pvc-pending' },
+        },
+      },
 
       // dr — a NATS 3-replica workload behind a ClusterIP Service, plus its consumer.
       { data: { id: 'dr/ns/dr', name: 'dr', type: 'namespace', parent: 'cluster/dr' } },
@@ -704,6 +756,7 @@ export const SHOWCASE_GRAPH: WireGraph = {
       { data: { id: 'e-ptn-6', type: 'pod-to-node', source: 'pod/nats-1', target: 'node/worker-2' } },
       { data: { id: 'e-ptn-7', type: 'pod-to-node', source: 'pod/nats-2', target: 'node/worker-2' } },
       { data: { id: 'e-ptn-8', type: 'pod-to-node', source: 'pod/consumer', target: 'node/worker-2' } },
+      { data: { id: 'e-ptn-orphan', type: 'pod-to-node', source: 'pod/orphan-0', target: 'node/worker-0' } },
 
       // Service fan-out to backing pods.
       { data: { id: 'e-sel-0', type: 'service-selects-pod', source: 'service/mongo-svc', target: 'pod/mongo-0' } },
@@ -717,6 +770,10 @@ export const SHOWCASE_GRAPH: WireGraph = {
       { data: { id: 'e-pvc-0', type: 'pod-mounts-pvc', source: 'pod/mongo-0', target: 'pvc/data-mongo-0' } },
       { data: { id: 'e-pvc-1', type: 'pod-mounts-pvc', source: 'pod/mongo-1', target: 'pvc/data-mongo-1' } },
       { data: { id: 'e-pvc-2', type: 'pod-mounts-pvc', source: 'pod/mongo-2', target: 'pvc/data-mongo-2' } },
+      { data: { id: 'e-pvc-orphan', type: 'pod-mounts-pvc', source: 'pod/orphan-0', target: 'pvc/data-orphan' } },
+      {
+        data: { id: 'e-pvc-pending', type: 'pod-mounts-pvc', source: 'pod/batch-pending', target: 'pvc/data-pending' },
+      },
 
       // Trace-derived calls carrying RED. `relation: 'transport'` dashes the pod's real network
       // hop to a broker; the `link` edge below is the logical producer -> consumer dependency it stands

@@ -24,22 +24,90 @@ describe('deriveSankey', () => {
     expect(elements).toEqual(before);
   });
 
-  it('derives six tiers from the storage fixture in Both mode', () => {
+  it('derives seven columns from the storage fixture in Both mode', () => {
     const graph = deriveSankey(elements, 'both');
     const byKind = Object.fromEntries(
       SANKEY_KIND_ORDER.map((kind) => [kind, graph.nodes.filter((n) => n.kind === kind).map((n) => n.label)])
     );
     expect(byKind['netapp-node']).toEqual(['ontap-prod-01', 'ontap-prod-02']);
     expect(byKind['netapp-aggr']).toEqual(['aggr1', 'aggr2']);
-    expect(byKind['netapp-svm']).toEqual(['svm_shop', 'svm_dr']);
-    expect(byKind.pvc).toEqual(expect.arrayContaining(['data-mongo-0', 'data-mongo-1', 'data-scratch']));
-    expect(byKind.pod).toEqual(expect.arrayContaining(['mongo-0', 'mongo-1']));
-    expect(byKind.node).toEqual(['worker-0', 'worker-1']);
+    expect(byKind['netapp-svm']).toEqual(expect.arrayContaining(['svm_shop', 'svm_dr', 'svm_jobs']));
+    expect(byKind.pvc).toEqual(
+      expect.arrayContaining(['data-mongo-0', 'data-mongo-1', 'data-scratch', 'data-orphan', 'data-pending'])
+    );
+    expect(byKind.pod).toEqual(expect.arrayContaining(['mongo-0', 'mongo-1', 'orphan-0', 'batch-pending']));
+    expect(byKind.application).toEqual(['mongodb']);
+    expect(byKind.namespace).toEqual(['prod']);
     expect(graph.nodes.some((n) => n.id === 'storage-cluster/ontap-prod')).toBe(false);
-    expect(graph.nodes.some((n) => n.id === 'prod/app/mongodb')).toBe(false);
     expect(graph.nodes.some((n) => n.id === 'prod/ctrl/StatefulSet/mongodb')).toBe(false);
-    const tiers = new Set(graph.links.map((l) => l.tier));
-    expect(tiers).toEqual(new Set(['node-aggr', 'aggr-svm', 'svm-pvc', 'pvc-pod', 'pod-node']));
+    expect(graph.nodes.some((n) => n.id === 'node/worker-0')).toBe(false);
+    expect(graph.nodes.some((n) => n.id === 'node/worker-1')).toBe(false);
+    expect(graph.links.some((l) => l.target === 'node/worker-0' || l.target === 'node/worker-1')).toBe(false);
+    const backendTiers = new Set(graph.links.filter((l) => l.derived !== true).map((l) => l.tier));
+    expect(backendTiers).toEqual(new Set(['node-aggr', 'aggr-svm', 'svm-pvc', 'pvc-pod']));
+    const derived = graph.links.filter((l) => l.derived === true);
+    expect(derived.map((l) => `${l.source}:${l.target}:${l.tier}`).sort()).toEqual(
+      expect.arrayContaining([
+        'pod/mongo-0:prod/app/mongodb:pod-application',
+        'pod/mongo-1:prod/app/mongodb:pod-application',
+        'prod/app/mongodb:prod/ns/prod:application-namespace',
+      ])
+    );
+  });
+
+  it('sums derived application → namespace weights from member pods', () => {
+    const graph = deriveSankey(elements, 'both');
+    const inbound = (pod: string, dir: 'read' | 'write'): number =>
+      graph.links
+        .filter((l) => l.target === pod && l.tier === 'pvc-pod' && l.direction === dir)
+        .reduce((sum, l) => sum + l.value, 0);
+    const mongo0Read = inbound('pod/mongo-0', 'read');
+    const mongo0Write = inbound('pod/mongo-0', 'write');
+    const mongo1Read = inbound('pod/mongo-1', 'read');
+    const mongo1Write = inbound('pod/mongo-1', 'write');
+    expect(
+      graph.links.find((l) => l.source === 'pod/mongo-0' && l.tier === 'pod-application' && l.direction === 'read')
+        ?.value
+    ).toBe(mongo0Read);
+    expect(
+      graph.links.find((l) => l.source === 'pod/mongo-0' && l.tier === 'pod-application' && l.direction === 'write')
+        ?.value
+    ).toBe(mongo0Write);
+    const toNs = graph.links.filter((l) => l.source === 'prod/app/mongodb' && l.target === 'prod/ns/prod');
+    expect(toNs.find((l) => l.direction === 'read')?.value).toBe(mongo0Read + mongo1Read);
+    expect(toNs.find((l) => l.direction === 'write')?.value).toBe(mongo0Write + mongo1Write);
+    expect(toNs.every((l) => l.derived === true)).toBe(true);
+  });
+
+  it('spans a pod without an application straight to its namespace', () => {
+    const { elements: orphan } = normalizeGraph(
+      wire(
+        [
+          { id: 'cluster/x', name: 'x', type: 'cluster' },
+          { id: 'ns/jobs', name: 'jobs', type: 'namespace', parent: 'cluster/x' },
+          { id: 'ctrl/batch', name: 'batch', type: 'controller', parent: 'ns/jobs' },
+          { id: 'p', name: 'claim', type: 'pvc' },
+          { id: 'pod', name: 'orphan', type: 'pod', parent: 'ctrl/batch', labels: { namespace: 'jobs' } },
+        ],
+        [
+          {
+            id: 'e',
+            type: 'storage-flow',
+            source: 'p',
+            target: 'pod',
+            labels: { tier: 'pvc-pod' },
+            metrics: { read_bytes_per_sec: 10 },
+          },
+        ]
+      )
+    );
+    const graph = deriveSankey(orphan, 'read');
+    expect(graph.nodes.filter((n) => n.kind === 'application')).toEqual([]);
+    expect(graph.nodes.find((n) => n.kind === 'namespace')?.label).toBe('jobs');
+    expect(graph.links.some((l) => l.tier === 'pod-namespace' && l.source === 'pod' && l.target === 'ns/jobs')).toBe(
+      true
+    );
+    expect(graph.links.some((l) => l.tier === 'pod-application')).toBe(false);
   });
 
   it('takes link weights from the edge metrics, not from downstream sums', () => {
@@ -188,8 +256,12 @@ describe('deriveSankey', () => {
 
     // `n` has no edge at all, so it is a materialised root under every selection.
     expect(kept({})).toEqual(['n']);
-    // `node` deliberately hits both a NetApp controller and a Kubernetes node.
-    expect(kept({ node: ['worker-0'] })).toEqual(expect.arrayContaining(['n', 'k']));
+    // `node` hits a NetApp controller as a card and a Kubernetes node as a wrapper, never a column.
+    expect(kept({ node: ['worker-0'] })).toEqual(expect.arrayContaining(['n']));
+    expect(kept({ node: ['worker-0'] })).not.toContain('k');
+    expect(
+      deriveSankey(unmeasured, 'both', { ...EMPTY_STORAGE_GRAPH_ROOTS, node: ['worker-0'] }).k8sNodes.map((n) => n.id)
+    ).toEqual(['k']);
     expect(kept({ ontap_cluster: ['ontap-prod'] })).toEqual(expect.arrayContaining(['n', 's']));
     expect(kept({ pod: ['shop/mongo-0'] })).toEqual(expect.arrayContaining(['n', 'p']));
     expect(kept({ pod: ['other/mongo-0'] })).toEqual(['n']);
@@ -290,14 +362,33 @@ describe('deriveSankey', () => {
     expect(formatBytesPerSec(3.86e-7)).toBe('3.86e-7 B/s');
   });
 
-  it('computes a hover path through a pvc node', () => {
+  it('computes a hover path through a pvc node, walking derived links not pod-node', () => {
     const graph = deriveSankey(elements, 'both');
     const pvc = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-mongo-0');
     expect(pvc).toBeDefined();
     const path = hoverPathLinks(graph, pvc!.id);
     expect(path.some((l) => l.tier === 'node-aggr')).toBe(true);
-    expect(path.some((l) => l.tier === 'pod-node')).toBe(true);
+    expect(path.some((l) => l.tier === 'pod-application')).toBe(true);
+    expect(path.some((l) => l.tier === 'application-namespace')).toBe(true);
+    expect(path.some((l) => l.target.startsWith('node/'))).toBe(false);
     expect(path.some((l) => l.source.includes('aggr2') || l.target.includes('aggr2'))).toBe(false);
+  });
+
+  it('spans the fixture pod without an application to its namespace and leaves the unscheduled pod unwrapped', () => {
+    const graph = deriveSankey(elements, 'both');
+    expect(graph.links.some((l) => l.source === 'pod/orphan-0' && l.tier === 'pod-namespace')).toBe(true);
+    expect(graph.nodes.find((n) => n.id === 'pod/batch-pending')?.k8sNodeId).toBeUndefined();
+    expect(graph.k8sNodes.some((n) => n.podIds.includes('pod/batch-pending'))).toBe(false);
+  });
+
+  it('records each pod Kubernetes node from the pod-node edge without drawing it', () => {
+    const graph = deriveSankey(elements, 'both');
+    expect(graph.nodes.find((n) => n.id === 'pod/mongo-0')?.k8sNodeId).toBe('node/worker-0');
+    expect(graph.nodes.find((n) => n.id === 'pod/mongo-1')?.k8sNodeId).toBe('node/worker-1');
+    expect(graph.k8sNodes.map((n) => n.label).sort()).toEqual(['worker-0', 'worker-1']);
+    expect(graph.k8sNodes.find((n) => n.label === 'worker-0')?.podIds).toEqual(
+      expect.arrayContaining(['pod/mongo-0', 'pod/orphan-0'])
+    );
   });
 
   it('ignores a storage-flow edge whose endpoints are missing', () => {

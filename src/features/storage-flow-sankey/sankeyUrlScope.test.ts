@@ -42,6 +42,14 @@ describe('sankey URL scope', () => {
     expect(parseSankeyScope(parse('mode=left')).mode).toBe('both');
   });
 
+  it('round-trips no layout key — layout is not URL state', () => {
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&layout=node&group=node'));
+    const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '24h' });
+    expect(qs).not.toContain('layout=');
+    expect(qs).not.toContain('group=');
+    expect(qs).toBe('az=zone-a&env=prod&from=now-24h&to=now');
+  });
+
   it('strips unknown params on write', () => {
     const incoming = parse('foo=bar&az=zone-a&env=prod&from=now-1h&to=now');
     const scope = parseSankeyScope(incoming);

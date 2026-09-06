@@ -90,4 +90,33 @@ describe('SankeyScopeBar', () => {
     expect(screen.getByText(/NetApp controllers and Kubernetes nodes/)).toBeInTheDocument();
     expect(screen.getByText(/intersection/)).toBeInTheDocument();
   });
+
+  it('hints that a Kubernetes node root is visible only under the Node layout', () => {
+    render(
+      <SankeyScopeBar
+        options={{ az: ['a'], env: ['e'], cluster: [], namespace: [] }}
+        controller={{
+          query: {
+            az: 'a',
+            env: 'e',
+            cluster: [],
+            namespace: [],
+            roots: { ...EMPTY_STORAGE_GRAPH_ROOTS, node: ['worker-0'] },
+          },
+          azEnvReady: true,
+          podError: undefined,
+          setAz: () => {},
+          setEnv: () => {},
+          setCluster: () => {},
+          setNamespace: () => {},
+          addRoot: () => true,
+          removeRoot: () => {},
+          clearRoots: () => {},
+        }}
+        k8sNodeHint={[{ id: 'node/worker-0', label: 'worker-0' }]}
+      />
+    );
+    expect(screen.getByTestId('sankey-k8s-node-hint')).toHaveTextContent('worker-0');
+    expect(screen.getByTestId('sankey-k8s-node-hint')).toHaveTextContent('Node layout');
+  });
 });

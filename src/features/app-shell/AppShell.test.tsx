@@ -25,10 +25,12 @@ vi.mock('../storage-flow-sankey', async (importOriginal) => {
       focusMode: boolean;
       onFocusModeChange: (next: boolean) => void;
       onLocateNode: (id: string) => void;
+      onPodLayoutChange?: (next: 'flat' | 'node') => void;
     }) => (
       <div data-testid="sankey-view" data-focus-mode={props.focusMode}>
         <button onClick={() => props.onFocusModeChange(!props.focusMode)}>toggle-sankey-focus</button>
         <button onClick={() => props.onLocateNode('netapp/ontap-prod/aggr/aggr1')}>locate-aggr1</button>
+        <button onClick={() => props.onPodLayoutChange?.('node')}>layout-node</button>
       </div>
     ),
   };
@@ -474,6 +476,20 @@ describe('AppShell two data sources', () => {
       expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
     });
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  });
+
+  it('does not refetch storage-graph when switching the Sankey layout', async () => {
+    const fetchMock = stubFetch();
+    renderAt('/sankey?az=zone-a&env=prod', live);
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-view')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(storageCalls(fetchMock)).toBeGreaterThanOrEqual(1);
+    });
+    const before = storageCalls(fetchMock);
+    fireEvent.click(screen.getByRole('button', { name: 'layout-node' }));
+    expect(storageCalls(fetchMock)).toBe(before);
   });
 
   it('does not fetch storage-graph on a time-range change before Sankey is visited', async () => {

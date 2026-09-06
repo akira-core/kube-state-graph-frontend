@@ -3,7 +3,7 @@ import type { JSX, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react
 import type { ThemeTokens } from '../../shared/theme/tokens';
 
 import { formatBytesPerSec } from './deriveSankey';
-import type { LayoutLink, LayoutNode, SankeyLayout } from './layoutSankey';
+import type { LayoutLink, LayoutNode, LayoutWrapper, SankeyLayout } from './layoutSankey';
 import type { Viewport, ZoomPanApi } from './useZoomPan';
 
 export interface HoverLit {
@@ -32,6 +32,68 @@ export interface SankeyChartProps {
    * sibling placement would strand keyboard `Esc` after a mouse click on "Focus mode".
    */
   children?: ReactNode;
+}
+
+const WRAPPER_TITLE_H = 40;
+
+function wrapperBox(
+  wrapper: LayoutWrapper,
+  tokens: ThemeTokens,
+  faded: boolean,
+  onEnter: SankeyChartProps['onNodeEnter'],
+  onLeave: () => void,
+  onClick: (id: string) => void
+): JSX.Element {
+  return (
+    <g
+      key={wrapper.id}
+      data-testid={`sankey-wrapper-${wrapper.label}`}
+      data-kind="node"
+      style={{ opacity: faded ? 0.3 : 1 }}
+    >
+      <rect
+        x={wrapper.x}
+        y={wrapper.y}
+        width={wrapper.width}
+        height={wrapper.height}
+        rx={12}
+        fill={tokens.sankey.nodeFill}
+        fillOpacity={0.35}
+        stroke={tokens.sankey.nodeStroke}
+        strokeWidth={1.2}
+        className="pointer-events-none"
+      />
+      <g
+        data-testid={`sankey-wrapper-title-${wrapper.label}`}
+        data-locatable="true"
+        onMouseEnter={(evt) => onEnter(wrapper.id, evt)}
+        onMouseLeave={onLeave}
+        onClick={() => onClick(wrapper.id)}
+        className="cursor-pointer"
+      >
+        <rect x={wrapper.x} y={wrapper.y} width={wrapper.width} height={WRAPPER_TITLE_H} fill="transparent" />
+        <text
+          x={wrapper.x + 10}
+          y={wrapper.y + 15}
+          fill={tokens.fg.primary}
+          fontSize={11.5}
+          fontWeight={600}
+          className="pointer-events-none"
+        >
+          {wrapper.label}
+        </text>
+        <text
+          x={wrapper.x + 10}
+          y={wrapper.y + 32}
+          fill={tokens.fg.secondary}
+          fontSize={10}
+          className="pointer-events-none"
+        >
+          {wrapper.subtitle}
+        </text>
+      </g>
+    </g>
+  );
 }
 
 function nodeCard(
@@ -200,6 +262,17 @@ export function SankeyChart({
                 {formatBytesPerSec(l.value)}
               </text>
             ))}
+
+          {layout.wrappers.map((w) =>
+            wrapperBox(
+              w,
+              tokens,
+              lit !== null && !w.podIds.some((id) => lit.nodeIds.has(id)) && !lit.nodeIds.has(w.id),
+              onNodeEnter,
+              onNodeLeave,
+              onNodeClick
+            )
+          )}
 
           {layout.nodes.map((n) =>
             nodeCard(n, tokens, lit !== null && !lit.nodeIds.has(n.id), onNodeEnter, onNodeLeave, onNodeClick)

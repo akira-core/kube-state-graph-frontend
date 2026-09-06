@@ -4,9 +4,11 @@ import { formatBytes } from '../../shared/format/measurements';
 import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
 
 export type SankeyMode = 'read' | 'write' | 'both';
-export type SankeyKind = 'netapp-node' | 'netapp-aggr' | 'netapp-svm' | 'pvc' | 'pod' | 'node';
+export type SankeyKind = 'netapp-node' | 'netapp-aggr' | 'netapp-svm' | 'pvc' | 'pod' | 'application' | 'namespace';
 export type SankeyDirection = 'read' | 'write';
-export type StorageFlowTier = 'node-aggr' | 'aggr-svm' | 'svm-pvc' | 'pvc-pod' | 'pod-node';
+export type StorageFlowTier = 'node-aggr' | 'aggr-svm' | 'svm-pvc' | 'pvc-pod';
+export type DerivedFlowTier = 'pod-application' | 'pod-namespace' | 'application-namespace';
+export type SankeyLinkTier = StorageFlowTier | DerivedFlowTier;
 
 export const SANKEY_KIND_ORDER: readonly SankeyKind[] = [
   'netapp-node',
@@ -14,12 +16,18 @@ export const SANKEY_KIND_ORDER: readonly SankeyKind[] = [
   'netapp-svm',
   'pvc',
   'pod',
-  'node',
+  'application',
+  'namespace',
 ];
 
-const KIND_SET = new Set<string>(SANKEY_KIND_ORDER);
+export const DERIVED_TIER_LABEL: Record<DerivedFlowTier, string> = {
+  'pod-application': 'pod → application',
+  'pod-namespace': 'pod → namespace',
+  'application-namespace': 'application → namespace',
+};
 
-const TIERS = new Set<string>(['node-aggr', 'aggr-svm', 'svm-pvc', 'pvc-pod', 'pod-node']);
+const BACKEND_KINDS = new Set<string>(['netapp-node', 'netapp-aggr', 'netapp-svm', 'pvc', 'pod']);
+const DRAWN_TIERS = new Set<string>(['node-aggr', 'aggr-svm', 'svm-pvc', 'pvc-pod']);
 
 export interface SankeyNode {
   id: string;
@@ -33,6 +41,10 @@ export interface SankeyNode {
   perf?: cytoscape.NodeDataDefinition['perf'];
   alerts?: cytoscape.NodeDataDefinition['alerts'];
   noFlow?: boolean;
+  /** Present on a pod that is the source of a `pod-node` edge. */
+  k8sNodeId?: string;
+  derived?: true;
+  memberPodCount?: number;
 }
 
 export interface SankeyLink {
@@ -40,17 +52,26 @@ export interface SankeyLink {
   target: string;
   direction: SankeyDirection;
   value: number;
-  tier: StorageFlowTier;
+  tier: SankeyLinkTier;
   attribution?: string;
   maxBytesPerSec?: number;
   maxIops?: number;
   readLatencyUs?: number;
   writeLatencyUs?: number;
+  derived?: true;
+}
+
+export interface SankeyK8sNode {
+  id: string;
+  label: string;
+  podIds: string[];
+  noFlow?: boolean;
 }
 
 export interface SankeyGraph {
   nodes: SankeyNode[];
   links: SankeyLink[];
+  k8sNodes: SankeyK8sNode[];
   hasStorageFlowEdges: boolean;
   hasCurrentDirectionMeasurement: boolean;
 }
@@ -59,6 +80,7 @@ interface NodeRec {
   id: string;
   label: string;
   kind: string;
+  parent?: string;
   namespace?: string;
   ontapCluster?: string;
   usage?: { usedBytes?: number; capacityBytes?: number };
@@ -66,6 +88,32 @@ interface NodeRec {
   hardware?: cytoscape.NodeDataDefinition['hardware'];
   perf?: cytoscape.NodeDataDefinition['perf'];
   alerts?: cytoscape.NodeDataDefinition['alerts'];
+}
+
+/**
+ * Compound groups (`application` / `namespace` / `controller`) are kind-less on the
+ * wire after normalize — they carry `isApplication` / `isNamespace` / `isController`
+ * instead. The parent-chain walk needs the D6 kind, so those flags are folded back
+ * here. A controller also receives a workload `kind` from enrichControllers; that is
+ * the icon, not the hop, so `isController` wins.
+ */
+function recKind(d: cytoscape.NodeDataDefinition): string {
+  if (d.isController === true) {
+    return 'controller';
+  }
+  if (d.isApplication === true) {
+    return 'application';
+  }
+  if (d.isNamespace === true) {
+    return 'namespace';
+  }
+  if (d.isCluster === true) {
+    return 'cluster';
+  }
+  if (d.isStorageCluster === true) {
+    return 'storage-cluster';
+  }
+  return typeof d.kind === 'string' ? d.kind : '';
 }
 
 function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<string, NodeRec> {
@@ -85,10 +133,12 @@ function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<strin
           ? d.labels.namespace
           : undefined;
     const ontapCluster = typeof d.labels?.ontap_cluster === 'string' ? d.labels.ontap_cluster : undefined;
+    const parent = typeof d.parent === 'string' && d.parent.length > 0 ? d.parent : undefined;
     map.set(d.id, {
       id: d.id,
       label: typeof d.label === 'string' ? d.label : d.id,
-      kind: typeof d.kind === 'string' ? d.kind : '',
+      kind: recKind(d),
+      ...(parent !== undefined ? { parent } : {}),
       ...(namespace !== undefined ? { namespace } : {}),
       ...(ontapCluster !== undefined ? { ontapCluster } : {}),
       ...(d.usage !== undefined ? { usage: d.usage } : {}),
@@ -120,12 +170,37 @@ function ioMetrics(data: cytoscape.EdgeDataDefinition): cytoscape.EdgeIoMetrics 
   return metrics;
 }
 
-function asSankeyKind(kind: string): SankeyKind | undefined {
-  return KIND_SET.has(kind) ? (kind as SankeyKind) : undefined;
+function asBackendKind(kind: string): SankeyKind | undefined {
+  return BACKEND_KINDS.has(kind) ? (kind as SankeyKind) : undefined;
 }
 
-function asTier(value: string | undefined): StorageFlowTier | undefined {
-  return value !== undefined && TIERS.has(value) ? (value as StorageFlowTier) : undefined;
+function asDrawnTier(value: string | undefined): StorageFlowTier | undefined {
+  return value !== undefined && DRAWN_TIERS.has(value) ? (value as StorageFlowTier) : undefined;
+}
+
+export function isDerivedTier(tier: SankeyLinkTier): tier is DerivedFlowTier {
+  return tier === 'pod-application' || tier === 'pod-namespace' || tier === 'application-namespace';
+}
+
+/**
+ * First ancestor of `kind` walking `data.parent` upward. The walk is hop-bounded by a
+ * seen-set so a parent cycle cannot hang it.
+ */
+function firstAncestorOfKind(nodes: Map<string, NodeRec>, id: string, kind: string): NodeRec | undefined {
+  const seen = new Set<string>();
+  let current = nodes.get(id);
+  while (current?.parent !== undefined && !seen.has(current.parent)) {
+    seen.add(current.parent);
+    const rec = nodes.get(current.parent);
+    if (rec === undefined) {
+      return undefined;
+    }
+    if (rec.kind === kind) {
+      return rec;
+    }
+    current = rec;
+  }
+  return undefined;
 }
 
 /**
@@ -159,8 +234,8 @@ function isRequestedRoot(rec: NodeRec, roots: StorageGraphRoots): boolean {
   }
 }
 
-function toSankeyNode(rec: NodeRec, noFlow: boolean): SankeyNode | undefined {
-  const kind = asSankeyKind(rec.kind);
+function toSankeyNode(rec: NodeRec, noFlow: boolean, k8sNodeId?: string): SankeyNode | undefined {
+  const kind = asBackendKind(rec.kind);
   if (kind === undefined) {
     return undefined;
   }
@@ -175,15 +250,72 @@ function toSankeyNode(rec: NodeRec, noFlow: boolean): SankeyNode | undefined {
     ...(rec.hardware !== undefined ? { hardware: rec.hardware } : {}),
     ...(rec.perf !== undefined ? { perf: rec.perf } : {}),
     ...(rec.alerts !== undefined ? { alerts: rec.alerts } : {}),
+    ...(k8sNodeId !== undefined ? { k8sNodeId } : {}),
     ...(noFlow ? { noFlow: true } : {}),
   };
+}
+
+interface GroupAgg {
+  rec: NodeRec;
+  members: Set<string>;
+  namespace?: string;
+}
+
+function touchGroup(map: Map<string, GroupAgg>, rec: NodeRec, podId: string, namespace?: string): GroupAgg {
+  const existing = map.get(rec.id);
+  if (existing !== undefined) {
+    existing.members.add(podId);
+    if (existing.namespace === undefined && namespace !== undefined) {
+      existing.namespace = namespace;
+    }
+    return existing;
+  }
+  const created: GroupAgg = {
+    rec,
+    members: new Set([podId]),
+    ...(namespace !== undefined ? { namespace } : {}),
+  };
+  map.set(rec.id, created);
+  return created;
+}
+
+function toDerivedNode(agg: GroupAgg, kind: 'application' | 'namespace'): SankeyNode {
+  return {
+    id: agg.rec.id,
+    label: agg.rec.label,
+    kind,
+    derived: true,
+    memberPodCount: agg.members.size,
+    ...(agg.namespace !== undefined ? { namespace: agg.namespace } : {}),
+  };
+}
+
+/**
+ * Kubernetes nodes in the body whose name is one of the request's `node` roots.
+ * Used to hint under the Flat layout, where those nodes have nowhere to be drawn.
+ */
+export function kubernetesNodeRoots(
+  elements: readonly cytoscape.ElementDefinition[],
+  roots: StorageGraphRoots
+): Array<{ id: string; label: string }> {
+  if (roots.node.length === 0) {
+    return [];
+  }
+  const hits: Array<{ id: string; label: string }> = [];
+  for (const rec of indexNodes(elements).values()) {
+    if (rec.kind === 'node' && roots.node.includes(rec.label)) {
+      hits.push({ id: rec.id, label: rec.label });
+    }
+  }
+  return hits;
 }
 
 /**
  * Derive a Sankey from a storage-graph body.
  *
- * Weights come from each `storage-flow` edge's metrics as-is. The function does not
- * aggregate, split, or rewrite the input — the returned graph is a projection.
+ * Backend-tier weights come from each `storage-flow` edge's metrics as-is. The only
+ * client-side sum is the derived `application` / `namespace` columns, taken per direction
+ * over already-drawn `pvc-pod` links. The function does not mutate the input.
  */
 export function deriveSankey(
   elements: readonly cytoscape.ElementDefinition[],
@@ -201,6 +333,8 @@ export function deriveSankey(
     metrics: cytoscape.EdgeIoMetrics | undefined;
   }> = [];
   const incident = new Set<string>();
+  const podToK8s = new Map<string, { id: string; label: string }>();
+  const k8sPodIds = new Map<string, string[]>();
 
   for (const el of elements) {
     if (el.group !== 'edges') {
@@ -218,7 +352,21 @@ export function deriveSankey(
     if (!nodes.has(sourceId) || !nodes.has(targetId)) {
       continue;
     }
-    const tier = asTier(d.labels?.tier);
+    const rawTier = d.labels?.tier;
+    if (rawTier === 'pod-node') {
+      // Placement only: never a ribbon. Recorded even when the edge carries no metrics.
+      incident.add(sourceId);
+      incident.add(targetId);
+      const target = nodes.get(targetId);
+      if (target !== undefined && target.kind === 'node') {
+        podToK8s.set(sourceId, { id: target.id, label: target.label });
+        const list = k8sPodIds.get(target.id) ?? [];
+        list.push(sourceId);
+        k8sPodIds.set(target.id, list);
+      }
+      continue;
+    }
+    const tier = asDrawnTier(rawTier);
     if (tier === undefined) {
       continue;
     }
@@ -264,12 +412,16 @@ export function deriveSankey(
 
   const kept: SankeyNode[] = [];
   for (const rec of nodes.values()) {
-    const kind = asSankeyKind(rec.kind);
+    if (rec.kind === 'node') {
+      continue;
+    }
+    const kind = asBackendKind(rec.kind);
     if (kind === undefined) {
       continue;
     }
+    const k8s = podToK8s.get(rec.id);
     if (used.has(rec.id)) {
-      const node = toSankeyNode(rec, false);
+      const node = toSankeyNode(rec, false, k8s?.id);
       if (node !== undefined) {
         kept.push(node);
       }
@@ -282,41 +434,162 @@ export function deriveSankey(
     //     deliberately returns without `metrics`. Its non-root nodes are dropped above;
     //     its roots must survive, and rootness is only knowable from the request.
     if (!incident.has(rec.id) || isRequestedRoot(rec, roots)) {
-      const node = toSankeyNode(rec, true);
+      const node = toSankeyNode(rec, true, k8s?.id);
       if (node !== undefined) {
         kept.push(node);
       }
     }
   }
 
+  const applications = new Map<string, GroupAgg>();
+  const namespaces = new Map<string, GroupAgg>();
+  const derivedLinks: SankeyLink[] = [];
+
+  /** Running `pod -> application` inflow per application and direction, so the
+   *  `application -> namespace` weight is a lookup rather than a rescan of every derived link. */
+  const appInflow = new Map<string, Partial<Record<SankeyDirection, number>>>();
+
+  const emitDerived = (
+    source: string,
+    target: string,
+    direction: SankeyDirection,
+    value: number,
+    tier: DerivedFlowTier
+  ): void => {
+    derivedLinks.push({ source, target, direction, value, tier, derived: true });
+    if (tier === 'pod-application') {
+      const acc = appInflow.get(target) ?? {};
+      acc[direction] = (acc[direction] ?? 0) + value;
+      appInflow.set(target, acc);
+    }
+  };
+
+  // Drawn `pvc-pod` weight per pod, indexed once. Scanning every link per pod is quadratic
+  // at the spec's stated bound (1000 pods against ~3500 links).
+  const pvcPodByPod = new Map<string, { read?: number; write?: number }>();
+  for (const link of links) {
+    if (link.tier !== 'pvc-pod') {
+      continue;
+    }
+    const acc = pvcPodByPod.get(link.target) ?? {};
+    if (link.direction === 'read') {
+      acc.read = (acc.read ?? 0) + link.value;
+    } else {
+      acc.write = (acc.write ?? 0) + link.value;
+    }
+    pvcPodByPod.set(link.target, acc);
+  }
+
+  for (const pod of kept) {
+    if (pod.kind !== 'pod' || pod.noFlow === true) {
+      continue;
+    }
+    const { read, write } = pvcPodByPod.get(pod.id) ?? {};
+    if (read === undefined && write === undefined) {
+      continue;
+    }
+    const app = firstAncestorOfKind(nodes, pod.id, 'application');
+    const ns = firstAncestorOfKind(nodes, pod.id, 'namespace');
+    if (app !== undefined) {
+      const appNs = firstAncestorOfKind(nodes, app.id, 'namespace')?.label ?? ns?.label ?? pod.namespace;
+      touchGroup(applications, app, pod.id, appNs);
+      if (ns !== undefined) {
+        touchGroup(namespaces, ns, pod.id);
+      }
+      if (read !== undefined) {
+        emitDerived(pod.id, app.id, 'read', read, 'pod-application');
+      }
+      if (write !== undefined) {
+        emitDerived(pod.id, app.id, 'write', write, 'pod-application');
+      }
+    } else if (ns !== undefined) {
+      touchGroup(namespaces, ns, pod.id);
+      if (read !== undefined) {
+        emitDerived(pod.id, ns.id, 'read', read, 'pod-namespace');
+      }
+      if (write !== undefined) {
+        emitDerived(pod.id, ns.id, 'write', write, 'pod-namespace');
+      }
+    }
+  }
+
+  for (const [appId, agg] of applications) {
+    const ns = firstAncestorOfKind(nodes, appId, 'namespace');
+    if (ns === undefined) {
+      continue;
+    }
+    for (const podId of agg.members) {
+      touchGroup(namespaces, ns, podId);
+    }
+    const inflow = appInflow.get(appId);
+    for (const direction of directions) {
+      const sum = inflow?.[direction];
+      if (sum !== undefined) {
+        emitDerived(appId, ns.id, direction, sum, 'application-namespace');
+      }
+    }
+  }
+
+  for (const agg of applications.values()) {
+    kept.push(toDerivedNode(agg, 'application'));
+  }
+  for (const agg of namespaces.values()) {
+    kept.push(toDerivedNode(agg, 'namespace'));
+  }
+
+  const keptPodIds = new Set(kept.filter((n) => n.kind === 'pod').map((n) => n.id));
+  const k8sNodes: SankeyK8sNode[] = [];
+  for (const rec of nodes.values()) {
+    if (rec.kind !== 'node') {
+      continue;
+    }
+    const members = (k8sPodIds.get(rec.id) ?? []).filter((id) => keptPodIds.has(id));
+    const isRoot = isRequestedRoot(rec, roots);
+    if (members.length === 0 && !isRoot) {
+      continue;
+    }
+    k8sNodes.push({
+      id: rec.id,
+      label: rec.label,
+      podIds: members,
+      ...(members.length === 0 ? { noFlow: true } : {}),
+    });
+  }
+
   const nodeIds = new Set(kept.map((n) => n.id));
-  const keptLinks = links.filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target));
+  const keptLinks = [...links, ...derivedLinks].filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target));
   return sortSankey({
     nodes: kept,
     links: keptLinks,
+    k8sNodes,
     hasStorageFlowEdges: flowEdges.length > 0,
     hasCurrentDirectionMeasurement,
   });
 }
 
-function nodeFlow(graph: SankeyGraph, id: string): number {
-  let inbound = 0;
-  let outbound = 0;
+/** Peak of inbound and outbound per node, in ONE pass over the links. */
+function nodeFlows(graph: SankeyGraph): Map<string, number> {
+  const sums = new Map<string, { in: number; out: number }>();
   for (const link of graph.links) {
-    if (link.source === id) {
-      outbound += link.value;
-    }
-    if (link.target === id) {
-      inbound += link.value;
-    }
+    const s = sums.get(link.source) ?? { in: 0, out: 0 };
+    s.out += link.value;
+    sums.set(link.source, s);
+    const t = sums.get(link.target) ?? { in: 0, out: 0 };
+    t.in += link.value;
+    sums.set(link.target, t);
   }
-  return Math.max(inbound, outbound);
+  const flow = new Map<string, number>();
+  for (const [id, { in: inbound, out: outbound }] of sums) {
+    flow.set(id, Math.max(inbound, outbound));
+  }
+  return flow;
 }
 
 function sortSankey(graph: SankeyGraph): SankeyGraph {
+  const peak = nodeFlows(graph);
   const flow = new Map<string, number>();
   for (const node of graph.nodes) {
-    flow.set(node.id, node.noFlow === true ? 0 : nodeFlow(graph, node.id));
+    flow.set(node.id, node.noFlow === true ? 0 : (peak.get(node.id) ?? 0));
   }
   const nodes = [...graph.nodes].sort((a, b) => {
     const ka = SANKEY_KIND_ORDER.indexOf(a.kind);
@@ -331,6 +604,7 @@ function sortSankey(graph: SankeyGraph): SankeyGraph {
     }
     return a.label.localeCompare(b.label);
   });
+  const k8sNodes = [...graph.k8sNodes].sort((a, b) => a.label.localeCompare(b.label));
   const links = [...graph.links].sort((a, b) => {
     if (a.source !== b.source) {
       return a.source.localeCompare(b.source);
@@ -340,7 +614,7 @@ function sortSankey(graph: SankeyGraph): SankeyGraph {
     }
     return a.direction.localeCompare(b.direction);
   });
-  return { ...graph, nodes, links };
+  return { ...graph, nodes, links, k8sNodes };
 }
 
 // Rates ride the SAME SI ladder as every other byte count in the app — a tooltip renders a
@@ -380,4 +654,15 @@ export function hoverPathLinks(graph: SankeyGraph, nodeId: string): SankeyLink[]
   forward(nodeId, new Set());
   backward(nodeId, new Set());
   return [...out];
+}
+
+/** Union of every member pod's path — hovering a wrapper title lights them all. */
+export function hoverPathForWrapper(graph: SankeyGraph, k8sNode: SankeyK8sNode): SankeyLink[] {
+  const seen = new Set<SankeyLink>();
+  for (const podId of k8sNode.podIds) {
+    for (const link of hoverPathLinks(graph, podId)) {
+      seen.add(link);
+    }
+  }
+  return [...seen];
 }

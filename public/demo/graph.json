@@ -237,6 +237,14 @@
       },
       {
         "data": {
+          "id": "prod/ctrl/Job/batch",
+          "name": "batch",
+          "type": "controller",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
           "id": "pod/node-exporter-0",
           "name": "node-exporter-0",
           "type": "pod",
@@ -753,6 +761,69 @@
           "labels": {
             "namespace": "prod",
             "volumename": "pvc-scratch"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/orphan-0",
+          "name": "orphan-0",
+          "type": "pod",
+          "parent": "prod/ctrl/Job/batch",
+          "status": "normal",
+          "owner": {
+            "name": "batch",
+            "kind": "Job"
+          },
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/batch-pending",
+          "name": "batch-pending",
+          "type": "pod",
+          "parent": "prod/ctrl/Job/batch",
+          "status": "warning",
+          "owner": {
+            "name": "batch",
+            "kind": "Job"
+          },
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-orphan",
+          "name": "data-orphan",
+          "type": "pvc",
+          "parent": "prod/ns/prod",
+          "status": "normal",
+          "storageclass": "netapp-nas",
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-orphan"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pvc/data-pending",
+          "name": "data-pending",
+          "type": "pvc",
+          "parent": "prod/ns/prod",
+          "status": "normal",
+          "storageclass": "netapp-nas",
+          "labels": {
+            "namespace": "prod",
+            "volumename": "pvc-pending"
           }
         }
       },
@@ -1327,6 +1398,14 @@
       },
       {
         "data": {
+          "id": "e-ptn-orphan",
+          "type": "pod-to-node",
+          "source": "pod/orphan-0",
+          "target": "node/worker-0"
+        }
+      },
+      {
+        "data": {
           "id": "e-sel-0",
           "type": "service-selects-pod",
           "source": "service/mongo-svc",
@@ -1395,6 +1474,22 @@
           "type": "pod-mounts-pvc",
           "source": "pod/mongo-2",
           "target": "pvc/data-mongo-2"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-orphan",
+          "type": "pod-mounts-pvc",
+          "source": "pod/orphan-0",
+          "target": "pvc/data-orphan"
+        }
+      },
+      {
+        "data": {
+          "id": "e-pvc-pending",
+          "type": "pod-mounts-pvc",
+          "source": "pod/batch-pending",
+          "target": "pvc/data-pending"
         }
       },
       {

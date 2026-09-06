@@ -88,6 +88,8 @@ In-page changes replace the current history entry. Nav links go to the bare path
 | `cluster`, `namespace`                        | Optional narrowing                               | omitted                                 |
 | `mode`                                        | `read` or `write`. Default `both` is not written | omitted (`both`)                        |
 
+The Sankey draws seven columns, storage → workload: NetApp node, aggregate, SVM, PVC, Pod, Application, Namespace. The last two are **derived** — walked up each pod's `data.parent` chain and summed per direction from that pod's drawn `pvc-pod` weights. Derived values are marked "derived from member pods" in tooltips and tables; they never rewrite a backend-tier weight. A `Layout` control (`Flat` / `Node`) wraps pods in their Kubernetes node under `Node`. That choice is page-transient: it is not a URL parameter, is not persisted, and returns to `Flat` on remount.
+
 ## Linting & testing
 
 ```sh

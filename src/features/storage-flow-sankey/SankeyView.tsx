@@ -16,11 +16,25 @@ import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
 import { useThemeTokens } from '../theme';
 
-import { deriveSankey, formatBytesPerSec, hoverPathLinks, type SankeyMode, type SankeyNode } from './deriveSankey';
-import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink } from './layoutSankey';
+import {
+  DERIVED_TIER_LABEL,
+  deriveSankey,
+  formatBytesPerSec,
+  hoverPathForWrapper,
+  hoverPathLinks,
+  isDerivedTier,
+  type SankeyMode,
+  type SankeyNode,
+} from './deriveSankey';
+import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart, type HoverLit } from './SankeyChart';
 import { SankeyControlBar } from './SankeyControlBar';
-import { SankeySummary, type NamespaceSubtotalRow, type NodeSummaryRow } from './SankeySummary';
+import {
+  SankeySummary,
+  type ApplicationSubtotalRow,
+  type NamespaceSubtotalRow,
+  type NodeSummaryRow,
+} from './SankeySummary';
 import { openingViewport, useZoomPan, type Size } from './useZoomPan';
 
 /**
@@ -35,6 +49,11 @@ const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
   { value: 'read', label: 'Read' },
   { value: 'write', label: 'Write' },
   { value: 'both', label: 'Both' },
+];
+
+const LAYOUT_OPTIONS: ReadonlyArray<SegmentedOption<SankeyPodLayout>> = [
+  { value: 'flat', label: 'Flat' },
+  { value: 'node', label: 'Node' },
 ];
 
 export interface SankeyViewProps {
@@ -58,6 +77,9 @@ export interface SankeyViewProps {
    */
   roots?: StorageGraphRoots;
   onLocateNode: (id: string) => void;
+  /** Page-transient. Omitted = local default `flat`, reset on remount. */
+  podLayout?: SankeyPodLayout;
+  onPodLayoutChange?: (next: SankeyPodLayout) => void;
 }
 
 interface Tip {
@@ -137,6 +159,20 @@ function nodeTooltip(node: SankeyNode | undefined, id: string, flowLines: readon
   ];
 }
 
+function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): string[] {
+  const members =
+    node.memberPodCount !== undefined
+      ? [node.memberPodCount === 1 ? '1 pod' : `${String(node.memberPodCount)} pods`]
+      : [];
+  return [
+    `${node.kind} / ${node.label}`,
+    ...(node.kind === 'application' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
+    ...members,
+    ...flowLines.map((line) => `${line} (derived from member pods)`),
+    ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
+  ];
+}
+
 export function SankeyView({
   elements,
   status,
@@ -151,6 +187,8 @@ export function SankeyView({
   azEnvReady,
   roots = EMPTY_STORAGE_GRAPH_ROOTS,
   onLocateNode,
+  podLayout: podLayoutProp,
+  onPodLayoutChange,
 }: Readonly<SankeyViewProps>): JSX.Element {
   const tokens = useThemeTokens();
   const [localMode, setLocalMode] = useState<SankeyMode>(modeProp ?? 'both');
@@ -160,6 +198,14 @@ export function SankeyView({
       setLocalMode(next);
     }
     onModeChange?.(next);
+  };
+  const [localPodLayout, setLocalPodLayout] = useState<SankeyPodLayout>(podLayoutProp ?? 'flat');
+  const podLayout = podLayoutProp ?? localPodLayout;
+  const setPodLayout = (next: SankeyPodLayout): void => {
+    if (podLayoutProp === undefined) {
+      setLocalPodLayout(next);
+    }
+    onPodLayoutChange?.(next);
   };
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
@@ -225,7 +271,7 @@ export function SankeyView({
     ],
     [tokens]
   );
-  const layout = useMemo(() => layoutSankey(graph, namespacePalette), [graph, namespacePalette]);
+  const layout = useMemo(() => layoutSankey(graph, namespacePalette, podLayout), [graph, namespacePalette, podLayout]);
 
   const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize ?? UNMEASURED_CONTAINER);
   // A fresh `zoom` object comes back every render; pull out just the one stable setter the
@@ -267,7 +313,11 @@ export function SankeyView({
   // else clears this — the tooltip would describe a gone node and `lit` would fade
   // everything against zero surviving links.
   useEffect(() => {
-    if (hoverId !== null && !graph.nodes.some((n) => n.id === hoverId)) {
+    if (
+      hoverId !== null &&
+      !graph.nodes.some((n) => n.id === hoverId) &&
+      !graph.k8sNodes.some((n) => n.id === hoverId)
+    ) {
       setHoverId(null);
       setTip(null);
     }
@@ -277,7 +327,8 @@ export function SankeyView({
     if (hoverId === null) {
       return null;
     }
-    const pathLinks = hoverPathLinks(graph, hoverId);
+    const wrapper = graph.k8sNodes.find((n) => n.id === hoverId);
+    const pathLinks = wrapper !== undefined ? hoverPathForWrapper(graph, wrapper) : hoverPathLinks(graph, hoverId);
     const keys = new Set(pathLinks.map((l) => linkKey(l.source, l.target, l.direction, l.tier)));
     const nodeIds = new Set<string>([hoverId]);
     for (const l of pathLinks) {
@@ -314,21 +365,32 @@ export function SankeyView({
       outbound.set(l.source, (outbound.get(l.source) ?? 0) + l.value);
     }
     const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-    const nodes: NodeSummaryRow[] = layout.nodes.map((ln) => {
-      const gn = byId.get(ln.id);
-      const used = gn?.usage?.usedBytes;
-      const capacity = gn?.usage?.capacityBytes;
-      const usageText = used !== undefined && capacity !== undefined ? formatUsage(used, capacity) : undefined;
-      return {
-        id: ln.id,
-        tier: TIER_LABEL[ln.kind],
-        label: ln.label,
-        inbound: inbound.get(ln.id) ?? 0,
-        outbound: outbound.get(ln.id) ?? 0,
-        ...(usageText !== undefined ? { usage: usageText } : {}),
-        ...(gn?.health !== undefined ? { health: gn.health } : {}),
-      };
-    });
+    const nodes: NodeSummaryRow[] = [
+      ...layout.nodes.map((ln) => {
+        const gn = byId.get(ln.id);
+        const used = gn?.usage?.usedBytes;
+        const capacity = gn?.usage?.capacityBytes;
+        const usageText = used !== undefined && capacity !== undefined ? formatUsage(used, capacity) : undefined;
+        return {
+          id: ln.id,
+          tier: TIER_LABEL[ln.kind],
+          label: ln.label,
+          inbound: inbound.get(ln.id) ?? 0,
+          outbound: outbound.get(ln.id) ?? 0,
+          ...(usageText !== undefined ? { usage: usageText } : {}),
+          ...(gn?.health !== undefined ? { health: gn.health } : {}),
+          ...(ln.derived === true || gn?.derived === true ? { derived: true } : {}),
+        };
+      }),
+      ...layout.wrappers.map((w) => ({
+        id: w.id,
+        tier: 'Node',
+        label: w.label,
+        inbound: w.podIds.reduce((sum, id) => sum + (inbound.get(id) ?? 0), 0),
+        outbound: w.podIds.reduce((sum, id) => sum + (outbound.get(id) ?? 0), 0),
+        derived: true,
+      })),
+    ];
     const nsAgg = new Map<string, { count: number; total: number }>();
     for (const n of graph.nodes) {
       if (n.kind !== 'pod' || n.namespace === undefined) {
@@ -336,13 +398,27 @@ export function SankeyView({
       }
       const cur = nsAgg.get(n.namespace) ?? { count: 0, total: 0 };
       cur.count += 1;
-      cur.total += outbound.get(n.id) ?? 0;
+      // The pod's INBOUND `pvc-pod` weight, never its outbound. A pod's only outbound links
+      // are the derived `pod → application` / `pod → namespace` ones, which exist solely when
+      // the body carries a matching compound ancestor — a pod that carries a `namespace`
+      // LABEL but sits under no namespace compound would silently subtotal to 0 B/s while
+      // its ribbons are drawn at full weight.
+      cur.total += inbound.get(n.id) ?? 0;
       nsAgg.set(n.namespace, cur);
     }
     const namespaces: NamespaceSubtotalRow[] = [...nsAgg.entries()]
       .map(([namespace, v]) => ({ namespace, podCount: v.count, total: v.total }))
       .sort((a, b) => b.total - a.total || a.namespace.localeCompare(b.namespace));
-    return { nodes, namespaces };
+    const applications: ApplicationSubtotalRow[] = graph.nodes
+      .filter((n) => n.kind === 'application')
+      .map((n) => ({
+        application: n.label,
+        namespace: n.namespace ?? '',
+        podCount: n.memberPodCount ?? 0,
+        total: inbound.get(n.id) ?? 0,
+      }))
+      .sort((a, b) => b.total - a.total || a.application.localeCompare(b.application));
+    return { nodes, namespaces, applications };
   }, [graph, layout]);
 
   if (status === 'loading' && !hasPayload) {
@@ -368,7 +444,7 @@ export function SankeyView({
     if (graph.links.length === 0 && graph.hasStorageFlowEdges && !graph.hasCurrentDirectionMeasurement) {
       return 4;
     }
-    if (graph.nodes.length === 0) {
+    if (graph.nodes.length === 0 && !(podLayout === 'node' && graph.k8sNodes.length > 0)) {
       return 3;
     }
     return null;
@@ -380,9 +456,13 @@ export function SankeyView({
       return;
     }
     setHoverId(id);
+    const wrapper = graph.k8sNodes.find((n) => n.id === id);
     const node = graph.nodes.find((g) => g.id === id);
-    const inboundLinks = graph.links.filter((l) => l.target === id);
-    const outboundLinks = graph.links.filter((l) => l.source === id);
+    const members = wrapper === undefined ? null : new Set(wrapper.podIds);
+    const inboundLinks =
+      members !== null ? graph.links.filter((l) => members.has(l.target)) : graph.links.filter((l) => l.target === id);
+    const outboundLinks =
+      members !== null ? graph.links.filter((l) => members.has(l.source)) : graph.links.filter((l) => l.source === id);
     const sum = (list: typeof inboundLinks, dir?: 'read' | 'write'): number =>
       list.filter((l) => dir === undefined || l.direction === dir).reduce((acc, l) => acc + l.value, 0);
     const flowLines =
@@ -394,6 +474,23 @@ export function SankeyView({
             `out write ${formatBytesPerSec(sum(outboundLinks, 'write'))}`,
           ]
         : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
+    if (wrapper !== undefined) {
+      setTip({
+        x: evt.clientX,
+        y: evt.clientY,
+        text: [
+          `node / ${wrapper.label}`,
+          wrapper.podIds.length === 1 ? '1 pod' : `${String(wrapper.podIds.length)} pods`,
+          ...flowLines.map((line) => `${line} (derived from member pods)`),
+          ...(wrapper.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
+        ],
+      });
+      return;
+    }
+    if (node?.kind === 'application' || node?.kind === 'namespace') {
+      setTip({ x: evt.clientX, y: evt.clientY, text: derivedCardTooltip(node, flowLines) });
+      return;
+    }
     setTip({ x: evt.clientX, y: evt.clientY, text: nodeTooltip(node, id, flowLines) });
   };
 
@@ -403,27 +500,35 @@ export function SankeyView({
     }
     const src = graph.nodes.find((g) => g.id === link.source);
     const dst = graph.nodes.find((g) => g.id === link.target);
+    const derived = link.derived === true || isDerivedTier(link.tier);
     const ceilingTier = link.tier === 'svm-pvc';
-    const lines = [
-      `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
-      `tier ${link.tier}`,
-      `${link.direction}: ${formatBytesPerSec(link.value)}`,
-      // The backend flags a weight it split evenly rather than measured. Saying so is the
-      // difference between a reading and an estimate that happens to be a number.
-      ...(link.attribution === 'split' ? ['evenly split estimate'] : []),
-      // A QoS policy group hangs off the volume, so a ceiling is only meaningful on the
-      // svm→pvc hop; showing it on an aggregate hop would attribute it to the wrong thing.
-      ...(ceilingTier && link.maxBytesPerSec !== undefined
-        ? [`QoS ceiling ${formatBytesPerSec(link.maxBytesPerSec)}`]
-        : []),
-      ...(ceilingTier && link.maxIops !== undefined ? [`QoS ceiling ${String(link.maxIops)} IOPS`] : []),
-      ...(ceilingTier && link.direction === 'read' && link.readLatencyUs !== undefined
-        ? [`latency ${String(link.readLatencyUs)} µs`]
-        : []),
-      ...(ceilingTier && link.direction === 'write' && link.writeLatencyUs !== undefined
-        ? [`latency ${String(link.writeLatencyUs)} µs`]
-        : []),
-    ];
+    const lines = derived
+      ? [
+          `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
+          isDerivedTier(link.tier) ? DERIVED_TIER_LABEL[link.tier] : `tier ${link.tier}`,
+          `${link.direction}: ${formatBytesPerSec(link.value)}`,
+          'derived from member pods',
+        ]
+      : [
+          `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
+          `tier ${link.tier}`,
+          `${link.direction}: ${formatBytesPerSec(link.value)}`,
+          // The backend flags a weight it split evenly rather than measured. Saying so is the
+          // difference between a reading and an estimate that happens to be a number.
+          ...(link.attribution === 'split' ? ['evenly split estimate'] : []),
+          // A QoS policy group hangs off the volume, so a ceiling is only meaningful on the
+          // svm→pvc hop; showing it on an aggregate hop would attribute it to the wrong thing.
+          ...(ceilingTier && link.maxBytesPerSec !== undefined
+            ? [`QoS ceiling ${formatBytesPerSec(link.maxBytesPerSec)}`]
+            : []),
+          ...(ceilingTier && link.maxIops !== undefined ? [`QoS ceiling ${String(link.maxIops)} IOPS`] : []),
+          ...(ceilingTier && link.direction === 'read' && link.readLatencyUs !== undefined
+            ? [`latency ${String(link.readLatencyUs)} µs`]
+            : []),
+          ...(ceilingTier && link.direction === 'write' && link.writeLatencyUs !== undefined
+            ? [`latency ${String(link.writeLatencyUs)} µs`]
+            : []),
+        ];
     setTip({ x: evt.clientX, y: evt.clientY, text: lines });
   };
 
@@ -480,6 +585,15 @@ export function SankeyView({
             value={mode}
             options={MODE_OPTIONS}
             onChange={setMode}
+          />
+          <span className={eyebrowClass}>Layout</span>
+          <Segmented
+            name="sankey-layout"
+            aria-label="Layout"
+            value={podLayout}
+            options={LAYOUT_OPTIONS}
+            onChange={setPodLayout}
+            data-testid="sankey-layout"
           />
           <div className="ml-auto flex items-center gap-3">
             {(mode === 'both' || mode === 'read') && (
@@ -547,7 +661,9 @@ export function SankeyView({
         )}
       </div>
 
-      {!focusMode && chartReady && <SankeySummary nodes={summary.nodes} namespaces={summary.namespaces} />}
+      {!focusMode && chartReady && (
+        <SankeySummary nodes={summary.nodes} namespaces={summary.namespaces} applications={summary.applications} />
+      )}
 
       {tip !== null && tipPos !== null && (
         <div

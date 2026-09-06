@@ -55,4 +55,8 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await expect(page.getByTestId('sankey-node-aggr1')).toBeVisible();
   await expect(page.getByTestId('sankey-node-svm_shop')).toBeVisible();
   await expect(page.getByTestId('sankey-node-mongo-0')).toBeVisible();
+  await expect(page.getByTestId('sankey-node-mongodb')).toBeVisible();
+  await expect(page.getByTestId('sankey-node-prod')).toBeVisible();
+  await page.getByTestId('sankey-layout').getByText('Node', { exact: true }).click();
+  await expect(page.getByTestId('sankey-wrapper-title-worker-0')).toBeVisible();
 });

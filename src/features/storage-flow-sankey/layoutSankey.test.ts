@@ -19,7 +19,7 @@ describe('layoutSankey', () => {
     }
     // Columns run in the flow's own direction — the picture answers "where does this
     // aggregate's traffic end up", so the storage side is where the eye starts.
-    const order = ['netapp-node', 'netapp-aggr', 'netapp-svm', 'pvc', 'pod', 'node'];
+    const order = ['netapp-node', 'netapp-aggr', 'netapp-svm', 'pvc', 'pod', 'application', 'namespace'];
     for (let i = 1; i < order.length; i += 1) {
       expect(xByKind.get(order[i - 1] as string)).toBeLessThan(xByKind.get(order[i] as string) as number);
     }
@@ -29,7 +29,7 @@ describe('layoutSankey', () => {
     const graph = deriveSankey(elements, 'both');
     const layout = layoutSankey(graph, PALETTE);
     for (const n of layout.nodes) {
-      expect(n.width).toBe(n.kind === 'node' ? LEAF_W : CARD_W);
+      expect(n.width).toBe(n.kind === 'namespace' ? LEAF_W : CARD_W);
     }
   });
 
@@ -165,13 +165,110 @@ describe('layoutSankey', () => {
     const empty = layoutSankey(deriveSankey([], 'both'), PALETTE);
     expect(empty.columns).toEqual([]);
     const drawn = layoutSankey(deriveSankey(elements, 'both'), PALETTE);
-    expect(drawn.columns.map((c) => c.label)).toEqual(['NetApp node', 'NetApp aggregate', 'SVM', 'PVC', 'Pod', 'Node']);
+    expect(drawn.columns.map((c) => c.label)).toEqual([
+      'NetApp node',
+      'NetApp aggregate',
+      'SVM',
+      'PVC',
+      'Pod',
+      'Application',
+      'Namespace',
+    ]);
+    expect(layoutSankey(deriveSankey(elements, 'both'), PALETTE, 'node').columns.map((c) => c.label)).toContain(
+      'Node / Pod'
+    );
   });
+
+  it('gives netapp-node only right-edge slots and namespace only left-edge slots', () => {
+    const layout = layoutSankey(deriveSankey(elements, 'both'), PALETTE);
+    const controller = layout.nodes.find((n) => n.kind === 'netapp-node');
+    const ns = layout.nodes.find((n) => n.kind === 'namespace');
+    expect(controller?.leftSlots).toEqual([]);
+    expect((controller?.rightSlots.length ?? 0) > 0).toBe(true);
+    expect(ns?.rightSlots).toEqual([]);
+    expect((ns?.leftSlots.length ?? 0) > 0).toBe(true);
+    expect(ns?.width).toBe(LEAF_W);
+  });
+
+  it('orders Node-layout wrappers by name, not by flow, and parks unscheduled pods below them', () => {
+    const body = [
+      node('n-b', 'node', { label: 'worker-b' }),
+      node('n-a', 'node', { label: 'worker-a' }),
+      node('pvc-hi', 'pvc'),
+      node('pod-hi', 'pod', { namespace: 'prod' }),
+      node('pvc-lo', 'pvc'),
+      node('pod-lo', 'pod', { namespace: 'prod' }),
+      node('pvc-u', 'pvc'),
+      node('pod-u', 'pod', { namespace: 'prod' }),
+      flow('pvc-hi', 'pod-hi', 'pvc-pod', 9_000_000, 0),
+      flow('pvc-lo', 'pod-lo', 'pvc-pod', 1_000, 0),
+      flow('pvc-u', 'pod-u', 'pvc-pod', 500_000, 0),
+      k8sEdge('pod-hi', 'n-b'),
+      k8sEdge('pod-lo', 'n-a'),
+    ];
+    // Helper nodes above don't carry k8sNodeId — deriveSankey records it from the edge.
+    const graph = deriveSankey(body, 'read');
+    const layout = layoutSankey(graph, PALETTE, 'node');
+    expect(layout.wrappers.map((w) => w.label)).toEqual(['worker-a', 'worker-b']);
+    const unscheduled = layout.nodes.find((n) => n.label === 'pod-u');
+    const lastWrapper = layout.wrappers[layout.wrappers.length - 1];
+    expect(unscheduled).toBeDefined();
+    expect(lastWrapper).toBeDefined();
+    expect(unscheduled!.y).toBeGreaterThan(lastWrapper!.y + lastWrapper!.height);
+    expect(layout.columns.some((c) => c.label === 'Node / Pod')).toBe(true);
+    for (const w of layout.wrappers) {
+      expect(w.y + w.height).toBeLessThanOrEqual(layout.height);
+    }
+  });
+
+  it('closes up an empty column instead of reserving its width', () => {
+    const layout = layoutSankey(deriveSankey(podsUnderNamespaceOnly(), 'both'), PALETTE);
+    const x = (kind: string): number => layout.nodes.find((n) => n.kind === kind)?.x as number;
+    expect(layout.nodes.some((n) => n.kind === 'application')).toBe(false);
+
+    // The step between two adjacent OCCUPIED columns. Reserving the empty application
+    // column would make the pod -> namespace step twice this.
+    const step = x('pvc') - x('netapp-svm');
+    expect(x('namespace') - x('pod')).toBe(step);
+    expect(layout.columns.map((c) => c.label)).not.toContain('Application');
+    // The intrinsic width ends one padding past the last occupied column, so "fit to
+    // window" scales to the content rather than to a reserved gap. The left padding is
+    // the first occupied column's own x.
+    expect(layout.width - (x('namespace') + LEAF_W)).toBe(x('netapp-svm'));
+  });
+
+  it('keeps non-pod-column coordinates identical under Flat and Node layouts', () => {
+    const graph = deriveSankey(elements, 'both');
+    const flat = layoutSankey(graph, PALETTE, 'flat');
+    const grouped = layoutSankey(graph, PALETTE, 'node');
+    const coord = (layout: typeof flat, kind: string): Array<[string, number, number]> =>
+      layout.nodes
+        .filter((n) => n.kind === kind)
+        .map((n) => [n.id, n.x, n.y] as [string, number, number])
+        .sort((a, b) => a[0].localeCompare(b[0]));
+    for (const kind of ['netapp-node', 'netapp-aggr', 'netapp-svm', 'pvc', 'application', 'namespace']) {
+      expect(coord(grouped, kind), kind).toEqual(coord(flat, kind));
+    }
+    expect(flat.wrappers).toEqual([]);
+    expect(grouped.wrappers.length).toBeGreaterThan(0);
+  });
+});
+
+const k8sEdge = (pod: string, nodeId: string) => ({
+  group: 'edges' as const,
+  data: {
+    id: `${pod}->${nodeId}`,
+    source: pod,
+    target: nodeId,
+    edgeType: 'storage-flow',
+    labels: { tier: 'pod-node' },
+    metrics: { readBytesPerSec: 1, writeBytesPerSec: 0 },
+  },
 });
 
 const node = (id: string, kind: string, extra: Record<string, unknown> = {}) => ({
   group: 'nodes' as const,
-  data: { id, label: id, kind, ...extra },
+  data: { id, label: typeof extra.label === 'string' ? extra.label : id, kind, ...extra },
 });
 
 /** One `storage-flow` edge. Direction is storage -> workload, matching the wire. */
@@ -204,6 +301,22 @@ function twoNamespacePods() {
     flow('pvc-prod-a', 'pod-prod-a', 'pvc-pod', 100, 0),
     flow('pvc-prod-b', 'pod-prod-b', 'pvc-pod', 100, 0),
     flow('pvc-staging', 'pod-staging', 'pvc-pod', 900, 0),
+  ];
+}
+
+/**
+ * A pod under a `namespace` compound but no `application` one — the shape that leaves
+ * exactly one INTERIOR column empty, which is the only case where a reserved column
+ * would put a gutter through the middle of the diagram.
+ */
+function podsUnderNamespaceOnly() {
+  return [
+    node('ns-only', 'namespace'),
+    node('svm-n', 'netapp-svm'),
+    node('pvc-n', 'pvc'),
+    node('pod-n', 'pod', { namespace: 'ns-only', parent: 'ns-only' }),
+    flow('svm-n', 'pvc-n', 'svm-pvc', 100, 0),
+    flow('pvc-n', 'pod-n', 'pvc-pod', 100, 0),
   ];
 }
 

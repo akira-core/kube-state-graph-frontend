@@ -5,9 +5,10 @@ import {
   SANKEY_KIND_ORDER,
   type SankeyDirection,
   type SankeyGraph,
+  type SankeyK8sNode,
   type SankeyKind,
+  type SankeyLinkTier,
   type SankeyNode,
-  type StorageFlowTier,
 } from './deriveSankey';
 
 // Intrinsic content-space geometry. These are independent of the container's pixel size —
@@ -29,19 +30,22 @@ export const MAX_THICKNESS = 72;
 export const MIN_THICKNESS = 3;
 /** Below this thickness a mid-ribbon value label would overlap its own stroke. */
 export const LABEL_MIN_THICKNESS = 11;
+const WRAPPER_PAD = 10;
+const WRAPPER_HEADER_H = 40;
 
-// Column order is the flow's own direction, storage -> workload, and it is the backend's
-// tier list rather than a layout preference (see `storage-flow-sankey` "流向鏈與 tier 結構").
+export type SankeyPodLayout = 'flat' | 'node';
+
+// Column order is the flow's own direction, storage -> workload.
 const TIERS: readonly SankeyKind[] = SANKEY_KIND_ORDER;
-// The rightmost column. Flow ends here, so its cards carry no right-edge slots.
-const LEAF_KIND: SankeyKind = TIERS[TIERS.length - 1] as SankeyKind;
+const LEAF_KIND: SankeyKind = 'namespace';
 export const TIER_LABEL: Record<SankeyKind, string> = {
   'netapp-node': 'NetApp node',
   'netapp-aggr': 'NetApp aggregate',
   'netapp-svm': 'SVM',
   pvc: 'PVC',
   pod: 'Pod',
-  node: 'Node',
+  application: 'Application',
+  namespace: 'Namespace',
 };
 
 /**
@@ -51,7 +55,7 @@ export const TIER_LABEL: Record<SankeyKind, string> = {
  * of nodes on different tiers, and a key without the tier collides — React drops one path
  * and the slot stacks disagree about how many ribbons a card carries.
  */
-export function linkKey(source: string, target: string, direction: SankeyDirection, tier: StorageFlowTier): string {
+export function linkKey(source: string, target: string, direction: SankeyDirection, tier: SankeyLinkTier): string {
   return `${source}|${target}|${direction}|${tier}`;
 }
 
@@ -71,17 +75,31 @@ export interface LayoutNode {
   dashed: boolean;
   isLeaf: boolean;
   /**
-   * Whether clicking this card can locate the node in Graph view. An SVM exists only in the
-   * storage graph, so a locate for one could only ever report "not in the current graph
-   * result" — a dead control rather than a degraded one.
+   * Whether clicking this card can locate the node in Graph view. SVM / application /
+   * namespace cards have no leaf counterpart (or are compounds), so a locate for one
+   * could only ever report "not in the current graph result" — a dead control.
    */
   locatable: boolean;
+  derived?: true;
   x: number;
   y: number;
   width: number;
   height: number;
   leftSlots: LayoutSlot[];
   rightSlots: LayoutSlot[];
+}
+
+export interface LayoutWrapper {
+  id: string;
+  label: string;
+  subtitle: string;
+  locatable: true;
+  noFlow?: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  podIds: string[];
 }
 
 export interface LayoutLink {
@@ -95,12 +113,13 @@ export interface LayoutLink {
   labelX: number;
   labelY: number;
   showLabel: boolean;
-  tier: StorageFlowTier;
+  tier: SankeyLinkTier;
   attribution?: string;
   maxBytesPerSec?: number;
   maxIops?: number;
   readLatencyUs?: number;
   writeLatencyUs?: number;
+  derived?: true;
 }
 
 export interface ColumnHeader {
@@ -111,6 +130,7 @@ export interface ColumnHeader {
 export interface SankeyLayout {
   nodes: LayoutNode[];
   links: LayoutLink[];
+  wrappers: LayoutWrapper[];
   columns: ColumnHeader[];
   width: number;
   height: number;
@@ -135,10 +155,6 @@ function byFlowThenLabel(flow: Map<string, number>) {
   };
 }
 
-/**
- * Total flow per node for the *current* mode: the max of its drawn-link inbound and
- * outbound sums (not their sum — that would double-count pure pass-through).
- */
 function computeFlow(links: SankeyGraph['links']): Map<string, number> {
   const flow = new Map<string, { in: number; out: number }>();
   for (const link of links) {
@@ -161,12 +177,6 @@ interface PodOrder {
   namespaceColor: Map<string, string>;
 }
 
-/**
- * Pod tier only: same-namespace pods stay adjacent (grouped before sorting), grouped by
- * each group's peak flow descending, namespace name breaking ties; group-less pods sort
- * last. Namespace color is assigned by that same group order — group order and stripe
- * order are the same sequence by construction, not two things that could drift apart.
- */
 function orderPodTier(podNodes: SankeyNode[], flow: Map<string, number>, palette: readonly string[]): PodOrder {
   const withNs = podNodes.filter((n) => n.namespace !== undefined);
   const withoutNs = podNodes.filter((n) => n.namespace === undefined);
@@ -198,12 +208,23 @@ function orderPodTier(podNodes: SankeyNode[], flow: Map<string, number>, palette
   return { nodes: [...ordered, ...orderedWithoutNs], namespaceColor };
 }
 
+/** Same grouping as the pod column, without reassigning namespace colors. */
+function orderPods(podNodes: SankeyNode[], flow: Map<string, number>): SankeyNode[] {
+  return orderPodTier(podNodes, flow, []).nodes;
+}
+
+function podWord(count: number): string {
+  return count === 1 ? '1 pod' : `${String(count)} pods`;
+}
+
 function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
-  // A materialised root the backend answered with but that carries no drawn flow. Saying so
-  // on the card is the whole point of drawing it — silently showing `0 B/s` would read as a
-  // measurement rather than as the absence of one.
   if (node.noFlow === true) {
     return `${node.kind} · no flow`;
+  }
+  if (node.kind === 'application') {
+    const ns = node.namespace !== undefined ? ` · ns/${node.namespace}` : '';
+    const members = node.memberPodCount !== undefined ? ` · ${podWord(node.memberPodCount)}` : '';
+    return `${node.kind}${ns}${members}`;
   }
   if (node.kind === 'pod' || node.kind === 'pvc') {
     if (node.namespace !== undefined) {
@@ -222,10 +243,9 @@ function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
       return `${node.kind} · ${node.ontapCluster}`;
     }
   }
-  // The last column is a terminal leaf card: its one line of content is its total inflow
-  // for the current mode, since it has no right-edge slots to carry that information.
   if (node.kind === LEAF_KIND) {
-    return `${node.kind} · ${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
+    const members = node.memberPodCount !== undefined ? `${podWord(node.memberPodCount)} · ` : '';
+    return `${node.kind} · ${members}${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
   }
   return node.kind;
 }
@@ -237,7 +257,6 @@ function stackHeight(slots: ReadonlyArray<{ thickness: number }>): number {
   return slots.reduce((sum, s) => sum + Math.max(s.thickness, ROW_MIN_H), 0) + (slots.length - 1) * ROW_GAP;
 }
 
-/** Centers a slot stack within `containerH`, returning each slot's y offset from the node top. */
 function placeStack(slots: ReadonlyArray<{ thickness: number }>, containerTop: number, containerH: number): number[] {
   const total = stackHeight(slots);
   let cursor = containerTop + Math.max(0, (containerH - total) / 2);
@@ -250,7 +269,6 @@ function placeStack(slots: ReadonlyArray<{ thickness: number }>, containerTop: n
   return offsets;
 }
 
-/** A filled ribbon: two mirrored cubic Bézier curves between the source and target slot centers. */
 function ribbonPath(x1: number, y1: number, x2: number, y2: number, thickness: number): string {
   const mx = (x1 + x2) / 2;
   const half = thickness / 2;
@@ -260,7 +278,160 @@ function ribbonPath(x1: number, y1: number, x2: number, y2: number, thickness: n
   );
 }
 
-export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly string[]): SankeyLayout {
+function locatableFor(kind: SankeyKind): boolean {
+  return kind !== 'netapp-svm' && kind !== 'application' && kind !== 'namespace';
+}
+
+function sortLinks(
+  list: SankeyGraph['links'],
+  opposite: (link: SankeyGraph['links'][number]) => string
+): SankeyGraph['links'] {
+  return [...list].sort((a, b) => b.value - a.value || opposite(a).localeCompare(opposite(b)));
+}
+
+interface PlaceCtx {
+  flow: Map<string, number>;
+  thickness: (v: number) => number;
+  incomingByNode: Map<string, SankeyGraph['links']>;
+  outgoingByNode: Map<string, SankeyGraph['links']>;
+  /** Node id -> label, built once. The slot comparator breaks ties on the OPPOSITE end's
+   *  label, and a linear scan of `graph.nodes` inside that comparator is quadratic in the
+   *  node count on every layout. */
+  labelById: Map<string, string>;
+  namespaceColor: Map<string, string>;
+  leftSlotCy: Map<string, number>;
+  rightSlotCy: Map<string, number>;
+}
+
+function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: PlaceCtx): LayoutNode {
+  const isLeaf = node.kind === LEAF_KIND;
+  const omitLeft = node.kind === 'netapp-node';
+  const incoming = omitLeft
+    ? []
+    : sortLinks(ctx.incomingByNode.get(node.id) ?? [], (l) => ctx.labelById.get(l.source) ?? l.source).map((l) => ({
+        linkKey: linkKey(l.source, l.target, l.direction, l.tier),
+        thickness: ctx.thickness(l.value),
+      }));
+  const outgoing = isLeaf
+    ? []
+    : sortLinks(ctx.outgoingByNode.get(node.id) ?? [], (l) => ctx.labelById.get(l.target) ?? l.target).map((l) => ({
+        linkKey: linkKey(l.source, l.target, l.direction, l.tier),
+        thickness: ctx.thickness(l.value),
+      }));
+
+  const contentH = Math.max(stackHeight(incoming), stackHeight(outgoing), BODY_MIN);
+  const height = HEADER_H + contentH + BODY_PAD_BOTTOM;
+  const leftOffsets = placeStack(incoming, HEADER_H, contentH);
+  const rightOffsets = placeStack(outgoing, HEADER_H, contentH);
+  const leftSlots: LayoutSlot[] = incoming.map((slot, i) => ({
+    linkKey: slot.linkKey,
+    thickness: slot.thickness,
+    cy: y + (leftOffsets[i] ?? HEADER_H),
+  }));
+  const rightSlots: LayoutSlot[] = outgoing.map((slot, i) => ({
+    linkKey: slot.linkKey,
+    thickness: slot.thickness,
+    cy: y + (rightOffsets[i] ?? HEADER_H),
+  }));
+  for (const s of leftSlots) {
+    ctx.leftSlotCy.set(s.linkKey, s.cy);
+  }
+  for (const s of rightSlots) {
+    ctx.rightSlotCy.set(s.linkKey, s.cy);
+  }
+
+  const stripe =
+    (node.kind === 'pod' || node.kind === 'namespace') &&
+    node.namespace !== undefined &&
+    ctx.namespaceColor.has(node.namespace)
+      ? ctx.namespaceColor.get(node.namespace)
+      : node.kind === 'namespace' && ctx.namespaceColor.has(node.label)
+        ? ctx.namespaceColor.get(node.label)
+        : undefined;
+
+  return {
+    id: node.id,
+    label: node.label,
+    kind: node.kind,
+    subtitle: subtitleFor(node, ctx.flow),
+    dashed: node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm',
+    locatable: locatableFor(node.kind),
+    isLeaf,
+    x,
+    y,
+    width,
+    height,
+    leftSlots,
+    rightSlots,
+    ...(node.derived === true ? { derived: true } : {}),
+    ...(node.kind === 'pod' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
+    ...(node.kind === 'namespace' ? { namespace: node.namespace ?? node.label } : {}),
+    ...(stripe !== undefined ? { namespaceColor: stripe } : {}),
+  };
+}
+
+function layoutPodWrappers(
+  pods: SankeyNode[],
+  k8sNodes: SankeyK8sNode[],
+  columnX: number,
+  ctx: PlaceCtx
+): { nodes: LayoutNode[]; wrappers: LayoutWrapper[]; bottom: number } {
+  const podsById = new Map(pods.map((p) => [p.id, p]));
+  const scheduled = new Set(k8sNodes.flatMap((k) => k.podIds));
+  const wrappersToDraw = [...k8sNodes].sort((a, b) => a.label.localeCompare(b.label));
+  const nodes: LayoutNode[] = [];
+  const wrappers: LayoutWrapper[] = [];
+  let y = PAD_TOP;
+
+  for (const k8s of wrappersToDraw) {
+    const inner = orderPods(
+      k8s.podIds.map((id) => podsById.get(id)).filter((p): p is SankeyNode => p !== undefined),
+      ctx.flow
+    );
+    const wrapperY = y;
+    const innerX = columnX + WRAPPER_PAD;
+    const innerW = CARD_W - WRAPPER_PAD * 2;
+    let innerY = wrapperY + WRAPPER_HEADER_H;
+    for (const pod of inner) {
+      const card = placeCard(pod, innerX, innerY, innerW, ctx);
+      nodes.push(card);
+      innerY += card.height + V_GAP;
+    }
+    const last = nodes.length > 0 && inner.length > 0 ? nodes[nodes.length - 1] : undefined;
+    const height = last === undefined ? WRAPPER_HEADER_H + WRAPPER_PAD : last.y + last.height + WRAPPER_PAD - wrapperY;
+    wrappers.push({
+      id: k8s.id,
+      label: k8s.label,
+      subtitle: k8s.noFlow === true ? 'node · no flow' : `node · ${podWord(inner.length)}`,
+      locatable: true,
+      x: columnX,
+      y: wrapperY,
+      width: CARD_W,
+      height,
+      podIds: inner.map((p) => p.id),
+      ...(k8s.noFlow === true ? { noFlow: true } : {}),
+    });
+    y = wrapperY + height + V_GAP;
+  }
+
+  const unscheduled = orderPods(
+    pods.filter((p) => !scheduled.has(p.id)),
+    ctx.flow
+  );
+  for (const pod of unscheduled) {
+    const card = placeCard(pod, columnX, y, CARD_W, ctx);
+    nodes.push(card);
+    y += card.height + V_GAP;
+  }
+
+  return { nodes, wrappers, bottom: y === PAD_TOP ? PAD_TOP : y - V_GAP };
+}
+
+export function layoutSankey(
+  graph: SankeyGraph,
+  namespacePalette: readonly string[],
+  podLayout: SankeyPodLayout = 'flat'
+): SankeyLayout {
   const flow = computeFlow(graph.links);
 
   let maxValue = 0;
@@ -285,7 +456,8 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
     'netapp-svm': [...(byTier.get('netapp-svm') ?? [])].sort(byFlowThenLabel(flow)),
     pvc: [...(byTier.get('pvc') ?? [])].sort(byFlowThenLabel(flow)),
     pod: podOrder.nodes,
-    node: [...(byTier.get('node') ?? [])].sort(byFlowThenLabel(flow)),
+    application: [...(byTier.get('application') ?? [])].sort(byFlowThenLabel(flow)),
+    namespace: [...(byTier.get('namespace') ?? [])].sort(byFlowThenLabel(flow)),
   };
 
   const incomingByNode = new Map<string, SankeyGraph['links']>();
@@ -302,85 +474,60 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
   const rightSlotCy = new Map<string, number>();
   const leftSlotCy = new Map<string, number>();
   const nodesById = new Map<string, LayoutNode>();
+  const wrappers: LayoutWrapper[] = [];
+  const bottoms: number[] = [];
+
+  // An empty column reserves no width. Not every estate resolves every column — a payload
+  // whose pods carry no `application` ancestor has that column empty — and a reserved slot
+  // would open the diagram with a CARD_W + COL_GAP gutter through its middle while
+  // "fit to window" scaled the whole chart down to enclose the gap.
+  const occupied = (kind: SankeyKind): boolean =>
+    kind === 'pod' && podLayout === 'node'
+      ? orderedByTier.pod.length > 0 || graph.k8sNodes.length > 0
+      : orderedByTier[kind].length > 0;
+  const columnWidth = (tierIndex: number): number => (tierIndex === TIERS.length - 1 ? LEAF_W : CARD_W);
 
   const columnX: number[] = [];
   {
     let x = PAD_X;
     for (let c = 0; c < TIERS.length; c += 1) {
       columnX.push(x);
-      x += (c === TIERS.length - 1 ? LEAF_W : CARD_W) + COL_GAP;
+      if (occupied(TIERS[c] as SankeyKind)) {
+        x += columnWidth(c) + COL_GAP;
+      }
     }
   }
 
+  const ctx: PlaceCtx = {
+    flow,
+    thickness,
+    incomingByNode,
+    outgoingByNode,
+    labelById: new Map(graph.nodes.map((n) => [n.id, n.label])),
+    namespaceColor: podOrder.namespaceColor,
+    leftSlotCy,
+    rightSlotCy,
+  };
+
   TIERS.forEach((kind, tierIndex) => {
-    const isLeaf = kind === LEAF_KIND;
-    const width = isLeaf ? LEAF_W : CARD_W;
-    let y = PAD_TOP;
-
-    for (const node of orderedByTier[kind]) {
-      const incoming = (incomingByNode.get(node.id) ?? [])
-        .map((l) => ({ link: l, oppositeLabel: graph.nodes.find((n) => n.id === l.source)?.label ?? l.source }))
-        .sort((a, b) => b.link.value - a.link.value || a.oppositeLabel.localeCompare(b.oppositeLabel))
-        .map((e) => ({
-          linkKey: linkKey(e.link.source, e.link.target, e.link.direction, e.link.tier),
-          thickness: thickness(e.link.value),
-        }));
-      const outgoing = isLeaf
-        ? []
-        : (outgoingByNode.get(node.id) ?? [])
-            .map((l) => ({ link: l, oppositeLabel: graph.nodes.find((n) => n.id === l.target)?.label ?? l.target }))
-            .sort((a, b) => b.link.value - a.link.value || a.oppositeLabel.localeCompare(b.oppositeLabel))
-            .map((e) => ({
-              linkKey: linkKey(e.link.source, e.link.target, e.link.direction, e.link.tier),
-              thickness: thickness(e.link.value),
-            }));
-
-      const contentH = Math.max(stackHeight(incoming), stackHeight(outgoing), BODY_MIN);
-      const height = HEADER_H + contentH + BODY_PAD_BOTTOM;
-
-      const leftOffsets = placeStack(incoming, HEADER_H, contentH);
-      const rightOffsets = placeStack(outgoing, HEADER_H, contentH);
-      const leftSlots: LayoutSlot[] = incoming.map((slot, i) => ({
-        linkKey: slot.linkKey,
-        thickness: slot.thickness,
-        cy: y + (leftOffsets[i] ?? HEADER_H),
-      }));
-      const rightSlots: LayoutSlot[] = outgoing.map((slot, i) => ({
-        linkKey: slot.linkKey,
-        thickness: slot.thickness,
-        cy: y + (rightOffsets[i] ?? HEADER_H),
-      }));
-      for (const s of leftSlots) {
-        leftSlotCy.set(s.linkKey, s.cy);
+    const x = columnX[tierIndex] ?? PAD_X;
+    const width = columnWidth(tierIndex);
+    if (kind === 'pod' && podLayout === 'node') {
+      const placed = layoutPodWrappers(orderedByTier.pod, graph.k8sNodes, x, ctx);
+      for (const n of placed.nodes) {
+        nodesById.set(n.id, n);
       }
-      for (const s of rightSlots) {
-        rightSlotCy.set(s.linkKey, s.cy);
-      }
-
-      const layoutNode: LayoutNode = {
-        id: node.id,
-        label: node.label,
-        kind: node.kind,
-        subtitle: subtitleFor(node, flow),
-        dashed: node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm',
-        locatable: node.kind !== 'netapp-svm',
-        isLeaf,
-        x: columnX[tierIndex] ?? PAD_X,
-        y,
-        width,
-        height,
-        leftSlots,
-        rightSlots,
-        // The namespace stripe is a pod-tier device (see "pod tier 的 namespace 分組色條");
-        // a pvc/aggr node can carry the same `namespace` field without qualifying for one.
-        ...(kind === 'pod' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
-        ...(kind === 'pod' && node.namespace !== undefined && podOrder.namespaceColor.has(node.namespace)
-          ? { namespaceColor: podOrder.namespaceColor.get(node.namespace) as string }
-          : {}),
-      };
-      nodesById.set(node.id, layoutNode);
-      y += height + V_GAP;
+      wrappers.push(...placed.wrappers);
+      bottoms.push(placed.bottom);
+      return;
     }
+    let y = PAD_TOP;
+    for (const node of orderedByTier[kind]) {
+      const card = placeCard(node, x, y, width, ctx);
+      nodesById.set(node.id, card);
+      y += card.height + V_GAP;
+    }
+    bottoms.push(y === PAD_TOP ? PAD_TOP : y - V_GAP);
   });
 
   const links: LayoutLink[] = graph.links.map((l) => {
@@ -409,25 +556,29 @@ export function layoutSankey(graph: SankeyGraph, namespacePalette: readonly stri
       ...(l.maxIops !== undefined ? { maxIops: l.maxIops } : {}),
       ...(l.readLatencyUs !== undefined ? { readLatencyUs: l.readLatencyUs } : {}),
       ...(l.writeLatencyUs !== undefined ? { writeLatencyUs: l.writeLatencyUs } : {}),
+      ...(l.derived === true ? { derived: true } : {}),
     };
   });
 
   const nodes = [...nodesById.values()];
-  const columns: ColumnHeader[] = TIERS.map((kind, i) => ({ x: columnX[i] ?? PAD_X, label: TIER_LABEL[kind] })).filter(
-    (_, i) => (orderedByTier[TIERS[i] as SankeyKind]?.length ?? 0) > 0
+  const columns: ColumnHeader[] = TIERS.map((kind, i) => ({
+    x: columnX[i] ?? PAD_X,
+    label: kind === 'pod' && podLayout === 'node' ? 'Node / Pod' : TIER_LABEL[kind],
+  })).filter((_, i) => occupied(TIERS[i] as SankeyKind));
+
+  let contentRight = PAD_X;
+  TIERS.forEach((kind, i) => {
+    if (occupied(kind)) {
+      contentRight = (columnX[i] ?? PAD_X) + columnWidth(i);
+    }
+  });
+  const width = contentRight + PAD_X;
+  const wrapperBottoms = wrappers.map((w) => w.y + w.height);
+  const height = clamp(
+    Math.max(PAD_TOP, ...bottoms, ...wrapperBottoms, ...nodes.map((n) => n.y + n.height)) + PAD_BOTTOM,
+    PAD_TOP + BODY_MIN + PAD_BOTTOM,
+    Number.POSITIVE_INFINITY
   );
 
-  const lastColumnX = columnX[TIERS.length - 1] ?? PAD_X;
-  const width = nodes.length === 0 ? lastColumnX + LEAF_W + PAD_X : lastColumnX + LEAF_W + PAD_X;
-  const bottoms = TIERS.map((kind) => {
-    const tierNodes = orderedByTier[kind];
-    if (tierNodes.length === 0) {
-      return PAD_TOP;
-    }
-    const last = nodesById.get(tierNodes[tierNodes.length - 1]?.id ?? '');
-    return last === undefined ? PAD_TOP : last.y + last.height;
-  });
-  const height = clamp(Math.max(...bottoms) + PAD_BOTTOM, PAD_TOP + BODY_MIN + PAD_BOTTOM, Number.POSITIVE_INFINITY);
-
-  return { nodes, links, columns, width, height };
+  return { nodes, links, wrappers, columns, width, height };
 }

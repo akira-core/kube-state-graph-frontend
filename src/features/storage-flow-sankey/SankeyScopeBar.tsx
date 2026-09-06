@@ -9,6 +9,8 @@ import type { SankeyIdentityOptions, SankeyQueryController, SankeyRootKind } fro
 export interface SankeyScopeBarProps {
   options: SankeyIdentityOptions;
   controller: SankeyQueryController;
+  /** Kubernetes `node` roots that have nowhere to draw under the Flat layout. */
+  k8sNodeHint?: ReadonlyArray<{ id: string; label: string }>;
 }
 
 const ROOT_KINDS: ReadonlyArray<{ kind: SankeyRootKind; label: string }> = [
@@ -44,7 +46,7 @@ function rootEntries(roots: StorageGraphRoots): Array<{ kind: SankeyRootKind; va
  * because custom values are allowed — the backend requires both, and a dropdown
  * that cannot accept a value would strand the view on the "pick an az and env" hint.
  */
-export function SankeyScopeBar({ options, controller }: Readonly<SankeyScopeBarProps>): JSX.Element {
+export function SankeyScopeBar({ options, controller, k8sNodeHint = [] }: Readonly<SankeyScopeBarProps>): JSX.Element {
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
   const [rootValue, setRootValue] = useState('');
   const showCluster = options.cluster.length > 0 || controller.query.cluster.length > 0;
@@ -151,6 +153,12 @@ export function SankeyScopeBar({ options, controller }: Readonly<SankeyScopeBarP
         Node matches both NetApp controllers and Kubernetes nodes. Mixing storage-side and workload-side roots takes the
         intersection.
       </p>
+      {k8sNodeHint.length > 0 && (
+        <p className="max-w-md text-[11px] leading-snug text-secondary" data-testid="sankey-k8s-node-hint">
+          {k8sNodeHint.map((n) => n.label).join(', ')} {k8sNodeHint.length === 1 ? 'is a' : 'are'} Kubernetes{' '}
+          {k8sNodeHint.length === 1 ? 'node' : 'nodes'} visible only under the Node layout.
+        </p>
+      )}
     </div>
   );
 }

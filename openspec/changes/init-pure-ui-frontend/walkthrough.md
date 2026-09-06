@@ -105,21 +105,28 @@ Each capability below is mapped to the test or observable behavior that covers i
 
 ## storage-flow-sankey
 
-| Requirement                                                             | Evidence                                                                                               |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Input is storage-graph, not `/v1/graph`                                 | `SankeyPage.tsx` loader; `SankeyView.test.tsx`; e2e `tests/storage-graph.spec.ts`                      |
-| az / env single-select, auto-preselect, independent of Graph filter bar | `useSankeyQuery.test.ts`, `SankeyScopeBar.test.tsx`, `AppShell.test.tsx`                               |
-| Roots mixed, invalid pod refused, empty roots legal                     | `useSankeyQuery.test.ts`, `storageGraphRequestUrl.test.ts`                                             |
-| Demo mode is exempt from the URL scope (`from` / `to` still written)    | `AppShell.test.tsx` "ignores Sankey scope parameters in demo mode"                                     |
-| cluster / namespace as request params, not client filter                | `storageGraphRequestUrl.test.ts`; no `clusterFilter` in `deriveSankey.ts`                              |
-| Six tiers from `labels.tier`, FlexGroup / unscheduled / no-flow root    | `deriveSankey.test.ts`                                                                                 |
-| Weights taken from edge metrics; split attribution                      | `deriveSankey.test.ts`; `SankeyView.test.tsx` split estimate                                           |
-| Four empty states                                                       | `SankeyView.test.tsx` `sankey-empty-*`                                                                 |
-| Tooltips: ontap_cluster, hardware, raw perf, tier, svm-pvc ceiling      | `SankeyView.test.tsx`                                                                                  |
-| Locate: filter-hidden vs missing vs SVM not clickable                   | `locateOutcome.test.ts`, `SankeyView.test.tsx` `data-locatable`                                        |
-| Hover state cleared when its node disappears                            | `SankeyView.test.tsx` (tooltip closes and fade lifts on refresh; a surviving node keeps its highlight) |
-| Box cards, ribbons, column headers, namespace stripes, summary tables   | `layoutSankey.test.ts`, `SankeyView.test.tsx`                                                          |
-| Zoom / pan / zoom control bar / focus mode                              | `useZoomPan.test.ts`, `SankeyView.test.tsx`                                                            |
+| Requirement                                                              | Evidence                                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Input is storage-graph, not `/v1/graph`                                  | `SankeyPage.tsx` loader; `SankeyView.test.tsx`; e2e `tests/storage-graph.spec.ts`                      |
+| az / env single-select, auto-preselect, independent of Graph filter bar  | `useSankeyQuery.test.ts`, `SankeyScopeBar.test.tsx`, `AppShell.test.tsx`                               |
+| Roots mixed, invalid pod refused, empty roots legal                      | `useSankeyQuery.test.ts`, `storageGraphRequestUrl.test.ts`                                             |
+| Demo mode is exempt from the URL scope (`from` / `to` still written)     | `AppShell.test.tsx` "ignores Sankey scope parameters in demo mode"                                     |
+| cluster / namespace as request params, not client filter                 | `storageGraphRequestUrl.test.ts`; no `clusterFilter` in `deriveSankey.ts`                              |
+| Seven columns; derived `application` / `namespace`; no `pod-node` ribbon | `deriveSankey.test.ts` (fixture members, derived sums, span-to-namespace, input deep-equal)            |
+| `Layout` Flat / Node, wrappers by name, unscheduled pods below           | `layoutSankey.test.ts`; `SankeyView.test.tsx` remount / zoom / `data-locatable`                        |
+| Layout is transient, not in the URL                                      | `sankeyUrlScope.test.ts`; `AppShell.test.tsx` no refetch on switch                                     |
+| Derived cards / links / wrapper hover / Locate                           | `SankeyView.test.tsx` (mongodb / prod not locatable; wrapper title locates `node/worker-0`)            |
+| Summary derived rows and application subtotal                            | `SankeyView.test.tsx` `sankey-application-subtotal`                                                    |
+| Kubernetes `node` root hint under Flat; empty wrapper under Node         | `SankeyScopeBar.test.tsx`; `SankeyView.test.tsx` no-flow wrapper                                       |
+| Fixture pods: no-application + unscheduled                               | `showcaseStorageGraph.test.ts`; `deriveSankey.test.ts`                                                 |
+| Performance: 5/25/10/500/1000/100/20, Node switch ≤ 500 ms               | `sankeyPerformance.test.ts`                                                                            |
+| Weights taken from edge metrics; split attribution                       | `deriveSankey.test.ts`; `SankeyView.test.tsx` split estimate                                           |
+| Four empty states                                                        | `SankeyView.test.tsx` `sankey-empty-*`                                                                 |
+| Tooltips: ontap_cluster, hardware, raw perf, tier, svm-pvc ceiling       | `SankeyView.test.tsx`                                                                                  |
+| Locate: filter-hidden vs missing vs SVM not clickable                    | `locateOutcome.test.ts`, `SankeyView.test.tsx` `data-locatable`                                        |
+| Hover state cleared when its node disappears                             | `SankeyView.test.tsx` (tooltip closes and fade lifts on refresh; a surviving node keeps its highlight) |
+| Box cards, ribbons, column headers, namespace stripes, summary tables    | `layoutSankey.test.ts`, `SankeyView.test.tsx`                                                          |
+| Zoom / pan / zoom control bar / focus mode                               | `useZoomPan.test.ts`, `SankeyView.test.tsx`                                                            |
 
 ## graph-filters
 

@@ -107,6 +107,14 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
       },
       {
         data: {
+          id: 'prod/ctrl/Job/batch',
+          name: 'batch',
+          type: 'controller',
+          parent: 'prod/ns/prod',
+        },
+      },
+      {
+        data: {
           id: 'node/worker-0',
           name: 'worker-0',
           type: 'node',
@@ -171,6 +179,53 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           parent: 'prod/app/mongodb',
           storageclass: 'netapp-nas',
           labels: { namespace: 'prod', volumename: 'pvc-scratch', svm: 'svm_shop' },
+        },
+      },
+      {
+        data: {
+          id: 'netapp/ontap-prod/svm/svm_jobs',
+          name: 'svm_jobs',
+          type: 'netapp-svm',
+          parent: 'storage-cluster/ontap-prod',
+          labels: { ontap_cluster: 'ontap-prod' },
+        },
+      },
+      {
+        data: {
+          id: 'pod/orphan-0',
+          name: 'orphan-0',
+          type: 'pod',
+          parent: 'prod/ctrl/Job/batch',
+          labels: { namespace: 'prod', cluster: 'prod', node: 'node/worker-0' },
+        },
+      },
+      {
+        data: {
+          id: 'pod/batch-pending',
+          name: 'batch-pending',
+          type: 'pod',
+          parent: 'prod/ctrl/Job/batch',
+          labels: { namespace: 'prod', cluster: 'prod' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-orphan',
+          name: 'data-orphan',
+          type: 'pvc',
+          parent: 'prod/ns/prod',
+          storageclass: 'netapp-nas',
+          labels: { namespace: 'prod', volumename: 'pvc-orphan', svm: 'svm_jobs' },
+        },
+      },
+      {
+        data: {
+          id: 'pvc/data-pending',
+          name: 'data-pending',
+          type: 'pvc',
+          parent: 'prod/ns/prod',
+          storageclass: 'netapp-nas',
+          labels: { namespace: 'prod', volumename: 'pvc-pending', svm: 'svm_jobs' },
         },
       },
     ],
@@ -312,6 +367,56 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           target: 'node/worker-1',
           labels: { tier: 'pod-node' },
           metrics: { read_bytes_per_sec: 393216, write_bytes_per_sec: 49152 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-sp-orphan',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/svm/svm_jobs',
+          target: 'pvc/data-orphan',
+          labels: { tier: 'svm-pvc' },
+          metrics: { read_bytes_per_sec: 8192 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pp-orphan',
+          type: 'storage-flow',
+          source: 'pvc/data-orphan',
+          target: 'pod/orphan-0',
+          labels: { tier: 'pvc-pod' },
+          metrics: { read_bytes_per_sec: 8192 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pn-orphan',
+          type: 'storage-flow',
+          source: 'pod/orphan-0',
+          target: 'node/worker-0',
+          labels: { tier: 'pod-node' },
+          metrics: { read_bytes_per_sec: 8192 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-sp-pending',
+          type: 'storage-flow',
+          source: 'netapp/ontap-prod/svm/svm_jobs',
+          target: 'pvc/data-pending',
+          labels: { tier: 'svm-pvc' },
+          metrics: { read_bytes_per_sec: 4096 },
+        },
+      },
+      {
+        data: {
+          id: 'sf-pp-pending',
+          type: 'storage-flow',
+          source: 'pvc/data-pending',
+          target: 'pod/batch-pending',
+          labels: { tier: 'pvc-pod' },
+          metrics: { read_bytes_per_sec: 4096 },
         },
       },
     ],

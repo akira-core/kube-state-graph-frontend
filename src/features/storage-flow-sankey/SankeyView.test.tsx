@@ -3,7 +3,7 @@ import type cytoscape from 'cytoscape';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
-import { normalizeGraph } from '../graph-data';
+import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
 import { ThemeProvider } from '../theme';
 
 import { deriveSankey } from './deriveSankey';
@@ -240,9 +240,10 @@ describe('SankeyView', () => {
   it('gives same-namespace pods a stripe, one per namespaced pod', () => {
     renderSankey();
     const podCards = screen.getAllByTestId(/^sankey-node-/).filter((el) => el.getAttribute('data-kind') === 'pod');
+    const nsCards = screen.getAllByTestId(/^sankey-node-/).filter((el) => el.getAttribute('data-kind') === 'namespace');
     const stripes = screen.getAllByTestId('sankey-ns-stripe');
     expect(stripes.length).toBeGreaterThan(0);
-    expect(stripes.length).toBeLessThanOrEqual(podCards.length);
+    expect(stripes.length).toBeLessThanOrEqual(podCards.length + nsCards.length);
   });
 
   it('shows the node flow summary table and hides it once the graph is empty', () => {
@@ -494,5 +495,104 @@ describe('SankeyView', () => {
     expect(readByTheme.dark).not.toBeNull();
     expect(readByTheme.light).not.toBeNull();
     expect(readByTheme.dark).not.toBe(readByTheme.light);
+  });
+
+  it('defaults the layout control to Flat and remounts back to Flat', () => {
+    const { unmount } = renderSankey();
+    expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    expect(screen.getByRole('radio', { name: /^node$/i })).toBeChecked();
+    expect(screen.getByTestId('sankey-wrapper-title-worker-0')).toHaveAttribute('data-locatable', 'true');
+    unmount();
+    renderSankey();
+    expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
+    expect(screen.queryByTestId('sankey-wrapper-title-worker-0')).not.toBeInTheDocument();
+  });
+
+  it('preserves the zoom readout across a layout switch', () => {
+    renderSankey();
+    const host = screen.getByTestId('sankey-chart-host');
+    fireEvent.keyDown(host, { key: '1' });
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    expect(screen.getByRole('radio', { name: /both/i })).toBeChecked();
+  });
+
+  it('does not offer Locate on application or namespace cards', () => {
+    const { props } = renderSankey();
+    expect(screen.getByTestId('sankey-node-mongodb')).toHaveAttribute('data-locatable', 'false');
+    expect(screen.getByTestId('sankey-node-prod')).toHaveAttribute('data-locatable', 'false');
+    fireEvent.click(screen.getByTestId('sankey-node-mongodb'));
+    fireEvent.click(screen.getByTestId('sankey-node-prod'));
+    expect(props.onLocateNode).not.toHaveBeenCalled();
+  });
+
+  it('locates the Kubernetes node from a wrapper title and the pod from the card inside', () => {
+    const { props } = renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    fireEvent.click(screen.getByTestId('sankey-wrapper-title-worker-0'));
+    expect(props.onLocateNode).toHaveBeenCalledWith('node/worker-0');
+    (props.onLocateNode as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.click(screen.getByTestId('sankey-node-mongo-0'));
+    expect(props.onLocateNode).toHaveBeenCalledWith('pod/mongo-0');
+  });
+
+  it('marks derived cards and links as derived from member pods', () => {
+    renderSankey();
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-mongodb'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('application');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('derived from member pods');
+    fireEvent.mouseLeave(screen.getByTestId('sankey-node-mongodb'));
+    const derivedLink = screen.getAllByTestId('sankey-link-read').find((el) => {
+      fireEvent.mouseEnter(el);
+      const text = screen.queryByRole('tooltip')?.textContent ?? '';
+      fireEvent.mouseLeave(el);
+      return text.includes('derived from member pods') && text.includes('application');
+    });
+    expect(derivedLink).toBeDefined();
+  });
+
+  it('lists derived application rows in the summary and hides the table when no pod has an application', () => {
+    const { unmount } = renderSankey();
+    const table = screen.getByTestId('sankey-application-subtotal');
+    expect(table).toHaveTextContent('mongodb');
+    expect(table).toHaveTextContent('prod');
+    unmount();
+    renderSankey({
+      elements: [
+        { group: 'nodes', data: { id: 'c', label: 'c', kind: 'pvc' } },
+        { group: 'nodes', data: { id: 'p', label: 'p', kind: 'pod', namespace: 'jobs' } },
+        {
+          group: 'edges',
+          data: {
+            id: 'e',
+            source: 'c',
+            target: 'p',
+            edgeType: 'storage-flow',
+            labels: { tier: 'pvc-pod' },
+            metrics: { readBytesPerSec: 10, writeBytesPerSec: 0 },
+          },
+        },
+      ],
+    });
+    expect(screen.queryByTestId('sankey-application-subtotal')).not.toBeInTheDocument();
+  });
+
+  it('hides the layout control in focus mode', () => {
+    renderSankey({ focusMode: true });
+    expect(screen.queryByRole('radio', { name: /^flat$/i })).not.toBeInTheDocument();
+  });
+
+  it('draws an empty no-flow wrapper for an undrawn Kubernetes node root under Node layout', () => {
+    renderSankey({
+      elements: [{ group: 'nodes', data: { id: 'node/worker-0', label: 'worker-0', kind: 'node' } }],
+      roots: { ...EMPTY_STORAGE_GRAPH_ROOTS, node: ['worker-0'] },
+    });
+    expect(screen.queryByTestId('sankey-wrapper-title-worker-0')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    const title = screen.getByTestId('sankey-wrapper-title-worker-0');
+    expect(title).toHaveAttribute('data-locatable', 'true');
+    expect(title.textContent).toContain('no flow');
   });
 });

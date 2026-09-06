@@ -1,6 +1,6 @@
 ## Purpose
 
-`storage-flow-sankey` defines the behavioural contract of the Sankey storage-flow view. This view's data comes from **its own backend endpoint** `GET /v1/storage-graph` (`endpoints.storageGraph` in the runtime config), which is a fetch path independent of the Graph view's `GET /v1/graph`; the rules of fetching itself are specified by `graph-data-source`, and this capability specifies the view behaviour: the estate selectors (`az` / `env` / root / `cluster` / `namespace` — presented with the dropdown contract of `graph-filters`, and synced to the URL query together with mode), the presentation of the six tiers, drawing with the backend-summed `storage-flow` weights, the read / write split, missing-value handling (absent ≠ 0), sorting, tooltips, hover highlighting, cross-view Locate, theme, sizing, refresh and performance bounds. This capability does not decide the drawing framework (settled in design); it only specifies observable behaviour.
+`storage-flow-sankey` defines the behavioural contract of the Sankey storage-flow view. This view's data comes from **its own backend endpoint** `GET /v1/storage-graph` (`endpoints.storageGraph` in the runtime config), which is a fetch path independent of the Graph view's `GET /v1/graph`; the rules of fetching itself are specified by `graph-data-source`, and this capability specifies the view behaviour: the estate selectors (`az` / `env` / root / `cluster` / `namespace` — presented with the dropdown contract of `graph-filters`, and synced to the URL query together with mode), the presentation of the five backend tiers and the two derived columns (`application` / `namespace`, walked up `data.parent`), the `Flat` / `Node` layout switch (a Kubernetes node is a wrapper around its pods, never a column), drawing with the backend-summed `storage-flow` weights, the read / write split, missing-value handling (absent ≠ 0), sorting, tooltips, hover highlighting, cross-view Locate, theme, sizing, refresh and performance bounds. This capability does not decide the drawing framework (settled in design); it only specifies observable behaviour.
 
 **Why it is no longer derived from `/v1/graph`.** The early design had the Sankey and the Graph share one copy of `/v1/graph` data, with the frontend walking the chain along `pod → pvc → netapp-aggr`, summing the aggregate's inbound edges itself, and splitting an RWX claim's measurement evenly across the pods that mount it. The backend's storage-graph endpoint makes that path both invalid and unnecessary: it adds a `netapp-svm` tier (`/v1/graph` has no such node type), adds a Kubernetes node tier, offers root search starting from either the storage side or the workload side, and guarantees that weights are **conserved per tier** — none of these can be derived from the body of `/v1/graph`, and a frontend summing on its own would only produce a set of numbers that disagree with the backend and cannot be reconciled.
 
@@ -131,39 +131,108 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 
 ### Requirement: Flow chain and tier structure
 
-The Sankey SHALL present six tiers from left to right, in the direction **storage → workload**: `netapp-node` → `netapp-aggr` → `netapp-svm` → `pvc` → `pod` → `node` (Kubernetes node).
+The Sankey SHALL present seven columns from left to right, in the direction **storage → workload**: `netapp-node` → `netapp-aggr` → `netapp-svm` → `pvc` → `pod` → `application` → `namespace`. The first five are the backend's `storage-flow` tiers; the last two are **derived columns** walked up from each pod's `data.parent` chain (see "Derived columns" below). The Kubernetes `node` is **not a column under either layout**: the `pod-node` hop is a physical placement rather than a further flow, and its weights only restate the `pvc-pod` weights of the pods on that node. Under the `Node` layout a Kubernetes node is drawn as a wrapper around its pods inside the pod column instead (see "Layout switch: flat and node grouping"); under the `Flat` layout it is not drawn at all.
 
-Links MUST correspond one-to-one to the `storage-flow` edges in the body; their tier membership MUST be read from the edge's `labels.tier` (`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` / `pod-node`), and MUST NOT be inferred from the endpoints' kinds:
+Links on the backend tiers MUST correspond one-to-one to the `storage-flow` edges in the body whose `labels.tier` is `node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod`; tier membership MUST be read from that label and MUST NOT be inferred from the endpoints' kinds. A `pod-node` edge MUST NOT produce a ribbon under either layout; it is consumed only to decide which wrapper a pod belongs to under the `Node` layout:
 
 - The path of a **FlexGroup claim** starts at `svm-pvc` (no `node-aggr` / `aggr-svm`); its SVM has no inbound edge on the aggregate tier — this is a normal shape, MUST NOT be treated as a gap, and MUST NOT have a substitute node synthesized.
-- The path of an **unscheduled pod** ends at `pvc-pod` (no `pod-node`); that pod has no outbound edge on the node tier.
-- A **no-flow root** (a node the backend materialised but that has no drawn link) MUST still be drawn on its tier as an orphaned node, with "no flow" marked on its label or tooltip; this is a deliberate answer from the backend (a degraded aggregate with no claims, a pod mounting no NetApp claim) and MUST NOT be dropped as a missing value.
+- An **unscheduled pod** has no `pod-node` edge; it is drawn like any other pod, and under the `Node` layout it sits outside every wrapper.
+- A **no-flow root** (a node the backend materialised but that has no drawn link) MUST still be drawn on its column as an orphaned node, with "no flow" marked on its label or tooltip; this is a deliberate answer from the backend (a degraded aggregate with no claims, a pod mounting no NetApp claim) and MUST NOT be dropped as a missing value.
   - This covers **two** shapes: a node with no edges at all, and a node that has edges but none of whose edges carries a measurement (see "Missing-value handling"). The latter cannot be decided by "has no edges".
   - The response's wire format **carries no root marker**, so the app MUST decide rootness from **the root selection at the time that request was issued**, with matching rules consistent with the backend: `node` matches the names of both `netapp-node` and Kubernetes `node`, `ontap_cluster` covers every controller / aggregate / SVM under it, `pod` matches `<namespace>/<pod>`; `pvc` is not a root kind, so a claim is never retained on this basis.
   - This decision is used only to **retain** nodes already present in the projection; it MUST NOT be used to remove any node — that would be the forbidden client-side root filtering, which breaks weight conservation. With all roots empty no node is retained on this basis, reverting to the single "no edges at all" shape.
+  - A `node` root that matched a **Kubernetes** node has a column only under the `Node` layout, where it is retained as a wrapper; under the `Flat` layout it is announced by a hint instead of drawn (see "Layout switch: flat and node grouping").
 
-An edge's `source` / `target` MUST resolve by id to nodes actually present in the body; otherwise that edge MUST be ignored. Group or unrelated nodes such as `storage-cluster`, `cluster`, `namespace`, `application`, `controller`, `service`, `switch` MUST NOT appear as Sankey tier nodes; they exist only as `data.parent` (for a future grouped view).
+**Derived columns.** For every pod that has at least one drawn inbound `pvc-pod` link, the view SHALL walk that pod's `data.parent` chain upward and take the first ancestor whose kind is `application` and the first whose kind is `namespace`:
 
-#### Scenario: The fixture derives six tiers
+- **`pod → application`**: drawn when an `application` ancestor exists. Its weight for a direction is the **sum of that pod's drawn inbound `pvc-pod` weights** in that direction; a direction in which the pod has no drawn inbound link yields no link (absent ≠ 0 still holds).
+- **`application → namespace`**: its weight for a direction is the sum of the `pod → application` weights of that application's member pods in that direction.
+- A pod with **no `application` ancestor** but a `namespace` ancestor MUST draw a **`pod → namespace`** link directly, spanning the application column; the view MUST NOT synthesize a placeholder application. Its weight follows the `pod → application` rule.
+- A pod with neither ancestor draws no derived link and is the terminus of its path.
+- A no-flow pod (root or otherwise) contributes nothing to either derived column; an application or namespace with no contributing pod is not drawn.
+
+Because every derived weight is a per-direction sum of values the backend already conserved, the derived columns are conserved by construction. The application and namespace cards are the only cards not produced by any edge in the body, and the derived links are the only links not backed by a `storage-flow` edge; both MUST be marked as derived in **the tooltip and the summary tables** (see "Labels and tooltips for nodes and links" and "Numeric summary outside the chart"). The mid-ribbon value label carries no marker: it is a bare formatted rate with room for nothing else, and a marker abbreviated to fit there would say less than the tooltip one hover away.
+
+An edge's `source` / `target` MUST resolve by id to nodes actually present in the body; otherwise that edge MUST be ignored. `storage-cluster`, `cluster`, `controller`, `service` and `switch` MUST NOT appear as cards; they exist only as `data.parent`. `application` and `namespace` appear **only** as derived-column cards, never from an edge; a Kubernetes `node` appears **only** as a wrapper under the `Node` layout.
+
+#### Scenario: The fixture derives seven columns
 
 - **WHEN** the Sankey is derived from the storage fixture (`SHOWCASE_STORAGE_GRAPH`) in Both mode
-- **THEN** the six tiers are respectively `ontap-prod-01` / `ontap-prod-02`, `aggr1` / `aggr2`, `svm_shop` / `svm_dr`, `data-mongo-0` / `data-mongo-1`, `mongo-0` / `mongo-1`, `node-1` / `node-2`
-- **AND** the links fall into five groups by `labels.tier`, and none of `storage-cluster/ontap-prod`, `prod/app/mongodb`, `prod/ctrl/StatefulSet/mongodb` appears as a tier node
+- **THEN** the seven columns are respectively `ontap-prod-01` / `ontap-prod-02`, `aggr1` / `aggr2`, `svm_shop` / `svm_dr`, `data-mongo-0` / `data-mongo-1`, `mongo-0` / `mongo-1`, `mongodb`, `prod`
+- **AND** the backend-tier links fall into four groups by `labels.tier` (`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod`), the derived links are `mongo-0 → mongodb`, `mongo-1 → mongodb` and `mongodb → prod`, the `pod-node` edges produce no ribbon, and none of `storage-cluster/ontap-prod`, `prod/ctrl/StatefulSet/mongodb`, `node/worker-0`, `node/worker-1` appears as a card
+
+#### Scenario: Derived weights are per-direction sums of drawn links
+
+- **WHEN** in Both mode `mongo-0` has drawn inbound `pvc-pod` links of read `5242880` / write `1048576`, and `mongo-1` has read `262144` / write `49152`, both under application `mongodb` in namespace `prod`
+- **THEN** `mongo-0 → mongodb` is read `5242880` / write `1048576`, `mongo-1 → mongodb` is read `262144` / write `49152`, and `mongodb → prod` is read `5505024` / write `1097728`; the tooltips of all three mark the value as derived from member pods
+
+#### Scenario: A pod without an application spans to its namespace
+
+- **WHEN** some pod's parent chain is `controller → namespace → cluster` with no `application` in it, and that pod has a drawn inbound link
+- **THEN** a `pod → namespace` link is drawn across the application column with that pod's inbound sum as its weight, and no application card is synthesized for it
 
 #### Scenario: A FlexGroup path starts at the SVM
 
 - **WHEN** the most upstream edge of some path in the body has `labels.tier` `svm-pvc`, and no `aggr-svm` edge points at that SVM
 - **THEN** that SVM is drawn on the SVM tier with no inbound edge, its downstream is drawn normally, and the view synthesizes no aggregate or controller node
 
-#### Scenario: An unscheduled pod ends at the pod tier
+#### Scenario: A pod-node edge produces no ribbon
 
-- **WHEN** some pod has a `pvc-pod` inbound edge but no `pod-node` outbound edge
-- **THEN** that pod is drawn on the pod tier with no outbound edge, and no placeholder node appears on the node tier because of it
+- **WHEN** some pod has a `pvc-pod` inbound edge and a `pod-node` outbound edge carrying `metrics`
+- **THEN** under both layouts the only ribbons leaving that pod are its derived links; no ribbon ends at a Kubernetes node, and the `pod-node` weights appear nowhere in the chart
 
 #### Scenario: A no-flow root is still drawn
 
 - **WHEN** the user uses `aggr: aggr9` as root, and the body contains the `aggr9` node and its controller but no edges at all
-- **THEN** both nodes are drawn on their respective tiers, marked as no-flow, and the view MUST NOT show the "no data" empty state
+- **THEN** both nodes are drawn on their respective columns, marked as no-flow, and the view MUST NOT show the "no data" empty state
+
+### Requirement: Layout switch: flat and node grouping
+
+The Sankey control bar SHALL provide a **layout segmented control** labelled `Layout` with two segments, `Flat` (default) and `Node`. It selects how the pod column is arranged and nothing else: the other six columns, every link and every weight MUST be identical under both layouts, and switching MUST NOT issue any request.
+
+- **`Flat`**: pods are laid out by "Sorting within a tier" and "Namespace grouping color bars and adjacent placement on the pod tier". Kubernetes nodes are not drawn.
+- **`Node`**: every pod that is the source of a `pod-node` edge in the body is drawn **inside a wrapper** representing its Kubernetes node (that edge's target), placed in the pod column. A wrapper has a title row carrying the node's `label` and a subtitle carrying its member pod count; its pods are stacked beneath the title. Wrappers are ordered top to bottom by node `label` **lexicographically ascending** (`localeCompare`) — not by flow: a node is an inventory item the operator looks up by name. Within a wrapper, pods follow the pod column's own rules (namespace adjacency, then total flow descending, ties by label). Pods with no `pod-node` edge (unscheduled) are placed **below every wrapper**, unwrapped, in the pod column's own order. Ribbons attach to the pod cards, never to the wrapper. A wrapper is drawn only when it holds at least one drawn pod, with one exception: a Kubernetes node selected as a `node` root whose pods are all undrawn MUST still be drawn as an empty wrapper marked no-flow (the "root is always drawn" rule). The pod column header reads `Node / Pod` under this layout.
+
+Under the `Flat` layout a `node` root that matched a **Kubernetes** node has nowhere to be drawn. The view MUST then show, beside the root control, a hint naming that root and stating that Kubernetes nodes are visible only under the `Node` layout; it MUST NOT be reported as an error, and the paths flowing through that node's pods are drawn as usual.
+
+The layout is **transient view state** (see "Page transient state lives and dies with the route" in `app-shell`): it MUST NOT be written to the URL, MUST NOT be persisted, and MUST return to `Flat` after the page remounts or a full refresh. It is independent of the Graph page's pod-parent mode, which happens to carry the same `Layout` label and a `Node` segment: changing either MUST NOT change the other.
+
+Switching the layout re-runs the layout (the pod column's intrinsic coordinates change) but MUST preserve the zoom / pan viewport, the mode, the estate / root / narrowing selections and — when the hovered card still exists — the hover highlight. It MUST complete within the redraw bound of "Performance bounds".
+
+#### Scenario: Flat is the default
+
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod`
+- **THEN** the layout control highlights `Flat`, no wrapper is drawn, and no Kubernetes node appears in any column
+
+#### Scenario: Node layout wraps pods in name order
+
+- **WHEN**, on the fixture, the user switches the layout to `Node`
+- **THEN** the pod column shows the wrapper `worker-0` holding `mongo-0` above the wrapper `worker-1` holding `mongo-1`; the pod column header reads `Node / Pod`; the ribbons `svm_shop → data-mongo-0 → mongo-0 → mongodb` attach to the pod card; no `pod-node` ribbon is drawn; and the storage-graph request count is unchanged
+
+#### Scenario: Wrappers are ordered by name, not by flow
+
+- **WHEN** the body holds pods on nodes `worker-b` (pods totalling 9 MB/s) and `worker-a` (pods totalling 1 MB/s)
+- **THEN** under the `Node` layout the wrapper `worker-a` is above `worker-b`
+
+#### Scenario: An unscheduled pod sits below the wrappers
+
+- **WHEN** some pod has a `pvc-pod` inbound edge but no `pod-node` edge, and the layout is `Node`
+- **THEN** that pod is drawn in the pod column below every wrapper, unwrapped, and no placeholder wrapper appears for it
+
+#### Scenario: A Kubernetes node root under the Flat layout
+
+- **WHEN** the user uses `node: worker-0` as root under the `Flat` layout, and the backend returns the paths through `worker-0`'s pods
+- **THEN** those paths are drawn, no card for `worker-0` appears, and a hint beside the root control states that `worker-0` is a Kubernetes node visible only under the `Node` layout; switching to `Node` draws it as a wrapper and removes the hint
+
+#### Scenario: Switching the layout preserves the viewport and does not refetch
+
+- **WHEN** the user zooms to 180%, pans, hovers `data-mongo-0`, then switches from `Flat` to `Node`
+- **THEN** the zoom readout is still 180%, the mode and every selector are unchanged, the path of `data-mongo-0` is still highlighted, and the storage-graph request count is unchanged
+
+#### Scenario: The layout is transient and independent of the Graph
+
+- **WHEN** the user switches the Sankey layout to `Node`, navigates to `/graph`, then presses Back
+- **THEN** the Sankey remounts with the layout `Flat`; the Graph page's pod-parent mode was `controller` throughout; and the address bar never carried a layout parameter
 
 ### Requirement: Weights come straight from the backend, with no client-side aggregation or splitting
 
@@ -174,6 +243,13 @@ A link's weight MUST be read directly from that `storage-flow` edge's `data.metr
 - use `read_ops` / `write_ops` / `read_latency_us` / `write_latency_us` / `max_iops` / `max_bytes_per_sec` as link thickness.
 
 For a `pvc-pod` link whose `labels.attribution` is `"split"`, the weight is the **attributed value** after evenly splitting an RWX claim, not a measured value; that link's tooltip MUST mark it as "split estimate". A link lacking that label MUST NOT be marked as an estimate.
+
+The **only** client-side summation is the one producing the derived `application` / `namespace` columns (see "Flow chain and tier structure"): it sums, per direction, the weights of links that are already drawn; it MUST NOT replace or adjust any backend link's weight, MUST NOT feed back into the five backend tiers, and MUST NOT be used to reconcile one backend tier against another. A derived link's value MUST be marked as derived from member pods in its tooltip and in the summary tables; the mid-ribbon value label is exempt (see "Flow chain and tier structure").
+
+#### Scenario: Derived sums never touch backend weights
+
+- **WHEN** the `ontap-prod-01 → aggr1` edge carries `read_bytes_per_sec: 6000000` while the derived `mongodb → prod` read sum comes to `5999999`
+- **THEN** the backend link keeps `6000000`, the derived link shows `5999999` marked as derived, and the app MUST NOT show a warning because the two differ
 
 The view SHALL provide a mode selector with the options **Read** / **Write** / **Both**, defaulting to **Both**. In Read or Write mode each edge yields at most one link; in Both mode each edge MUST draw two distinguishable links (one read, one write, in different colors), and the page MUST show a legend explaining the two colors. Outside demo mode the mode MUST sync to the `mode` URL query (`read` / `write`; the default `both` is not written); on page mount it is read from the URL, and an invalid value is treated as `both`. In demo mode it is component state like the rest of the scope (see "az / env are required single-value selectors").
 
@@ -267,7 +343,7 @@ When `demoMode` is `true`, the explanation of state 3 MUST additionally point ou
 
 Within each tier the nodes SHALL be ordered top to bottom by the node's total flow in the **current mode**, descending; total flow is defined as the sum of the weights of all of that node's drawn links (a single direction in Read / Write mode; read + write in Both mode), and for a node with both inbound and outbound edges the larger of the inbound sum and the outbound sum. A no-flow root node's total flow counts as `0` and MUST sort to the bottom of its tier. On equal total flow, nodes MUST be ordered by `label` lexicographically ascending (compared with `localeCompare`). The sort result MUST be deterministic (the same input always yields the same order).
 
-This summation is used only for **sorting** and MUST NOT replace any link's weight (weights always come from the backend, see "Weights come straight from the backend"). The pod tier is additionally constrained by namespace grouping (see "Namespace grouping color bars and adjacent placement on the pod tier"): group adjacency takes precedence over cross-group flow ordering, and within a group this rule still applies.
+This summation is used only for **sorting** and MUST NOT replace any link's weight (weights always come from the backend, see "Weights come straight from the backend"). The pod tier is additionally constrained by namespace grouping (see "Namespace grouping color bars and adjacent placement on the pod tier"): group adjacency takes precedence over cross-group flow ordering, and within a group this rule still applies. The derived `application` / `namespace` columns follow this rule with total flow defined over their derived links. Under the `Node` layout the pod column is partitioned into wrappers first, ordered by node name (see "Layout switch: flat and node grouping"); this rule then applies within each wrapper and among the unwrapped pods below them.
 
 #### Scenario: Descending by total flow
 
@@ -290,11 +366,11 @@ Each Sankey node MUST be drawn as a rounded box card rather than a thin rectangl
 
 - **Title row**: the node's `label`.
 - **Divider**: between the title row and the body.
-- **Subtitle row**: the node kind; a `pod` additionally shows its `namespace`; a `pvc` and a `netapp-aggr` show `used / capacity` when **both** `usedBytes` and `capacityBytes` of `usage` are present; if either is missing the whole item is omitted, and the app MUST NOT fill in `0`.
+- **Subtitle row**: the node kind; a `pod` additionally shows its `namespace`; a `pvc` and a `netapp-aggr` show `used / capacity` when **both** `usedBytes` and `capacityBytes` of `usage` are present; if either is missing the whole item is omitted, and the app MUST NOT fill in `0`. An `application` additionally shows its `namespace` and its member pod count; a `namespace` shows its member pod count.
 
 Links MUST enter and leave through **slots** on the card's edges: inbound edges attach to the left edge, outbound edges to the right edge; slots on the same side are ordered top to bottom by that link's weight, descending, and on equal weight by the opposite node's `label` lexicographically ascending (`localeCompare`). A slot's height is max(that link's ribbon thickness, a fixed minimum row height), with a fixed gap between slots; the card's height is the height needed by the title and subtitle plus max(total height of the left slot stack, total height of the right slot stack, minimum body height), with each side's slot stack vertically centred within the card body. Because slots have a minimum row height and ribbon thickness does not, the total heights of a node's left and right stacks **need not** be equal — conservation is about ribbon thickness, not slot-stack height.
 
-Node kinds MUST be distinguished by a stroke vocabulary, and the distinction MUST NOT rely on hue alone: `netapp-aggr` and `netapp-node` are not Kubernetes resources and use a **dashed** stroke; `pod` and `pvc` use a **solid** stroke. The `netapp-node` on the rightmost tier is the flow's terminus and MUST be presented as a smaller **leaf card** (title, kind and that node's total inflow in the current mode, with no right-edge slots).
+Node kinds MUST be distinguished by a stroke vocabulary, and the distinction MUST NOT rely on hue alone: `netapp-node`, `netapp-aggr` and `netapp-svm` are not Kubernetes resources and use a **dashed** stroke; `pvc`, `pod`, `application` and `namespace` use a **solid** stroke. The `netapp-node` cards on the leftmost column are the flow's origin and carry only right-edge slots. The `namespace` cards on the rightmost column are the flow's terminus and MUST be presented as smaller **leaf cards** (title, kind, member pod count and that namespace's total inflow in the current mode, with no right-edge slots). Under the `Node` layout a wrapper is a larger solid-stroked box in the pod column whose title row names the Kubernetes node and whose body holds the member pod cards; it carries no slots of its own.
 
 No text inside a box card MUST receive pointer events (`pointer-events: none`): text that takes events would cut off the hover highlight and tooltip of the ribbon beneath it.
 
@@ -313,10 +389,20 @@ No text inside a box card MUST receive pointer events (`pointer-events: none`): 
 - **WHEN** some `netapp-aggr` has three inbound edges with weights `5242880`, `0` and `1000`
 - **THEN** the left-edge slots top to bottom are `5242880`, `1000`, `0`; although the ribbon thickness of the latter two is far below the minimum row height, their slots each still occupy the minimum row height, and the three ribbons do not overlap
 
-#### Scenario: netapp-node is a leaf card
+#### Scenario: namespace is a leaf card
+
+- **WHEN** the user views `prod`
+- **THEN** that node is presented as a leaf card (smaller size, solid stroke) with only left-edge slots and no right-edge slots, its subtitle names the member pod count, and no ribbon leaves it
+
+#### Scenario: netapp-node carries only right-edge slots
 
 - **WHEN** the user views `ontap-prod-01`
-- **THEN** that node is presented as a leaf card (smaller size, dashed stroke) with only left-edge slots and no right-edge slots
+- **THEN** that card has a dashed stroke, right-edge slots for its `node-aggr` links and no left-edge slots
+
+#### Scenario: A wrapper holds its pod cards
+
+- **WHEN** the layout is `Node` and the user views `worker-0`
+- **THEN** a solid-stroked wrapper titled `worker-0` with the subtitle `1 pod` encloses the `mongo-0` card; the `svm_shop → data-mongo-0 → mongo-0` ribbon ends at the `mongo-0` card's left edge inside the wrapper, and the wrapper itself has no slots
 
 ### Requirement: Links are gradient ribbons on a shared scale
 
@@ -357,23 +443,28 @@ Every drawn link MUST label the formatted bytes/sec value for its direction at t
 
 ### Requirement: Column headers
 
-Each of the six tiers MUST carry one header line at the top of its column, left to right `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Node`. Headers MUST be rendered in the secondary foreground color with wider letter spacing, and MUST NOT occupy node layout space (they do not push the box cards). When a tier has no drawn node under the current mode and the current estate / root selection, that column's header MUST NOT be drawn.
+Each of the seven columns MUST carry one header line at the top of its column, left to right `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Application`, `Namespace`; under the `Node` layout the pod column's header reads `Node / Pod` instead of `Pod`. Headers MUST be rendered in the secondary foreground color with wider letter spacing, and MUST NOT occupy node layout space (they do not push the box cards). When a column has no drawn node under the current mode, layout and estate / root selection, that column's header MUST NOT be drawn **and that column MUST NOT reserve horizontal space** — the remaining columns close up and the chart's intrinsic width shrinks with them. Not every estate resolves every column (a pod need not have an `application` ancestor), and a reserved empty column would put a gutter through the middle of the diagram and make "fit to window" scale the whole chart down to enclose it.
 
-#### Scenario: Four column headers
+#### Scenario: Seven column headers
 
 - **WHEN** the Sankey is opened with the fixture in Both mode
-- **THEN** the four column headers `Pod`, `PVC`, `NetApp aggregate`, `NetApp node` appear in order from left to right
+- **THEN** the seven column headers `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Application`, `Namespace` appear in order from left to right; after switching the layout to `Node` the fifth reads `Node / Pod`
 
-#### Scenario: An empty tier has no header
+#### Scenario: An empty column has no header
 
-- **WHEN** no `pod-mounts-pvc` edge points at any pvc that carries a measurement, so the pod tier has no nodes
-- **THEN** the `Pod` column header is not drawn, and the other three lines are drawn as usual
+- **WHEN** no `pvc-pod` edge points at any pod from a pvc that carries a measurement, so the pod column has no nodes
+- **THEN** the `Pod`, `Application` and `Namespace` headers are not drawn, and the other four lines are drawn as usual
+
+#### Scenario: An empty column reserves no width
+
+- **WHEN** no drawn pod has an `application` ancestor, so only the application column is empty
+- **THEN** the `Namespace` column sits directly to the right of the `Pod` column with the usual column gap and no wider one, the chart's intrinsic width is smaller by exactly one column plus one gap, and "fit to window" fits that narrower content
 
 ### Requirement: Namespace grouping color bars and adjacent placement on the pod tier
 
 Within the pod tier, pods of the same `namespace` MUST be placed adjacently, and each carries a fixed-width rounded color bar on the left edge of its box card, the same color for the same namespace. The palette MUST assign colors in the **order of first appearance** of the namespace within the tier, cycling once exhausted, and MUST NOT be decided by hashing — with a limited palette, hash collisions are uncontrollable, and two adjacent groups sharing a color hurts readability more than colors being unstable across loads. The palette MUST be distinguishable from the read / write semantic colors. A pod without a `namespace` MUST NOT carry a color bar and is placed after all grouped pods.
 
-The order after grouping MUST still be deterministic: groups are ordered by "the maximum total flow among the group's nodes" descending, ties by namespace name lexicographically ascending; within a group by the rules of "Sorting within a tier". A namespace is not a node on the flow path: it MUST NOT be drawn as a box card and MUST NOT produce any link.
+The order after grouping MUST still be deterministic: groups are ordered by "the maximum total flow among the group's nodes" descending, ties by namespace name lexicographically ascending; within a group by the rules of "Sorting within a tier". Under the `Node` layout adjacency applies **within each wrapper** (and among the unwrapped pods below them); pods of one namespace may then sit in several wrappers, and the color bar is what still ties them together — which is why the bar is kept even though the namespace column now names the namespace. The `namespace` card of that namespace MUST carry the same color as its pods' bars, so the bar and the card read as one thing. The namespace card is a derived-column card (see "Flow chain and tier structure"), not a node produced by any edge; grouping on the pod column is still expressed only through adjacency and bars, never by a link from the pod column to the pod column.
 
 #### Scenario: Same namespace adjacent and same color
 
@@ -385,19 +476,25 @@ The order after grouping MUST still be deterministic: groups are ordered by "the
 - **WHEN** some pod has no `namespace`
 - **THEN** that pod carries no color bar and is placed after all pods that carry a namespace
 
-#### Scenario: A namespace is not a node
+#### Scenario: The namespace card shares its pods' bar color
 
 - **WHEN** the pod tier contains two namespaces
-- **THEN** the chart has no box card or link representing a namespace; grouping is expressed only through adjacent placement and color bars
+- **THEN** each namespace card on the namespace column carries the bar color of its pods, the two colors differ, and no ribbon leaves a namespace card
+
+#### Scenario: Adjacency applies within a wrapper
+
+- **WHEN** the layout is `Node`, `worker-0` holds `mongo-0` (`prod`) and `redis-0` (`staging`), and `worker-1` holds `mongo-1` (`prod`)
+- **THEN** within `worker-0` the two pods are ordered by their namespace groups, `mongo-0` and `mongo-1` carry the same bar color across the two wrappers, and the wrapper order is still `worker-0` above `worker-1`
 
 ### Requirement: Numeric summary outside the chart
 
 **Below** the chart there MUST be a separate numeric summary; these numbers MUST NOT be stuffed into node box cards:
 
-- **Node summary table**: one row per drawn node, with columns tier, `label`, total inflow and total outflow in the current mode; `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
+- **Node summary table**: one row per drawn card, including the derived `application` / `namespace` cards (the tier column names their column) and, under the `Node` layout, one row per wrapper (tier `node`, inflow being the sum of its pods' inflow, marked derived), with columns tier, `label`, total inflow and total outflow in the current mode; `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
+- **Application subtotal table**: one row per application on the application column, with columns application, namespace, pod count and total flow in the current mode, ordered by total descending. When no drawn pod has an `application` ancestor, the whole table MUST NOT be drawn.
 - **Namespace subtotal table**: one row per namespace on the pod tier, with columns namespace, pod count and total flow in the current mode, ordered by total descending. When the pod tier has no pod carrying a namespace, the whole table MUST NOT be drawn.
 
-Both tables MUST update in step with mode, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), neither table MUST be drawn.
+All tables MUST update in step with mode, layout, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), no table MUST be drawn.
 
 #### Scenario: Summary tables follow the mode
 
@@ -408,6 +505,11 @@ Both tables MUST update in step with mode, estate / root selection and storage-g
 
 - **WHEN** `ontap-prod-01` has no `usage`
 - **THEN** its row's usage column is the missing-value placeholder, not `0` or `0 B`
+
+#### Scenario: Derived rows and the application subtotal
+
+- **WHEN** the fixture is drawn in Both mode
+- **THEN** the node summary table carries rows for `mongodb` (tier `application`) and `prod` (tier `namespace`) whose inflow equals the sum of `mongo-0` and `mongo-1`'s inflow, and the application subtotal table lists `mongodb` / `prod` / `2` / that sum; after switching the layout to `Node` the node summary table additionally carries `worker-0` and `worker-1` rows (tier `node`), and no other row changes
 
 ### Requirement: Labels and tooltips for nodes and links
 
@@ -420,8 +522,10 @@ Every node MUST show its `label`. On hovering a node the tooltip MUST show:
 - `netapp-node`: when `hardware` is present, show the fields it has (at least `model`); when `perf` is present, show the fields it has (`cpu_busy_pct` / `total_ops` / `total_latency_us` / `total_bytes_per_sec`) marked as raw readings. The app MUST NOT derive a health verdict from `perf`, and MUST NOT color by threshold or add a warning icon — thresholds are model- and estate-specific, and verdicts arrive via `alerts`.
 - When any node's `alerts` is present and non-empty, its alerts (name and severity) MUST be shown, and the node marked with the status color.
 - A no-flow root node: MUST state explicitly "this node is a selected root with no flow in this time range".
+- `application` / `namespace`: the kind and `label`, the namespace (for an application), the member pod count, and the total inflow in the current mode marked **derived from member pods**; no usage, health, hardware or perf item (the body carries none for a group).
+- A wrapper under the `Node` layout (hovering its title row): kind `node`, `label`, member pod count, and the total inflow of its pods in the current mode marked derived; when the node is a no-flow root, the root statement above.
 
-On hovering a link the tooltip MUST show the source `label`, target `label`, tier, direction (read / write) and weight value. An `svm-pvc` link additionally MUST show `max_bytes_per_sec` / `max_iops` informationally when present (marked as QoS ceiling); when missing they are omitted, and MUST NOT be shown as `0` or "unlimited"; when the measurement exceeds the ceiling the app MUST NOT color, warn or change the link's style. Links on other tiers MUST NOT show ceiling or latency fields (the backend does not provide them there). A link whose `labels.attribution` is `"split"` MUST be marked "split estimate".
+On hovering a link the tooltip MUST show the source `label`, target `label`, tier, direction (read / write) and weight value. A derived link (`pod → application`, `pod → namespace`, `application → namespace`) MUST show source, target, direction and weight, name its column pair in place of a backend tier, and mark the value as derived from member pods; it MUST NOT show a ceiling, latency or attribution item. An `svm-pvc` link additionally MUST show `max_bytes_per_sec` / `max_iops` informationally when present (marked as QoS ceiling); when missing they are omitted, and MUST NOT be shown as `0` or "unlimited"; when the measurement exceeds the ceiling the app MUST NOT color, warn or change the link's style. Links on other tiers MUST NOT show ceiling or latency fields (the backend does not provide them there). A link whose `labels.attribution` is `"split"` MUST be marked "split estimate".
 
 #### Scenario: Hovering an aggregate node
 
@@ -437,6 +541,11 @@ On hovering a link the tooltip MUST show the source `label`, target `label`, tie
 
 - **WHEN** the user hovers the read link of `svm_shop → data-mongo-0`, then hovers the read link of `ontap-prod-01 → aggr1`
 - **THEN** the former shows read `5.24 MB/s`, `max_bytes_per_sec` `105 MB/s`, `max_iops` `5000`, with no warning style; the latter shows only tier and weight, with no ceiling or latency items
+
+#### Scenario: Hovering a derived card and a derived link
+
+- **WHEN** the user hovers `mongodb` and then the read link of `mongodb → prod` in Both mode
+- **THEN** the card tooltip shows `application` / `mongodb` / namespace `prod` / `2 pods` and read / write inflow marked derived from member pods, with no usage or health item; the link tooltip shows `mongodb` → `prod`, read, the summed value marked derived, and no ceiling, latency or split item
 
 ### Requirement: bytes/sec value formatting
 
@@ -468,12 +577,17 @@ This ladder MUST **share one implementation** with the Graph view's `usage` / th
 
 ### Requirement: Hover highlights the path
 
-On hovering a node, the view MUST highlight all links on every path passing through that node — that is, the union of all links reachable by walking back along inbound edges (upstream, toward the storage side) and all links reachable by walking along outbound edges (downstream, toward the workload side) — and fade the remaining links and nodes; in Both mode links of both the read and write directions are included. A link not on any path passing through that node (for example the outbound edges of other aggregates under the same controller) MUST NOT be highlighted. After the mouse leaves, everything MUST revert to normal display. Hover highlighting MUST only change styles and MUST NOT trigger a re-layout.
+On hovering a node, the view MUST highlight all links on every path passing through that node — that is, the union of all links reachable by walking back along inbound edges (upstream, toward the storage side) and all links reachable by walking along outbound edges (downstream, toward the workload side, through the derived links) — and fade the remaining links and nodes; in Both mode links of both the read and write directions are included. A link not on any path passing through that node (for example the outbound edges of other aggregates under the same controller) MUST NOT be highlighted. Hovering a wrapper's title row under the `Node` layout MUST highlight the union of its member pods' paths. After the mouse leaves, everything MUST revert to normal display. Hover highlighting MUST only change styles and MUST NOT trigger a re-layout.
 
 #### Scenario: Hovering a pvc highlights upstream and downstream
 
 - **WHEN** the user hovers `data-mongo-0` in Both mode
-- **THEN** the read and write links of `ontap-prod-01→aggr1`, `aggr1→svm_shop`, `svm_shop→data-mongo-0`, `data-mongo-0→mongo-0`, `mongo-0→node-1` are all highlighted; the path on the `aggr2` side is faded
+- **THEN** the read and write links of `ontap-prod-01→aggr1`, `aggr1→svm_shop`, `svm_shop→data-mongo-0`, `data-mongo-0→mongo-0`, `mongo-0→mongodb`, `mongodb→prod` are all highlighted; the path on the `aggr2` side and `mongo-1→mongodb` are faded
+
+#### Scenario: Hovering a wrapper highlights its pods' paths
+
+- **WHEN** the layout is `Node` and the user hovers the title row of `worker-0`, which holds `mongo-0`
+- **THEN** every link on `mongo-0`'s paths is highlighted, `mongo-1`'s paths are faded, and no layout recomputation occurs
 
 #### Scenario: Side branches are not highlighted
 
@@ -493,6 +607,8 @@ Because the two views come from **two endpoints**, a node in the Sankey is not g
 
 - The node **does not exist** in the Graph view's current data → hint that the node is not in the current graph query result, and point out the possible causes (filters or a different `prune`); MUST NOT be shown as an error.
 - A `netapp-svm` node **has no corresponding graph node** (`/v1/graph` does not emit that type) → nodes on that tier MUST NOT offer the Locate interaction (not presented as clickable), rather than reporting failure only after a click.
+- An `application` / `namespace` card is a **compound container** in the Graph view, not a leaf node, and Locate is defined over leaf nodes → these cards MUST NOT offer the Locate interaction either (same presentation as SVM).
+- A wrapper's title row under the `Node` layout stands for a Kubernetes `node`, which `/v1/graph` emits as a leaf → it MUST offer Locate for that node's id, with the same rules as any other card; the pod cards inside it Locate their own pod.
 
 #### Scenario: Clicking an aggregate Locates into the Graph view
 
@@ -513,6 +629,16 @@ Because the two views come from **two endpoints**, a node in the Sankey is not g
 
 - **WHEN** the user moves the cursor over any `netapp-svm` node
 - **THEN** that node is not presented as clickable (no pointer cursor, no click effect), and the tooltip shows normally
+
+#### Scenario: Application and namespace cards offer no Locate
+
+- **WHEN** the user moves the cursor over `mongodb` on the application column or `prod` on the namespace column
+- **THEN** neither card is presented as clickable, and the tooltip shows normally
+
+#### Scenario: Clicking a wrapper title Locates the Kubernetes node
+
+- **WHEN** the layout is `Node` and the user clicks the title row of `worker-0`
+- **THEN** the app push-navigates to `/graph` and, after the first successful load, Locates `node/worker-0`; clicking the `mongo-0` card inside the wrapper Locates `pod/mongo-0` instead
 
 #### Scenario: Returning to the Sankey has no selection
 
@@ -542,9 +668,9 @@ The Sankey view MUST read the app shell's theme tokens and render correctly in b
 
 The Sankey's SVG MUST fill the view area the app shell provides (both width and height follow the container), and MUST carry **no `viewBox`**: one SVG user unit is one CSS pixel, so the `<g>` viewport transform below is the only thing that scales the diagram. A `viewBox` of the layout's intrinsic size would map the content onto the element a _second_ time, and the two mappings compose — the transform would draw at its own scale times the viewBox factor, squaring "fit to window" (2096x442 of content in a 756px-wide area draws at 13% while the readout says 36%), shortening every pan by that factor, and pulling wheel zoom off the pointer. Fitting belongs to the transform alone; that is what makes the pixel-space contract of the zoom / pan requirements below true.
 
-A container size change MUST NOT trigger a re-layout: the intrinsic coordinates of nodes and links MUST stay unchanged, and the viewport MUST be preserved rather than refitted; during it the app MUST NOT lose the hover highlight state, the mode selector value, the `az` / `env` / root / `cluster` / `namespace` selections or the current zoom / pan viewport. The content does not produce horizontal scrolling outside the view area because of a size change.
+A container size change MUST NOT trigger a re-layout: the intrinsic coordinates of nodes and links MUST stay unchanged, and the viewport MUST be preserved rather than refitted; during it the app MUST NOT lose the hover highlight state, the mode selector value, the layout, the `az` / `env` / root / `cluster` / `namespace` selections or the current zoom / pan viewport. The content does not produce horizontal scrolling outside the view area because of a size change.
 
-**All** nodes (including the orphaned cards of no-flow roots) MUST fall within the intrinsic coordinate frame computed by the layout: no-flow nodes hang below the flow chart of the same tier, and the layout MUST count them into the intrinsic height, otherwise "fit to window" cannot fit them — it scales by that intrinsic size, and a node outside the frame is indistinguishable from "the backend did not return that node".
+**All** nodes (including the orphaned cards of no-flow roots and, under the `Node` layout, every wrapper) MUST fall within the intrinsic coordinate frame computed by the layout: no-flow nodes hang below the flow chart of the same tier, and the layout MUST count them into the intrinsic height, otherwise "fit to window" cannot fit them — it scales by that intrinsic size, and a node outside the frame is indistinguishable from "the backend did not return that node".
 
 #### Scenario: Window resize
 
@@ -564,7 +690,7 @@ The chart area MUST support in-chart zoom and pan independent of browser page zo
 - **Press and drag**: pan. The chart-area cursor MUST be `grab` in the normal state and `grabbing` while dragging.
 - The zoom factor MUST have upper and lower bounds; on reaching a bound it MUST stop, and MUST NOT bounce back or flip.
 
-The initial viewport MUST be "fit to window but not enlarged beyond 1:1": when the chart is larger than the view area, shrink until the whole chart is visible; when smaller, keep the original size and centre it. Mode switches, estate / root selection changes, theme switches, container resize and storage-graph refresh MUST preserve the current viewport. The viewport MUST NOT be written to the URL (the query carries only estate / roots / narrowing / mode and the time range), and MUST NOT be persisted; after the page remounts it MUST return to the initial viewport.
+The initial viewport MUST be "fit to window but not enlarged beyond 1:1": when the chart is larger than the view area, shrink until the whole chart is visible; when smaller, keep the original size and centre it. Mode switches, layout switches, estate / root selection changes, theme switches, container resize and storage-graph refresh MUST preserve the current viewport. The viewport MUST NOT be written to the URL (the query carries only estate / roots / narrowing / mode and the time range), and MUST NOT be persisted; after the page remounts it MUST return to the initial viewport.
 
 #### Scenario: Zoom anchored at the pointer
 
@@ -609,7 +735,7 @@ The chart-area container MUST be focusable (`tabindex`) and have an accessible n
 
 ### Requirement: Focus mode
 
-Focus mode MUST collapse the app shell's top nav bar and the Sankey's own controls (mode selector, estate / root selector row, legend and the summary tables outside the chart), so that the chart area fills the whole window. `Esc` or activating the control bar's focus button again MUST leave it. Entering and leaving MUST preserve the zoom / pan viewport, mode, estate / root selection and hover state. Focus mode MUST be transient view state: it MUST NOT be written to the URL and MUST NOT be persisted; after navigating away from the Sankey view or a full refresh it MUST return to inactive.
+Focus mode MUST collapse the app shell's top nav bar and the Sankey's own controls (mode selector, layout control, estate / root selector row, legend and the summary tables outside the chart), so that the chart area fills the whole window. `Esc` or activating the control bar's focus button again MUST leave it. Entering and leaving MUST preserve the zoom / pan viewport, mode, layout, estate / root selection and hover state. Focus mode MUST be transient view state: it MUST NOT be written to the URL and MUST NOT be persisted; after navigating away from the Sankey view or a full refresh it MUST return to inactive.
 
 #### Scenario: Entering and leaving focus mode preserves the viewport
 
@@ -623,7 +749,7 @@ Focus mode MUST collapse the app shell's top nav bar and the Sankey's own contro
 
 ### Requirement: In-place update on refresh
 
-When the storage-graph data updates because of a refresh (manual or automatic), the Sankey MUST re-derive and update the chart in place (add / remove nodes and links, update weights), and MUST NOT reset to the initial state; the values of the mode selector and all selectors MUST be retained. The tooltip and hover highlight of a node that has disappeared MUST be cleared; the hover highlight of a node that still exists MUST be recomputed against the new topology. During a refresh and after a failed refresh, the previously successfully drawn chart MUST stay visible (see the refresh semantics of `graph-data-source`).
+When the storage-graph data updates because of a refresh (manual or automatic), the Sankey MUST re-derive and update the chart in place (add / remove nodes and links, update weights, re-sum the derived columns, and under the `Node` layout move a pod whose `pod-node` edge changed into its new wrapper), and MUST NOT reset to the initial state; the values of the mode selector, the layout and all selectors MUST be retained. The tooltip and hover highlight of a node that has disappeared MUST be cleared; the hover highlight of a node that still exists MUST be recomputed against the new topology. During a refresh and after a failed refresh, the previously successfully drawn chart MUST stay visible (see the refresh semantics of `graph-data-source`).
 
 #### Scenario: Weight update
 
@@ -644,7 +770,7 @@ When the storage-graph data updates because of a refresh (manual or automatic), 
 
 The Sankey's data MUST be fully independent of the Graph view's kind / edge-type filters, ingress visibility toggle, search query, pod-parent mode, collapse state, `prune` setting, and the filter bar's multi-value `cluster` / `az` / `env` / `namespace` selections — any change to those MUST NOT change the Sankey's nodes, links or weights, and MUST NOT trigger a storage-graph refetch.
 
-The reverse also holds: changes to the Sankey's `az` / `env` / roots / `cluster` / `namespace` / mode are written only to the `/sankey` query, MUST NOT rewrite the `/graph` query, and MUST NOT make the Graph page carry the Sankey's selections on its next mount.
+The reverse also holds: changes to the Sankey's `az` / `env` / roots / `cluster` / `namespace` / mode are written only to the `/sankey` query, MUST NOT rewrite the `/graph` query, and MUST NOT make the Graph page carry the Sankey's selections on its next mount. The Sankey's `Layout` control (`Flat` / `Node`) and the Graph's pod-parent `Layout` control (`Node` / `Controller`) are two unrelated pieces of transient state that happen to share a label: neither MUST read or write the other.
 
 The only input the two pages share is the **view time range** (see `app-shell`; passed via the URL and the browser-local saved value): a change to it MUST make the current page refetch, and the other page uses the new `start` / `end` on its next mount.
 
@@ -658,19 +784,24 @@ The only input the two pages share is the **view time range** (see `app-shell`; 
 - **WHEN** the user, on `/sankey`, adds root `aggr: aggr1` and changes `env`, then clicks the Graph link in the nav bar
 - **THEN** the address bar is `/graph` (with only `from` / `to` filled in), the filter bar has nothing selected, and the graph request contains no `aggr` / `az` / `env`
 
+#### Scenario: The two Layout controls do not share state
+
+- **WHEN** the user switches the Sankey layout to `Node`, clicks the Graph link, and finds the Graph's pod-parent mode at its default `controller`; then switches the Graph to `node` and presses Back
+- **THEN** the Sankey remounts at `Flat` (its own default), and neither switch was reflected in the other page or in the URL
+
 ### Requirement: Performance bounds
 
 The following bounds MUST hold on developer-machine / CI-grade hardware as used by the e2e test suite:
 
-- For a synthetic body containing 3000 `storage-flow` edges (500 pvcs, 1000 pods, 25 aggregates, 10 SVMs, 5 controllers, 50 Kubernetes nodes, every edge carrying both `read_bytes_per_sec` and `write_bytes_per_sec`), the time from obtaining the normalized result to the Sankey's first completed draw (Both mode) MUST be within **1000 ms**.
-- The redraw after a mode switch MUST be within 500 ms.
+- For a synthetic body containing 3000 `storage-flow` edges (500 pvcs, 1000 pods, 25 aggregates, 10 SVMs, 5 controllers, 50 Kubernetes nodes, every pod carrying a `pod-node` edge and a full `controller → application → namespace → cluster` parent chain over 100 applications and 20 namespaces, every edge carrying both `read_bytes_per_sec` and `write_bytes_per_sec`), the time from obtaining the normalized result to the Sankey's first completed draw (Both mode, `Flat` layout) MUST be within **1000 ms**.
+- The redraw after a mode switch or a layout switch MUST be within 500 ms.
 - Hover and leave MUST only update styles, MUST NOT trigger a layout recomputation (verified by a layout function call count of 0), and the style update MUST complete within one animation frame.
 - Zoom and pan MUST only update the `transform` of the single `<g>`, MUST NOT trigger a layout recomputation (likewise verified by a layout function call count of 0), and each update MUST complete within one animation frame.
 
 #### Scenario: First draw of 3000 storage-flow edges
 
 - **WHEN** the Sankey view is opened with the synthetic body above
-- **THEN** the elapsed time from data availability to the chart's first completed draw is ≤ 1000 ms, and the node counts of the six tiers are respectively 5 / 25 / 10 / 500 / 1000 / 50
+- **THEN** the elapsed time from data availability to the chart's first completed draw is ≤ 1000 ms, and the node counts of the seven columns are respectively 5 / 25 / 10 / 500 / 1000 / 100 / 20; switching to the `Node` layout redraws within 500 ms with 50 wrappers in the pod column and the same seven counts
 
 #### Scenario: Hover does not recompute the layout
 

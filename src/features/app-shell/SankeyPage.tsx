@@ -11,7 +11,14 @@ import {
   type StorageGraphRoots,
 } from '../graph-data';
 import { useFilterOptions } from '../graph-filters';
-import { SankeyScopeBar, SankeyView, useSankeyQuery, type SankeyMode } from '../storage-flow-sankey';
+import {
+  kubernetesNodeRoots,
+  SankeyScopeBar,
+  SankeyView,
+  useSankeyQuery,
+  type SankeyMode,
+  type SankeyPodLayout,
+} from '../storage-flow-sankey';
 import { EMPTY_SANKEY_URL_SCOPE, parseSankeyScope, serializeSankeyScope } from '../storage-flow-sankey/sankeyUrlScope';
 import type { SankeyQueryController } from '../storage-flow-sankey/useSankeyQuery';
 
@@ -94,6 +101,7 @@ export function SankeyPage(): JSX.Element {
   );
   const demoQuery = useSankeyQuery(identity);
   const [podError, setPodError] = useState<string | undefined>(undefined);
+  const [podLayout, setPodLayout] = useState<SankeyPodLayout>('flat');
   useEffect(() => {
     if (urlScope.droppedPods.length > 0) {
       setPodError('Pod root must be <namespace>/<pod>');
@@ -173,10 +181,14 @@ export function SankeyPage(): JSX.Element {
     },
     [navigate]
   );
+  const k8sNodeHint = useMemo(
+    () => (podLayout === 'flat' ? kubernetesNodeRoots(storage.state.elements, controller.query.roots) : []),
+    [controller.query.roots, podLayout, storage.state.elements]
+  );
 
   return (
     <>
-      {!focusMode && <SankeyScopeBar options={identity} controller={controller} />}
+      {!focusMode && <SankeyScopeBar options={identity} controller={controller} k8sNodeHint={k8sNodeHint} />}
       <main className="relative min-h-0 flex-1">
         <SankeyView
           elements={storage.state.elements}
@@ -196,6 +208,8 @@ export function SankeyPage(): JSX.Element {
           azEnvReady={azEnvReady}
           roots={controller.query.roots}
           onLocateNode={onLocateNode}
+          podLayout={podLayout}
+          onPodLayoutChange={setPodLayout}
         />
       </main>
     </>
