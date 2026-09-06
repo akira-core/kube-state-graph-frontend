@@ -233,19 +233,27 @@ export function SankeyView({
   const { setViewport } = zoom;
 
   // One-shot opening viewport: fit-but-never-enlarge, computed the first time real content
-  // and a real container measurement are both available, then never touched again by data
-  // changes — mode/cluster/refresh/theme/resize all preserve whatever the user set after.
+  // is drawn, then never touched again — mode / cluster / refresh / theme / resize and
+  // focus mode all preserve whatever the user set after.
+  //
+  // The box is measured HERE rather than read from state, because the two are not the same
+  // moment. The observer above attaches while the chart is still loading, when the box is
+  // the only thing in the column and stretches to 1502px; the summary tables that shrink it
+  // to 982 arrive with the chart itself. Fitting against the state written by that earlier
+  // measurement parked the diagram low — a 593px gap above it and 80px below — and the lock
+  // then refused the corrected size the observer delivered a moment later. Measuring at the
+  // instant of the fit means the chart being drawn is what gets measured.
   useEffect(() => {
-    if (
-      openedRef.current ||
-      layout.nodes.length === 0 ||
-      containerSize === null ||
-      containerSize.w < 40 ||
-      containerSize.h < 40
-    ) {
+    const el = boxRef.current;
+    if (openedRef.current || layout.nodes.length === 0 || el === null) {
       return;
     }
-    setViewport(openingViewport({ w: layout.width, h: layout.height }, containerSize));
+    const rect = el.getBoundingClientRect();
+    const box = rect.width >= 40 && rect.height >= 40 ? { w: rect.width, h: rect.height } : containerSize;
+    if (box === null || box.w < 40 || box.h < 40) {
+      return;
+    }
+    setViewport(openingViewport({ w: layout.width, h: layout.height }, box));
     openedRef.current = true;
   }, [layout, containerSize, setViewport]);
 

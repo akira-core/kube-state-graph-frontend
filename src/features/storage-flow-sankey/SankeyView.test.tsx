@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type cytoscape from 'cytoscape';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -55,6 +55,12 @@ const UNMEASURED = { w: 800, h: 480 };
 function scaleOf(svg: HTMLElement): number {
   const transform = svg.querySelector('g')?.getAttribute('transform') ?? '';
   return Number(/scale\(([-\d.e+]+)\)/.exec(transform)?.[1]);
+}
+
+/** The `translate(x,Y)` the viewport transform is drawing at. */
+function translateYOf(svg: HTMLElement): number {
+  const transform = svg.querySelector('g')?.getAttribute('transform') ?? '';
+  return Number(/translate\([-\d.e+]+,([-\d.e+]+)\)/.exec(transform)?.[1]);
 }
 
 /** The layout's own size, in the same units the transform is applied in. */
@@ -308,6 +314,43 @@ describe('SankeyView', () => {
       expect(scaleOf(screen.getByTestId('sankey-svg'))).toBeCloseTo(expected, 6);
       // Explicitly not the placeholder's answer, which is what the bug drew.
       expect(expected).not.toBeCloseTo(Math.min(UNMEASURED.w / w, UNMEASURED.h / h), 2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('opens once and holds that viewport when the container changes', () => {
+    // Focus mode and a window resize both change the container. The opening fit must not
+    // chase either: entering focus mode and leaving it again has to return the same zoom
+    // readout it started with, which is what `demo.spec.ts` asserts end to end.
+    let deliver: ((size: { w: number; h: number }) => void) | undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: ResizeObserverCallback) {}
+        observe(): void {
+          const emit = (size: { w: number; h: number }): void => {
+            this.cb([{ contentRect: { width: size.w, height: size.h } }] as unknown as ResizeObserverEntry[], this);
+          };
+          // The mount delivery runs inside React's own effect flush, so it must NOT be
+          // wrapped in a nested act(); later ones are driven from the test body and must.
+          emit({ w: 1600, h: 982 });
+          deliver = (size) => act(() => emit(size));
+        }
+        unobserve(): void {}
+        disconnect(): void {}
+      }
+    );
+    try {
+      renderSankey();
+      const svg = screen.getByTestId('sankey-svg');
+      const opened = { scale: scaleOf(svg), ty: translateYOf(svg) };
+      const { w, h } = layoutSize();
+      expect(opened.scale).toBeCloseTo(Math.min(1600 / w, 982 / h), 6);
+
+      deliver?.({ w: 1600, h: 1400 });
+      expect(scaleOf(svg)).toBe(opened.scale);
+      expect(translateYOf(svg)).toBe(opened.ty);
     } finally {
       vi.unstubAllGlobals();
     }
