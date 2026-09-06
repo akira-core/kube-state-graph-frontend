@@ -2,7 +2,7 @@ import { clonePlain } from '../../shared/clone/clonePlain';
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph, type StorageGraphRoots } from '../graph-data';
 
-import { deriveSankey, formatBytesPerSec, hoverPathLinks, SANKEY_KIND_ORDER } from './deriveSankey';
+import { deriveSankey, formatBytesPerSec, hoverPathLinks, rootValueOptions, SANKEY_KIND_ORDER } from './deriveSankey';
 
 function wire(nodes: unknown[], edges: unknown[]): unknown {
   return { elements: { nodes: nodes.map((data) => ({ data })), edges: edges.map((data) => ({ data })) } };
@@ -68,6 +68,27 @@ describe('deriveSankey', () => {
     // worker-1 is warning itself while every pod on it is normal — the wrapper is the only
     // thing drawn for the node, so its own verdict has to survive the fold.
     expect(byLabel.get('worker-1')?.status).toBe('warning');
+  });
+
+  it('offers a root value per kind from the drawn body, with node collecting both sides', () => {
+    const opts = rootValueOptions(elements);
+    expect(opts.ontap_cluster).toEqual(['ontap-prod']);
+    expect(opts.aggr).toEqual(['aggr1', 'aggr2']);
+    expect(opts.svm).toEqual(['svm_dr', 'svm_jobs', 'svm_shop']);
+    // `node` matches BOTH a NetApp controller and a Kubernetes node, exactly as the backend
+    // matches that kind — offering only one side would hide half of what the root accepts.
+    expect(opts.node).toEqual(['ontap-prod-01', 'ontap-prod-02', 'worker-0', 'worker-1']);
+    // A pod root is `<namespace>/<pod>`; a bare name is a 400, so it is never offered.
+    expect(opts.pod).toContain('prod/mongo-0');
+    expect(opts.pod.every((value) => value.includes('/'))).toBe(true);
+  });
+
+  it('offers nothing for a kind the body holds none of, rather than a partial value', () => {
+    const opts = rootValueOptions(normalizeGraph(wire([{ id: 'p', name: 'p', type: 'pod' }], [])).elements);
+    // The pod carries no namespace, so it cannot be named as a root at all.
+    expect(opts.pod).toEqual([]);
+    expect(opts.aggr).toEqual([]);
+    expect(opts.ontap_cluster).toEqual([]);
   });
 
   it('does not mutate the shared graph', () => {

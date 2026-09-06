@@ -327,6 +327,79 @@ function toDerivedNode(agg: GroupAgg, kind: 'application' | 'namespace', status:
   };
 }
 
+/** Selectable root values, one bucket per root kind so the control can index it by kind. */
+export type SankeyRootOptions = Record<keyof StorageGraphRoots, string[]>;
+
+export const EMPTY_SANKEY_ROOT_OPTIONS: SankeyRootOptions = {
+  ontap_cluster: [],
+  node: [],
+  aggr: [],
+  svm: [],
+  pod: [],
+};
+
+/**
+ * Root values offered by the body currently drawn.
+ *
+ * There is no endpoint that enumerates these — `endpoints.labelValues` reaches only the
+ * store holding `kube_pod_info`, which carries no `aggr` / `svm` / `ontap_cluster` at all,
+ * and its `pod` values are bare names while a pod root is `<namespace>/<pod>`. The drawn
+ * body is the one inventory the app already has, and with no root selected it IS the whole
+ * estate, so the list starts complete.
+ *
+ * It NARROWS once a root is applied, because the backend then answers with that projection
+ * only: with `aggr: aggr1` in the request, `aggr2` is no longer in the body to offer. That
+ * is why the control keeps accepting custom values — the dropdown is a shortcut for names
+ * on screen, never the authority on what exists. Removing the root repopulates it, and
+ * `ScopeSelect` unions the current selection back in meanwhile.
+ *
+ * `node` deliberately collects BOTH sides, exactly as the backend matches that kind.
+ */
+export function rootValueOptions(elements: readonly cytoscape.ElementDefinition[]): SankeyRootOptions {
+  const buckets: Record<keyof StorageGraphRoots, Set<string>> = {
+    ontap_cluster: new Set(),
+    node: new Set(),
+    aggr: new Set(),
+    svm: new Set(),
+    pod: new Set(),
+  };
+  for (const rec of indexNodes(elements).values()) {
+    if (rec.ontapCluster !== undefined) {
+      buckets.ontap_cluster.add(rec.ontapCluster);
+    }
+    switch (rec.kind) {
+      case 'netapp-node':
+      case 'node':
+        buckets.node.add(rec.label);
+        break;
+      case 'netapp-aggr':
+        buckets.aggr.add(rec.label);
+        break;
+      case 'netapp-svm':
+        buckets.svm.add(rec.label);
+        break;
+      case 'pod':
+        // A bare pod name is not a root the backend accepts, so a pod with no namespace
+        // cannot be offered at all — half a value in the list would be a 400 waiting to
+        // happen, and the operator has no way to see what is missing from it.
+        if (rec.namespace !== undefined) {
+          buckets.pod.add(`${rec.namespace}/${rec.label}`);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  const sorted = (set: Set<string>): string[] => [...set].sort((a, b) => a.localeCompare(b));
+  return {
+    ontap_cluster: sorted(buckets.ontap_cluster),
+    node: sorted(buckets.node),
+    aggr: sorted(buckets.aggr),
+    svm: sorted(buckets.svm),
+    pod: sorted(buckets.pod),
+  };
+}
+
 /**
  * Kubernetes nodes in the body whose name is one of the request's `node` roots.
  * Used to hint under the Flat layout, where those nodes have nowhere to be drawn.

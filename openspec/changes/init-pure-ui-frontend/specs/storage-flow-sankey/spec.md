@@ -91,7 +91,11 @@ Every kind may be repeated and mixed. The control MUST state explicitly that `no
 
 A `pod` value MUST be validated before sending as containing exactly one `/` with both segments non-empty; when invalid it MUST prompt inline and MUST NOT be sent (the backend would reject the whole request with 400 `invalid_scope`, taking the other valid roots down with it).
 
-The root kind is chosen with the shared dropdown (single-select, custom values not allowed); the root value is free text (there is no listable source), and it MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error and the explanatory text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The root selection MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys); on page mount it is read from the URL, and an invalid `pod` value in the URL MUST not be sent and MUST prompt inline.
+The root kind is chosen with the shared dropdown (single-select, custom values not allowed). The root value uses that **same** dropdown (single-select, custom values allowed) and MUST offer the values the **currently drawn body** carries for the selected kind: `ontap_cluster` from the NetApp nodes' `ontap_cluster` label, `aggr` / `svm` from those kinds' names, `node` from **both** the NetApp controllers and the Kubernetes nodes (matching what that kind matches), and `pod` as `<namespace>/<pod>` — a pod carrying no namespace MUST NOT be offered at all, since a bare name is a 400 rather than a narrower graph. The offered list MUST be per kind: a value belonging to another kind, committed here, is a silently empty graph rather than an error.
+
+There is no endpoint that enumerates these (`endpoints.labelValues` reaches only the store holding `kube_pod_info`, which carries none of the NetApp label names, and its `pod` values are bare). The drawn body is therefore the source, and with no root applied it IS the whole estate. Once a root is applied the backend answers with that projection only, so the list NARROWS to it: the control MUST keep accepting a typed custom value, because the body is a projection and never the authority on what exists. Changing the root kind MUST clear the pending value — a value picked under one kind is wrong under another — and the commit action MUST be inert while no value is pending.
+
+The root value control MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error and the explanatory text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The root selection MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys); on page mount it is read from the URL, and an invalid `pod` value in the URL MUST not be sent and MUST prompt inline.
 
 All roots empty is equivalent to "the complete storage flow of that estate" and MUST be a valid state rather than an error. A root change MUST trigger one refetch. The app MUST NOT further filter the elements returned by the backend by root on the client side — the projection has already been done by the backend, and client-side filtering would break weight conservation.
 
@@ -102,7 +106,17 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 #### Scenario: One row, one baseline
 
 - **WHEN** the user views the scope bar
-- **THEN** `AZ`, `Env`, `Root kind`, the root value input and `Add` are in the same row with their labels on one baseline, no control sits under a group heading of its own, and adding a root puts its removable pill on a row below rather than between the controls
+- **THEN** `AZ`, `Env`, `Root kind`, `Root value` and `Add` are in the same row with their labels on one baseline, no control sits under a group heading of its own, and adding a root puts its removable pill on a row below rather than between the controls
+
+#### Scenario: The root value dropdown offers what is drawn, per kind
+
+- **WHEN** the body holds aggregates `aggr1` / `aggr2` and SVM `svm_demo`, and the root kind is `Aggregate`
+- **THEN** the root value dropdown lists `aggr1` and `aggr2` and does not list `svm_demo`; switching the kind to `SVM` clears the pending value, lists `svm_demo` and no longer lists the aggregates
+
+#### Scenario: A name the current projection omits is still reachable
+
+- **WHEN** the operator knows of `aggr9`, which the drawn body does not contain, and types it into the root value dropdown
+- **THEN** the custom-value row offers it, committing it adds root `aggr: aggr9`, and the request carries `aggr=aggr9`
 
 #### Scenario: Storage-side root
 

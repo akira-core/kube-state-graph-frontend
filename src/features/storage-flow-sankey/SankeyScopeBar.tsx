@@ -1,4 +1,4 @@
-import { useId, useState, type JSX } from 'react';
+import { useState, type JSX } from 'react';
 
 import { Button } from '../../shared/ui/Button';
 import { FilterIcon } from '../../shared/ui/icons';
@@ -6,11 +6,18 @@ import { ScopeSelect } from '../../shared/ui/ScopeSelect';
 import { eyebrowClass } from '../../shared/ui/Section';
 import type { StorageGraphRoots } from '../graph-data';
 
+import { EMPTY_SANKEY_ROOT_OPTIONS, type SankeyRootOptions } from './deriveSankey';
 import type { SankeyIdentityOptions, SankeyQueryController, SankeyRootKind } from './useSankeyQuery';
 
 export interface SankeyScopeBarProps {
   options: SankeyIdentityOptions;
   controller: SankeyQueryController;
+  /**
+   * Root values offered per kind, from the body currently drawn. Optional and empty by
+   * default: the control accepts custom values, so it stays fully operable with nothing
+   * to list — which is also its state before the first response arrives.
+   */
+  rootOptions?: SankeyRootOptions;
   /** Kubernetes `node` roots that have nowhere to draw under the Flat layout. */
   k8sNodeHint?: ReadonlyArray<{ id: string; label: string }>;
 }
@@ -55,10 +62,14 @@ function rootEntries(roots: StorageGraphRoots): Array<{ kind: SankeyRootKind; va
  * and the eye stops trusting the baseline. Roots, errors and hints sit on their own row so a
  * growing pill list can never reflow the controls.
  */
-export function SankeyScopeBar({ options, controller, k8sNodeHint = [] }: Readonly<SankeyScopeBarProps>): JSX.Element {
+export function SankeyScopeBar({
+  options,
+  controller,
+  rootOptions = EMPTY_SANKEY_ROOT_OPTIONS,
+  k8sNodeHint = [],
+}: Readonly<SankeyScopeBarProps>): JSX.Element {
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
   const [rootValue, setRootValue] = useState('');
-  const rootValueId = useId();
   const showCluster = options.cluster.length > 0 || controller.query.cluster.length > 0;
   const showNamespace = options.namespace.length > 0 || controller.query.namespace.length > 0;
   const roots = rootEntries(controller.query.roots);
@@ -112,28 +123,30 @@ export function SankeyScopeBar({ options, controller, k8sNodeHint = [] }: Readon
               const kind = next[0];
               if (kind === 'ontap_cluster' || kind === 'node' || kind === 'aggr' || kind === 'svm' || kind === 'pod') {
                 setRootKind(kind);
+                // A pending value belongs to the kind it was picked under: `aggr1` committed
+                // as a `pod` root is a 400, and `svm_demo` committed as an `aggr` root is a
+                // silently empty graph. Switching kind therefore drops it rather than
+                // carrying it into a list that does not contain it.
+                setRootValue('');
               }
             }}
             allowCustom={false}
             testId="sankey-root-kind"
           />
-          <div className="flex min-w-[9rem] max-w-[14rem] flex-col gap-1">
-            {/* Same rank and colour as every ScopeSelect's own label, so the row reads as one
-                set of controls rather than a labelled group beside an unlabelled input. */}
-            <label
-              htmlFor={rootValueId}
-              className="text-[10px] font-semibold uppercase tracking-eyebrow text-secondary"
-            >
-              Root value
-            </label>
-            <input
-              id={rootValueId}
-              className="h-8 w-full rounded-md border border-hairline-strong bg-raised px-2 text-xs text-primary"
-              value={rootValue}
-              onChange={(e) => setRootValue(e.currentTarget.value)}
-            />
-          </div>
-          <Button type="submit" size="md">
+          {/* Same dropdown contract as every other control here. It offers the names the
+              current body carries and still takes a typed one, because that body is a
+              projection: it is the whole estate only while no root is applied. */}
+          <ScopeSelect
+            label="Root value"
+            mode="single"
+            options={rootOptions[rootKind]}
+            value={rootValue === '' ? [] : [rootValue]}
+            onChange={(next) => setRootValue(next[0] ?? '')}
+            allowCustom
+            emptyLabel="Select or type"
+            testId="sankey-root-value"
+          />
+          <Button type="submit" size="md" disabled={rootValue === ''}>
             Add
           </Button>
         </form>

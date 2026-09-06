@@ -7,6 +7,8 @@ export {
   hoverPathLinks,
   hoverPathForWrapper,
   kubernetesNodeRoots,
+  rootValueOptions,
+  EMPTY_SANKEY_ROOT_OPTIONS,
   SANKEY_KIND_ORDER,
 } from './deriveSankey';
 export type {
@@ -16,6 +18,7 @@ export type {
   SankeyMode,
   SankeyNode,
   SankeyLinkTier,
+  SankeyRootOptions,
   StorageFlowTier,
 } from './deriveSankey';
 export type { SankeyPodLayout } from './layoutSankey';

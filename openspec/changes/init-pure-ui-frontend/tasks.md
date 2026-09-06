@@ -314,6 +314,21 @@ truth "so DOM, cytoscape, and Sankey stay in lockstep". Specs revised:
 - [x] 28.5 `isNodeStatus` / `STATUS_RANK` / `rankToStatus` move to `shared/constants/colorByStatus.ts` (keyed off `STATUS_COLOR` so a paintable status and a recognised one cannot drift apart) and `normalize.ts` imports them; `WireNodeData.status`'s "PANEL-ONLY, the backend emits no health status field" comment was stale and now describes the fold; Verify: the existing `normalize` and `getStylesheet` suites pass unchanged
 - [x] 28.6 Fixture: `SHOWCASE_STORAGE_GRAPH` gains `status` on every kind the backend judges, matching `SHOWCASE_GRAPH` where the ids overlap and the NetApp tiers' own `health` / `alerts` otherwise, with all three bands populated; the SVMs stay unjudged; Verify: the e2e asserts `aggr1` warning and `ontap-prod-02` critical against the demo fixture, so demo mode exercises the border rather than drawing every card green
 
+## 29. The root value stops being free text
+
+The root value was the one control in either bar with no list behind it, on the grounds
+that nothing enumerates aggregate / SVM / ONTAP-cluster names — `endpoints.labelValues`
+reaches only the store holding `kube_pod_info`, which carries none of them, and its `pod`
+values are bare where a pod root is `<namespace>/<pod>`. The drawn body does carry all of
+them, and with no root applied it is the whole estate, so it is the list. It narrows to the
+projection once a root is applied, which is why the control keeps taking a typed value:
+the dropdown is a shortcut for names on screen, never the authority on what exists. Specs
+revised: `storage-flow-sankey` (root selector), `graph-filters` (the trigger's empty text).
+
+- [x] 29.1 `rootValueOptions(elements)` returns one bucket per root kind off the drawn body: `ontap_cluster` from the NetApp nodes' label, `aggr` / `svm` by kind, `node` from BOTH NetApp controllers and Kubernetes nodes, `pod` as `<namespace>/<pod>` with a namespace-less pod offered not at all; each sorted and deduped; Verify: unit tests assert the fixture's four buckets by value, that `node` carries both sides, that every `pod` entry is namespaced, and that a body with none of a kind yields an empty bucket rather than a partial value
+- [x] 29.2 `ScopeSelect` gains an optional `emptyLabel` (default `All`): `All` is right for a narrowing dimension, where empty matches everything, and wrong for a control naming ONE thing to add; Verify: the existing filter-bar and dropdown suites pass unchanged, and the Sankey's root value trigger reads `Select or type` while empty
+- [x] 29.3 Root value becomes that dropdown (single-select, custom values allowed, options keyed by the selected root kind), `SankeyPage` feeding it from `storage.state.elements`; changing the root kind clears the pending value, and `Add` is disabled while none is pending; Verify: component tests assert the per-kind list, that a kind switch clears the pending value and re-lists, that a typed value the body omits is still committable, and that the control row membership assertion still holds with the input replaced
+
 ## 17. Overall acceptance
 
 - [x] 17.1 Full-chain verification: on a clean checkout run `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` with everything passing, and unit test coverage reaching 80%
@@ -327,3 +342,4 @@ truth "so DOM, cytoscape, and Sankey stay in lockstep". Specs revised:
 - [x] 17.9 Full-chain re-run after §26 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%, and the Sankey confirmed against the real demo estate to draw at the percentage its control bar reports
 - [x] 17.10 Full-chain re-run after §27 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%, and the Sankey confirmed against the real demo estate to draw the `application` / `namespace` columns and to wrap pods under the `Node` layout
 - [x] 17.11 Full-chain re-run after §28 (`typecheck`, `lint`, `test:ci`, `e2e`, `build`); Verify: CI chain green, and the Sankey confirmed in the browser to open with an aligned scope bar, a folded summary, and warning / critical / normal borders distinguishable on the cards
+- [x] 17.12 Full-chain re-run after §29 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, and the root value dropdown confirmed against the live demo estate to list that estate's own aggregate / SVM / pod names

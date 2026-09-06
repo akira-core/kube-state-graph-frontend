@@ -13,6 +13,7 @@ import {
 import { useFilterOptions } from '../graph-filters';
 import {
   kubernetesNodeRoots,
+  rootValueOptions,
   SankeyScopeBar,
   SankeyView,
   useSankeyQuery,
@@ -185,10 +186,21 @@ export function SankeyPage(): JSX.Element {
     () => (podLayout === 'flat' ? kubernetesNodeRoots(storage.state.elements, controller.query.roots) : []),
     [controller.query.roots, podLayout, storage.state.elements]
   );
+  // Root values are read off the drawn body, not off `endpoints.labelValues`: that endpoint
+  // reaches only the store holding `kube_pod_info`, which carries none of the NetApp label
+  // names at all. See `rootValueOptions` for what that costs once a root is applied.
+  const rootOptions = useMemo(() => rootValueOptions(storage.state.elements), [storage.state.elements]);
 
   return (
     <>
-      {!focusMode && <SankeyScopeBar options={identity} controller={controller} k8sNodeHint={k8sNodeHint} />}
+      {!focusMode && (
+        <SankeyScopeBar
+          options={identity}
+          controller={controller}
+          rootOptions={rootOptions}
+          k8sNodeHint={k8sNodeHint}
+        />
+      )}
       <main className="relative min-h-0 flex-1">
         <SankeyView
           elements={storage.state.elements}

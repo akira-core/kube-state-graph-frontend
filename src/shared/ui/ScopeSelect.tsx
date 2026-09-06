@@ -23,6 +23,13 @@ export interface ScopeSelectProps {
   onChange: (next: string[]) => void;
   allowCustom: boolean;
   optionLabel?: (value: string) => string;
+  /**
+   * Trigger text when nothing is selected. Defaults to `All`, which reads correctly for a
+   * narrowing dimension — an empty one matches everything. A control that is not a
+   * narrowing (the Sankey's pending root value) needs its own word: `All` there would
+   * claim every root at once, which is the opposite of what an empty pending value means.
+   */
+  emptyLabel?: string;
   testId?: string;
 }
 
@@ -82,6 +89,7 @@ export function ScopeSelect({
   onChange,
   allowCustom,
   optionLabel,
+  emptyLabel = 'All',
   testId,
 }: Readonly<ScopeSelectProps>): JSX.Element {
   const listId = useId();
@@ -255,7 +263,7 @@ export function ScopeSelect({
             onKeyDown={onTriggerKeyDown}
           >
             {nothingSelected ? (
-              <span className="px-0.5 text-secondary">All</span>
+              <span className="px-0.5 text-secondary">{emptyLabel}</span>
             ) : (
               <span className="flex min-w-0 flex-wrap items-center gap-1">
                 {visiblePills.map((item) => (
