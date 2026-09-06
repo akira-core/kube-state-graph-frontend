@@ -49,8 +49,12 @@ export function GraphPage(): JSX.Element {
       return;
     }
     setLocateNodeId(state.locate);
-    void navigate('.', { replace: true, state: {} });
-  }, [location.state, navigate]);
+    // Clear the navigation state in place. A bare `navigate('.')` resolves to the pathname
+    // ALONE — react-router takes no search from a relative string — which would drop the
+    // page's whole query (scope plus `from`/`to`) and hand `useUrlScope` an empty URL to
+    // re-parse, silently resetting the filters this page was deep-linked with.
+    void navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: {} });
+  }, [location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     setStatus({

@@ -1,6 +1,15 @@
 import * as Popover from '@radix-ui/react-popover';
 import { clsx } from 'clsx';
-import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from 'react';
+import {
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react';
 
 import { CloseIcon } from './icons';
 
@@ -214,6 +223,14 @@ export function ScopeSelect({
     commit(selected.filter((v) => v !== item));
   };
 
+  // The × sits INSIDE the Popover trigger, and Radix toggles the popover from `click`.
+  // Preventing the pointerdown does not cancel the click that follows it, so without this
+  // every pill removal also pops the dropdown open over the bar.
+  const swallowPillClick = (e: MouseEvent<HTMLSpanElement>): void => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const openChange = (next: boolean): void => {
     setOpen(next);
     if (next) {
@@ -258,6 +275,7 @@ export function ScopeSelect({
                       tabIndex={-1}
                       className="rounded p-0.5 text-muted hover:bg-raised-hover hover:text-primary"
                       onPointerDown={(e) => removePill(item, e)}
+                      onClick={swallowPillClick}
                     >
                       <CloseIcon size={10} />
                     </span>

@@ -70,7 +70,15 @@ export function FilterBar({ filters, options, onValues, onPrune, onClear }: Read
           options={['true', 'false']}
           optionLabel={pruneLabel}
           value={[filters.prune ? 'true' : 'false']}
-          onChange={(next) => onPrune(next[0] !== 'false')}
+          // Projection is never empty — it is one of two positions, not a narrowing. An
+          // empty commit (the pill's ×) must be a no-op: read as `next[0] !== 'false'` it
+          // would silently snap `Full inventory` back to the pruned traffic graph, which
+          // draws a fraction of the pods while the control claims nothing was cleared.
+          onChange={(next) => {
+            if (next.length > 0) {
+              onPrune(next[0] !== 'false');
+            }
+          }}
           allowCustom={false}
           testId="filter-prune"
         />

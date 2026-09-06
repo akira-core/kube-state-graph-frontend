@@ -92,6 +92,14 @@ export function useViewTimeRange(): {
 
   const setAbsolute = useCallback(
     (fromUnixSeconds: number, toUnixSeconds: number) => {
+      // An inverted (or empty) window is refused rather than stored. `parseTimeQuery`
+      // rejects `from >= to`, so storing one writes a URL that cannot be read back: a
+      // reload or a shared link silently reverts to the stored range, while every request
+      // in the meantime goes out with `start >= end`. The two datetime inputs edit one
+      // endpoint at a time, so this is reachable by simply moving `from` past `to`.
+      if (fromUnixSeconds >= toUnixSeconds) {
+        return;
+      }
       persist({ kind: 'absolute', window: { fromUnixSeconds, toUnixSeconds } });
     },
     [persist]
@@ -107,6 +115,11 @@ export function useViewTimeRange(): {
     [persist]
   );
 
+  // Anchored to the range SELECTION, not to render time. Resolving inline re-read
+  // Date.now() on every render, so a relative window handed a fresh object with an
+  // advancing `toUnixSeconds` downstream — which churns GraphView's memoized props and
+  // re-fires the /dashboard prefetch on every data refresh (node-dashboard-url-button
+  // spec: a pure data refresh over the same node/attributes/time range MUST NOT refetch).
   const resolved = useMemo(() => resolveViewTimeRange(range), [range]);
 
   return { range, resolved, setRelative, setAbsolute, setAround };

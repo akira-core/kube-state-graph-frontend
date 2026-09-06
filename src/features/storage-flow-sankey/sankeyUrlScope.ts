@@ -7,19 +7,6 @@ import {
 
 import type { SankeyMode } from './deriveSankey';
 
-export const SANKEY_SCOPE_KEYS = [
-  'az',
-  'env',
-  'ontap_cluster',
-  'node',
-  'aggr',
-  'svm',
-  'pod',
-  'cluster',
-  'namespace',
-  'mode',
-] as const;
-
 export const SANKEY_ROOT_KINDS: ReadonlyArray<keyof StorageGraphRoots> = [
   'ontap_cluster',
   'node',

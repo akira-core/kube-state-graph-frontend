@@ -1,7 +1,4 @@
-import { DEFAULT_GRAPH_FILTERS, type GraphFilters } from '../../shared/types/graphFilters';
-
-/** Canonical Graph query keys, excluding the shared `from`/`to`. */
-export const GRAPH_SCOPE_KEYS = ['cluster', 'az', 'env', 'namespace', 'edge_type', 'prune'] as const;
+import type { GraphFilters } from '../../shared/types/graphFilters';
 
 /**
  * Graph page scope. Unknown keys are ignored here; the writer strips them.
@@ -50,15 +47,4 @@ export function serializeGraphScope(filters: GraphFilters): Array<[string, strin
     out.push(['prune', 'false']);
   }
   return out;
-}
-
-export function graphScopeIsDefault(filters: GraphFilters): boolean {
-  return (
-    filters.cluster.length === 0 &&
-    filters.az.length === 0 &&
-    filters.env.length === 0 &&
-    filters.namespace.length === 0 &&
-    filters.edgeType.length === 0 &&
-    filters.prune === DEFAULT_GRAPH_FILTERS.prune
-  );
 }
