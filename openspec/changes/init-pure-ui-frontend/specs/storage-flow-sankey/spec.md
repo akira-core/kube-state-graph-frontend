@@ -540,14 +540,16 @@ The Sankey view MUST read the app shell's theme tokens and render correctly in b
 
 ### Requirement: Sizing and container resize
 
-The Sankey's SVG MUST fill the view area the app shell provides (both width and height follow the container); its `viewBox` is the **intrinsic coordinates** computed by the layout, fitted proportionally and centred with the meet semantics of `preserveAspectRatio`. A container size change MUST NOT trigger a re-layout: the intrinsic coordinates of nodes and links MUST stay unchanged, refitted only by the viewBox; during it the app MUST NOT lose the hover highlight state, the mode selector value, the `az` / `env` / root / `cluster` / `namespace` selections or the current zoom / pan viewport. The content does not produce horizontal scrolling outside the view area because of a size change.
+The Sankey's SVG MUST fill the view area the app shell provides (both width and height follow the container), and MUST carry **no `viewBox`**: one SVG user unit is one CSS pixel, so the `<g>` viewport transform below is the only thing that scales the diagram. A `viewBox` of the layout's intrinsic size would map the content onto the element a _second_ time, and the two mappings compose — the transform would draw at its own scale times the viewBox factor, squaring "fit to window" (2096x442 of content in a 756px-wide area draws at 13% while the readout says 36%), shortening every pan by that factor, and pulling wheel zoom off the pointer. Fitting belongs to the transform alone; that is what makes the pixel-space contract of the zoom / pan requirements below true.
 
-**All** nodes (including the orphaned cards of no-flow roots) MUST fall within the intrinsic coordinate frame computed by the layout: no-flow nodes hang below the flow chart of the same tier, and the layout MUST count them into the intrinsic height, otherwise the viewBox cannot fit them — a node outside the frame is indistinguishable from "the backend did not return that node".
+A container size change MUST NOT trigger a re-layout: the intrinsic coordinates of nodes and links MUST stay unchanged, and the viewport MUST be preserved rather than refitted; during it the app MUST NOT lose the hover highlight state, the mode selector value, the `az` / `env` / root / `cluster` / `namespace` selections or the current zoom / pan viewport. The content does not produce horizontal scrolling outside the view area because of a size change.
+
+**All** nodes (including the orphaned cards of no-flow roots) MUST fall within the intrinsic coordinate frame computed by the layout: no-flow nodes hang below the flow chart of the same tier, and the layout MUST count them into the intrinsic height, otherwise "fit to window" cannot fit them — it scales by that intrinsic size, and a node outside the frame is indistinguishable from "the backend did not return that node".
 
 #### Scenario: Window resize
 
 - **WHEN** the user resizes the window width from 1400px to 900px
-- **THEN** the chart shrinks proportionally and falls entirely within the view area, the layout function is not called (the nodes' intrinsic coordinates are exactly the same as before), and the values of the mode selector and all selectors are unchanged
+- **THEN** the chart keeps the viewport it was drawn at (the same zoom factor is still reported, and no automatic re-fit narrows it), the layout function is not called (the nodes' intrinsic coordinates are exactly the same as before), and the values of the mode selector and all selectors are unchanged. Content the narrower area no longer covers is reached by panning or by "fit to window" — a resize MUST NOT move a viewport the user established
 
 #### Scenario: Hover during resize
 

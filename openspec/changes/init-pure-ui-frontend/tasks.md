@@ -248,6 +248,27 @@ requirements whose branches no test reached.
 - [x] 25.6 The shared dropdown stops drawing the `All` row when there is nothing for it to empty: with zero options AND no selection a custom-value multi-select shows the search input and (once something is typed) the custom-value row, and no more, as `graph-filters` "No options" requires; a value added afterwards unions into the list and brings `All` back, so the dimension is never a one-way door; Verify: `ScopeSelect.test.tsx` asserts the empty popover has no `option` role at all, and that `All` returns and clears once a custom value is the only entry
 - [x] 25.5 `deploy/README.md` and the walkthrough follow: az / env are custom-value dropdowns, not free-text fields; the walkthrough gains rows for the locate rejections, the demo-mode exemption and the still-rendering filter bar, and names `useViewTimeRange.test.tsx` by its real extension; Verify: `rg 'free-text'` finds no claim about az / env, and every walkthrough row names a file that exists
 
+## 26. The Sankey drew at fit squared
+
+Running the demo estate through the front door showed the Sankey at 13% jammed into the
+top-left of its area while the control bar read 36%. Two specs required two different
+mappings and the implementation honoured both: "Sizing and container resize" made the SVG's
+`viewBox` the layout's intrinsic size with `preserveAspectRatio` meet-fit, while "Zoom and
+pan of the chart area" made the `<g>` transform a viewport `useZoomPan` computes entirely in
+CSS pixels (fit centres against the ResizeObserver's measurement, the wheel anchors on
+`clientX - rect.left`, a drag adds raw client deltas, `percent` reports `scale * 100` as a
+1:1 level). The two mappings compose, so every one of those numbers was wrong by the viewBox
+factor — `fit` squared its own scale, pans moved short, and wheel zoom drifted off the
+pointer. Only the scale was visible; the rest read as "the diagram feels sluggish". The
+resolution is the pixel-space one, because it is the contract the zoom / pan requirements
+already state and the only one under which the readout can mean 1:1.
+
+- [x] 26.1 `SankeyChart`'s SVG drops `viewBox` and `preserveAspectRatio`, with a comment naming the double mapping so neither comes back; Verify: `npm run typecheck` and `npm run lint` pass, and the chart draws at the percentage the control bar reports
+- [x] 26.2 `storage-flow-sankey` "Sizing and container resize" requires **no** `viewBox` (one user unit is one CSS pixel, the transform is the only scaling), and its resize scenario asserts a preserved viewport instead of a proportional re-fit; the "all nodes inside the intrinsic frame" rule keeps its force, now anchored on "fit to window" rather than the viewBox; Verify: `openspec validate init-pure-ui-frontend --strict` passes and no spec still requires a `viewBox`
+- [x] 26.3 `app-shell`'s view-area requirement follows: the Sankey resizes without re-layout **and** without re-fit, so the preserved viewport is the rule rather than an exception carved out of a re-fit; Verify: the two specs no longer disagree about what a resize does to the Sankey
+- [x] 26.4 `design.md` states why the absent `viewBox` is load-bearing rather than incidental; Verify: the design note names the pixel-space contract `useZoomPan` depends on
+- [x] 26.5 A regression test asserts the SVG carries no `viewBox`, and that "fit to window" scales the layout to sit inside the measured container while the readout matches the drawn scale; Verify: `SankeyView.test.tsx` fails with the attribute restored and passes without it
+
 ## 17. Overall acceptance
 
 - [x] 17.1 Full-chain verification: on a clean checkout run `npm install && npm run typecheck && npm run lint && npm run fixture:check && npm run test:ci && npm run e2e && npm run build` with everything passing, and unit test coverage reaching 80%
@@ -258,3 +279,4 @@ requirements whose branches no test reached.
 - [x] 17.6 Rerun the full-chain verification after `severity` became optional (including `npm run e2e`); Verify: the whole CI chain green, coverage still reaching 80%, and the fact that `name` is the only required field on an alert row is consistent across the `graph-data-source` and `node-detail` specs
 - [x] 17.7 Full-chain re-run after §24 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%
 - [x] 17.8 Full-chain re-run after §25 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%
+- [x] 17.9 Full-chain re-run after §26 (`typecheck`, `lint`, `fixture:check`, `test:ci`, `e2e`, `build`); Verify: CI chain green, coverage ≥ 80%, and the Sankey confirmed against the real demo estate to draw at the percentage its control bar reports

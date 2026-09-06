@@ -125,12 +125,19 @@ export function SankeyChart({
       onKeyDown={onKeyDown}
       {...hostProps}
     >
-      <svg
-        className="h-full w-full"
-        data-testid="sankey-svg"
-        preserveAspectRatio="xMidYMid meet"
-        viewBox={`0 0 ${layout.width} ${layout.height}`}
-      >
+      {/*
+        Deliberately NO `viewBox`, and nothing else may add one. Without it an SVG user
+        unit is one CSS pixel, which is the coordinate space `useZoomPan` is written in
+        throughout: `fitViewport` centres with pixel offsets against the ResizeObserver's
+        measurement, the wheel anchor is `clientX - rect.left`, a drag adds raw
+        `clientX`/`clientY` deltas to `tx`/`ty`, and `percent` reports `scale * 100` as a
+        1:1 zoom level. A `viewBox` of the layout's own size (which this had) maps content
+        onto the element a SECOND time, so `<g transform=scale(s)>` draws at s x the
+        viewBox factor: `fit` squared its own scale — 2096x442 content in a 756px-wide
+        box drew at 13%, not the 36% the control bar claimed — while pans moved short and
+        the wheel drifted away from the cursor. Fitting belongs to the transform alone.
+      */}
+      <svg className="h-full w-full" data-testid="sankey-svg">
         <defs>
           <linearGradient id="ksg-sankey-grad-read" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stopColor={tokens.sankey.read} />

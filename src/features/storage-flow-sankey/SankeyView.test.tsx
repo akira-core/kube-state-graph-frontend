@@ -6,6 +6,8 @@ import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGra
 import { normalizeGraph } from '../graph-data';
 import { ThemeProvider } from '../theme';
 
+import { deriveSankey } from './deriveSankey';
+import { layoutSankey } from './layoutSankey';
 import { SankeyView, type SankeyViewProps } from './SankeyView';
 
 const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
@@ -44,6 +46,18 @@ function baseProps(overrides: Overrides = {}): SankeyViewProps {
     onLocateNode: vi.fn(),
     ...overrides,
   };
+}
+
+/** The `scale(...)` factor the viewport transform is actually drawing at. */
+function scaleOf(svg: HTMLElement): number {
+  const transform = svg.querySelector('g')?.getAttribute('transform') ?? '';
+  return Number(/scale\(([-\d.e+]+)\)/.exec(transform)?.[1]);
+}
+
+/** The layout's own size, in the same units the transform is applied in. */
+function layoutSize(): { w: number; h: number } {
+  const { width, height } = layoutSankey(deriveSankey(elements, 'both'), ['#000', '#111', '#222', '#333', '#444']);
+  return { w: width, h: height };
 }
 
 function renderSankey(overrides: Overrides = {}): { props: SankeyViewProps; unmount: () => void } {
@@ -238,6 +252,31 @@ describe('SankeyView', () => {
     expect(screen.queryByTestId('sankey-zoom-controls')).not.toBeInTheDocument();
     // mode selector stays operable during the empty state
     expect(screen.getByRole('radio', { name: /both/i })).not.toBeDisabled();
+  });
+
+  it('carries no viewBox, so the transform is the only thing scaling the diagram', () => {
+    renderSankey();
+    const svg = screen.getByTestId('sankey-svg');
+
+    // The whole invariant in one attribute. `useZoomPan` is written in CSS pixels
+    // end to end — fit centres against the ResizeObserver's measurement, the wheel
+    // anchors on `clientX - rect.left`, a drag adds raw client deltas, and `percent`
+    // reports `scale * 100` as a 1:1 level. A viewBox maps the layout onto the element
+    // a second time, so `<g scale(s)>` would draw at s x that factor: fit squared its
+    // own scale (13% drawn while the bar read 36%), pans moved short, and the wheel
+    // drifted off the cursor. jsdom does no layout, so the second mapping is not
+    // measurable here — its presence is, and that is what must never come back.
+    expect(svg).not.toHaveAttribute('viewBox');
+
+    // And the numbers the transform carries are container pixels: fit scales the
+    // layout to sit inside the 800x480 box `renderSankey` provides, not past it.
+    const host = screen.getByTestId('sankey-chart-host');
+    fireEvent.keyDown(host, { key: '0' });
+    const fitted = scaleOf(svg);
+    expect(fitted).toBeGreaterThan(0);
+    expect(layoutSize().w * fitted).toBeLessThanOrEqual(800 + 0.5);
+    expect(layoutSize().h * fitted).toBeLessThanOrEqual(480 + 0.5);
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent(`${Math.round(fitted * 100)}%`);
   });
 
   it('resets to 1:1 on the "1" key and does not intercept it when a form control has focus', () => {

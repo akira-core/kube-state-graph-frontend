@@ -11,8 +11,8 @@ import {
 } from './deriveSankey';
 
 // Intrinsic content-space geometry. These are independent of the container's pixel size —
-// resize re-fits the viewBox, it never re-runs this layout (see `storage-flow-sankey`
-// "尺寸與容器 resize").
+// a resize moves only the viewport transform (and only when the user asks it to), it never
+// re-runs this layout (see `storage-flow-sankey` "尺寸與容器 resize").
 export const CARD_W = 208;
 export const LEAF_W = 160;
 export const HEADER_H = 40;
