@@ -102,17 +102,17 @@ describe('ScopeSelect', () => {
     const onChange = vi.fn();
     render(
       <ScopeSelect
-        label="Edge type"
-        mode="multi"
-        options={['pod-calls-pod']}
-        value={[]}
+        label="Root kind"
+        mode="single"
+        options={['ontap_cluster', 'node', 'aggr', 'svm', 'pod']}
+        value={['aggr']}
         onChange={onChange}
         allowCustom={false}
-        testId="filter-edgeType"
+        testId="sankey-root-kind"
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Edge type' }));
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'bogus-edge' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'sideways' } });
     expect(screen.queryByRole('option', { name: /Use "/ })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
     expect(onChange).not.toHaveBeenCalled();

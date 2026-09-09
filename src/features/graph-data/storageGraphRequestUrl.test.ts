@@ -58,7 +58,6 @@ describe('buildStorageGraphRequestUrl', () => {
     expect(q.get('end')).toBe(String(NOW_S));
     expect(q.getAll('az')).toEqual(['local-a']);
     expect(q.getAll('env')).toEqual(['demo']);
-    expect(q.has('edge_type')).toBe(false);
     expect(q.has('prune')).toBe(false);
   });
 
@@ -92,7 +91,7 @@ describe('buildStorageGraphRequestUrl', () => {
 
   it('omits empty optional lists rather than sending blank values', () => {
     const q = params(buildStorageGraphRequestUrl('/api/v1/storage-graph', RANGE, query(), NOW_MS)!);
-    for (const key of ['cluster', 'namespace', 'ontap_cluster', 'node', 'aggr', 'svm', 'pod', 'edge_type', 'prune']) {
+    for (const key of ['cluster', 'namespace', 'ontap_cluster', 'node', 'aggr', 'svm', 'pod', 'prune']) {
       expect(q.has(key)).toBe(false);
     }
   });

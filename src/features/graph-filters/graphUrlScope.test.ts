@@ -35,6 +35,14 @@ describe('graph URL scope', () => {
     expect(buildSearchString(serializeGraphScope(filters), time)).toBe('namespace=shop&from=now-1h&to=now');
   });
 
+  it('ignores a legacy edge_type and strips it on the next write', () => {
+    const incoming = parse('namespace=shop&edge_type=pod-calls-pod&from=now-1h&to=now');
+    const filters = parseGraphScope(incoming);
+    expect(filters).toEqual({ ...DEFAULT_GRAPH_FILTERS, namespace: ['shop'] });
+    const time = parseTimeQuery(incoming) ?? { kind: 'relative' as const, window: '24h' as const };
+    expect(buildSearchString(serializeGraphScope(filters), time)).toBe('namespace=shop&from=now-1h&to=now');
+  });
+
   it('keeps an unlisted namespace from the URL', () => {
     expect(parseGraphScope(parse('namespace=ghost')).namespace).toEqual(['ghost']);
   });

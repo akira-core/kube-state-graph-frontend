@@ -76,7 +76,6 @@ In-page changes replace the current history entry. Nav links go to the bare path
 | Parameter                           | Meaning                                                        | Default          |
 | ----------------------------------- | -------------------------------------------------------------- | ---------------- |
 | `cluster`, `az`, `env`, `namespace` | Repeated keys = OR within a dimension                          | omitted (all)    |
-| `edge_type`                         | Edge-type filter; no custom values                             | omitted          |
 | `prune`                             | `false` = full inventory. Default traffic graph is not written | omitted (`true`) |
 
 ### `/sankey`

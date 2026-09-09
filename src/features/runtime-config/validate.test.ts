@@ -147,14 +147,16 @@ describe('validateConfig', () => {
     expect(result.ok && result.config.endpoints.labelValues).toBeUndefined();
   });
 
-  it('accepts the edge-type catalogue endpoint', () => {
+  it('keeps a deployment that still carries the withdrawn edgeTypes key working', () => {
     const result = validateConfig({ endpoints: { graph: '/api/v1/graph', edgeTypes: '/api/v1/edge-types' } });
-    expect(result.ok && result.config.endpoints.edgeTypes).toBe('/api/v1/edge-types');
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.warnings).toEqual(['endpoints.edgeTypes']);
+    expect(result.ok && Object.hasOwn(result.config.endpoints, 'edgeTypes')).toBe(false);
   });
 
-  it('does not warn about labelValues or edgeTypes as unknown endpoint keys', () => {
+  it('does not warn about labelValues as an unknown endpoint key', () => {
     const result = validateConfig({
-      endpoints: { graph: '/api/v1/graph', labelValues: '/metrics-api', edgeTypes: '/api/v1/edge-types' },
+      endpoints: { graph: '/api/v1/graph', labelValues: '/metrics-api' },
     });
     expect(result.ok && result.warnings).toEqual([]);
   });

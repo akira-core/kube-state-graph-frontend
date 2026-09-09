@@ -12,7 +12,6 @@ const OPTIONS: FilterOptions = {
   az: ['local-a', 'local-b'],
   env: ['demo'],
   namespace: ['shop', 'platform'],
-  edgeType: ['pod-calls-pod', 'pvc-to-netapp-aggr'],
   problems: [],
 };
 
@@ -32,9 +31,16 @@ describe('FilterBar', () => {
 
   it('offers a control for every dimension the backend narrows on', () => {
     renderBar();
-    for (const label of ['Cluster', 'AZ', 'Env', 'Namespace', 'Edge type', 'Projection']) {
+    for (const label of ['Cluster', 'AZ', 'Env', 'Namespace', 'Projection']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
+  });
+
+  it('offers no edge-type control, because the backend narrows on no such parameter', () => {
+    renderBar();
+    expect(screen.queryByRole('button', { name: 'Edge type' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('filter-edgeType')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^(Cluster|AZ|Env|Namespace)$/ })).toHaveLength(4);
   });
 
   it('offers the raw cluster name it was given, not a composed identity', () => {
@@ -91,19 +97,29 @@ describe('FilterBar', () => {
     expect(screen.getByTestId('filter-problems').textContent).toContain('1 filter source');
   });
 
-  it('accepts a custom identity value and refuses one on edge type', () => {
+  it('accepts a custom value on every list dimension', () => {
     const { onValues } = renderBar();
-    fireEvent.click(screen.getByRole('button', { name: 'Cluster' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Search Cluster' }), { target: { value: 'staging' } });
-    fireEvent.click(screen.getByRole('option', { name: 'Use "staging"' }));
-    expect(onValues).toHaveBeenCalledWith('cluster', ['staging']);
+    for (const [label, dimension] of [
+      ['Cluster', 'cluster'],
+      ['AZ', 'az'],
+      ['Env', 'env'],
+      ['Namespace', 'namespace'],
+    ] as const) {
+      onValues.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      fireEvent.change(screen.getByRole('combobox', { name: `Search ${label}` }), { target: { value: 'typed' } });
+      fireEvent.click(screen.getByRole('option', { name: 'Use "typed"' }));
+      expect(onValues).toHaveBeenCalledWith(dimension, ['typed']);
+    }
+  });
 
-    onValues.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: 'Edge type' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Search Edge type' }), { target: { value: 'bogus-edge' } });
+  it('refuses a custom value on the projection, which is a closed set of positions', () => {
+    const { onPrune } = renderBar();
+    fireEvent.click(screen.getByRole('button', { name: 'Projection' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Projection' }), { target: { value: 'sideways' } });
     expect(screen.queryByRole('option', { name: /Use "/ })).not.toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search Edge type' }), { key: 'Enter' });
-    expect(onValues).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search Projection' }), { key: 'Enter' });
+    expect(onPrune).not.toHaveBeenCalled();
   });
 
   it('summarises pill overflow on the trigger', () => {

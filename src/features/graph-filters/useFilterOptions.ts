@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 
 import { IDENTITY_DIMENSIONS, type IdentityDimension } from '../../shared/types/graphFilters';
 
-import { fetchEdgeTypes } from './edgeTypes';
 import { fetchLabelValues } from './labelValues';
 
 export interface FilterOptions {
@@ -10,26 +9,28 @@ export interface FilterOptions {
   az: string[];
   env: string[];
   namespace: string[];
-  edgeType: string[];
   /** One line per dimension that could not be enumerated. Empty when everything loaded. */
   problems: string[];
 }
 
-const EMPTY: FilterOptions = { cluster: [], az: [], env: [], namespace: [], edgeType: [], problems: [] };
+const EMPTY: FilterOptions = { cluster: [], az: [], env: [], namespace: [], problems: [] };
 
 /**
  * Enumerate what each control may offer.
  *
- * Loaded once per configured source rather than per graph request: the option lists
- * track the pod INVENTORY and the backend's registry, neither of which follows the
- * projection or the current selection. Rebuilding them per request would shrink the
- * namespace list to whatever the pruned graph happened to contain, and a viewer could
- * not then widen the filter back out.
+ * Loaded once per configured source rather than per graph request: the option list
+ * tracks the pod INVENTORY, which does not follow the projection or the current
+ * selection. Rebuilding it per request would shrink the namespace list to whatever the
+ * pruned graph happened to contain, and a viewer could not then widen the filter back
+ * out.
+ *
+ * The pod inventory is the only source. The backend withdrew its edge-type catalogue
+ * along with `?edge_type=`, so there is no second thing to enumerate.
  *
  * A source that fails leaves its control empty and records why. It never rejects: the
  * graph load must not depend on a dropdown.
  */
-export function useFilterOptions(labelValuesBase: string | undefined, edgeTypesUrl: string | undefined): FilterOptions {
+export function useFilterOptions(labelValuesBase: string | undefined): FilterOptions {
   const [options, setOptions] = useState<FilterOptions>(EMPTY);
 
   useEffect(() => {
@@ -56,30 +57,20 @@ export function useFilterOptions(labelValuesBase: string | undefined, edgeTypesU
         }
       }
 
-      let edgeType: string[] = [];
-      if (edgeTypesUrl !== undefined && edgeTypesUrl !== '') {
-        const result = await fetchEdgeTypes(edgeTypesUrl);
-        if (result.ok) {
-          edgeType = result.types;
-        } else {
-          problems.push(result.problem);
-        }
-      }
-
       if (!cancelled && !controller.signal.aborted) {
-        setOptions({ ...identity, edgeType, problems });
+        setOptions({ ...identity, problems });
       }
     }
 
     void load().catch(() => {
-      // fetchLabelValues / fetchEdgeTypes only reject on abort, which is not a failure.
+      // fetchLabelValues only rejects on abort, which is not a failure.
     });
 
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [labelValuesBase, edgeTypesUrl]);
+  }, [labelValuesBase]);
 
   return options;
 }

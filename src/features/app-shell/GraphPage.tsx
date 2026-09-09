@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
-import { DEFAULT_GRAPH_FILTERS, type ListDimension } from '../../shared/types/graphFilters';
+import { DEFAULT_GRAPH_FILTERS, type IdentityDimension } from '../../shared/types/graphFilters';
 import { buildGraphRequestUrl, graphRequestKey, useGraphLoader } from '../graph-data';
 import { FilterBar, useFilterOptions } from '../graph-filters';
 import { parseGraphScope, serializeGraphScope } from '../graph-filters/graphUrlScope';
@@ -19,10 +19,7 @@ export function GraphPage(): JSX.Element {
     !config.demoMode,
     DEFAULT_GRAPH_FILTERS
   );
-  const filterOptions = useFilterOptions(
-    config.demoMode ? undefined : config.endpoints.labelValues,
-    config.demoMode ? undefined : config.endpoints.edgeTypes
-  );
+  const filterOptions = useFilterOptions(config.demoMode ? undefined : config.endpoints.labelValues);
   const graphEndpoint = config.demoMode ? undefined : config.endpoints.graph;
   const makeUrl = useCallback(
     () => (graphEndpoint === undefined ? undefined : buildGraphRequestUrl(graphEndpoint, time.range, filters)),
@@ -71,7 +68,7 @@ export function GraphPage(): JSX.Element {
   }, [setStatus]);
 
   const setValues = useCallback(
-    (dimension: ListDimension, values: string[]) => {
+    (dimension: IdentityDimension, values: string[]) => {
       setFilters((prev) => ({ ...prev, [dimension]: values }));
     },
     [setFilters]

@@ -8,11 +8,13 @@ export type ValidateResult = ValidateOk | ValidateErr;
 
 const KNOWN_ROOT_KEYS = new Set(['endpoints', 'demoMode', 'refreshIntervalSeconds', 'defaultLayout', 'theme']);
 
+// `edgeTypes` is deliberately absent: the backend withdrew `/v1/edge-types` along with
+// `?edge_type=`, so a document still carrying the key falls through to the unknown-key
+// warning rather than configuring anything.
 const KNOWN_ENDPOINT_KEYS = new Set([
   'graph',
   'storageGraph',
   'labelValues',
-  'edgeTypes',
   'codeChanges',
   'configChanges',
   'dashboard',
@@ -125,7 +127,6 @@ export function validateConfig(input: unknown): ValidateResult {
         'graph',
         'storageGraph',
         'labelValues',
-        'edgeTypes',
         'codeChanges',
         'configChanges',
         'dashboard',
