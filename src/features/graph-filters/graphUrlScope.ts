@@ -1,7 +1,9 @@
 import type { GraphFilters } from '../../shared/types/graphFilters';
 
 /**
- * Graph page scope. Unknown keys are ignored here; the writer strips them.
+ * Graph page scope. Unknown keys are ignored here; the writer strips them. A legacy
+ * `edge_type` is one of those unknown keys — the backend withdrew the parameter, so the
+ * link degrades to the unfiltered view rather than carrying a selection nothing honours.
  * `prune` is true unless the URL carries the literal `false`.
  */
 export function parseGraphScope(params: URLSearchParams): GraphFilters {
@@ -20,7 +22,6 @@ export function parseGraphScope(params: URLSearchParams): GraphFilters {
     az: params.getAll('az'),
     env: params.getAll('env'),
     namespace: params.getAll('namespace'),
-    edgeType: params.getAll('edge_type'),
     prune,
   };
 }
@@ -39,9 +40,6 @@ export function serializeGraphScope(filters: GraphFilters): Array<[string, strin
   }
   for (const value of filters.namespace) {
     out.push(['namespace', value]);
-  }
-  for (const value of filters.edgeType) {
-    out.push(['edge_type', value]);
   }
   if (!filters.prune) {
     out.push(['prune', 'false']);

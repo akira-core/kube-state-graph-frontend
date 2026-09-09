@@ -2,8 +2,7 @@
  * The dimensions `GET /v1/graph` narrows on, as the front door holds them.
  *
  * Field names are the FRONT END's. `buildGraphRequestUrl` is the single place they
- * become the backend's query parameters, which is where `edgeType` becomes `edge_type`
- * — the same one-place rename the wire types use for the response direction.
+ * become the backend's query parameters.
  *
  * Every identity dimension is a list because the backend ORs repeated values within one
  * parameter name and ANDs across names.
@@ -13,7 +12,6 @@ export interface GraphFilters {
   az: string[];
   env: string[];
   namespace: string[];
-  edgeType: string[];
   /**
    * The backend's `prune`. True keeps only workload sitting on a connectivity edge; it
    * is the backend's own default and the front door's, so the first thing a viewer sees
@@ -23,10 +21,11 @@ export interface GraphFilters {
   prune: boolean;
 }
 
-/** The four dimensions whose options are read from the pod inventory. */
+/**
+ * The four dimensions whose options are read from the pod inventory — and, since the
+ * backend withdrew `?edge_type=`, every list dimension the filter bar has.
+ */
 export type IdentityDimension = 'cluster' | 'az' | 'env' | 'namespace';
-
-export type ListDimension = IdentityDimension | 'edgeType';
 
 export const IDENTITY_DIMENSIONS: readonly IdentityDimension[] = ['cluster', 'az', 'env', 'namespace'];
 
@@ -35,6 +34,5 @@ export const DEFAULT_GRAPH_FILTERS: GraphFilters = {
   az: [],
   env: [],
   namespace: [],
-  edgeType: [],
   prune: true,
 };

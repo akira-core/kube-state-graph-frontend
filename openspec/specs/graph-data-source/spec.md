@@ -60,8 +60,8 @@ On each fetch to `endpoints.graph`, the app SHALL assemble query parameters from
 
 - `start` / `end`: MUST be resolved from the view time range to Unix seconds **at send time** and MUST always be sent. A relative window (such as `6h`) MUST NOT be frozen to fixed values at selection time — each request re-reads the clock, otherwise the window stops moving, eventually falls outside the store's retention, and the backend returns an empty graph indistinguishable from a "broken pipeline".
 - `prune`: MUST always be sent as `true` / `false` (even at the default value), so that a captured request can attest its own projection.
-- `cluster` / `az` / `env` / `namespace` / `edge_type`: each dimension is a string list, sent as a **repeated parameter of the same name** when non-empty (the backend ORs within a name and ANDs across parameters); an empty list MUST NOT send that parameter at all.
-- Parameters beyond the above MUST NOT be sent. The conversion from frontend field name to parameter name (`edgeType` → `edge_type`) MUST happen in this one place only.
+- `cluster` / `az` / `env` / `namespace`: each dimension is a string list, sent as a **repeated parameter of the same name** when non-empty (the backend ORs within a name and ANDs across parameters); an empty list MUST NOT send that parameter at all.
+- Parameters beyond the above MUST NOT be sent. In particular `edge_type` MUST NOT be sent: the backend no longer supports it and ignores unknown parameters rather than rejecting them, so a request carrying it would claim a narrowing that never happens.
 
 A change of **selection** (time-range option, any filter dimension, `prune`) MUST trigger one refetch; the **clock advancing** by itself MUST NOT trigger any request — the refetch decision MUST be keyed on the selection and not on the assembled URL, otherwise a relative window would produce a different URL on every render and refetch endlessly.
 
@@ -74,8 +74,8 @@ When the backend rejects a request with 400 (such as `missing_start` / `invalid_
 
 #### Scenario: Filters sent as repeated parameters, empty dimensions not sent
 
-- **WHEN** the filters are `cluster: []`, `az: ['zone-a']`, `env: ['prod', 'dev']`, `namespace: []`, `edgeType: ['pod-calls-pod']`, `prune: false`
-- **THEN** the request contains `az=zone-a&env=prod&env=dev&edge_type=pod-calls-pod&prune=false` plus `start` / `end`, and contains no `cluster` or `namespace` parameter at all
+- **WHEN** the filters are `cluster: []`, `az: ['zone-a']`, `env: ['prod', 'dev']`, `namespace: []`, `prune: false`
+- **THEN** the request contains `az=zone-a&env=prod&env=dev&prune=false` plus `start` / `end`, and contains no `cluster`, `namespace` or `edge_type` parameter at all
 
 #### Scenario: Clock advancing triggers no request
 
@@ -99,7 +99,7 @@ Query parameters:
 - `az` / `env`: MUST **each send exactly one value**. The backend answers a missing value with 400 `missing_az` / `missing_env` and a repeated value with 400 `invalid_scope`, so the app MUST **not issue a request** until both are selected, MUST NOT send an empty value, MUST NOT send multiple values, and MUST NOT pick one on its own.
 - `cluster` / `namespace`: optional, repeatable narrowing conditions, sent as repeated parameters of the same name when non-empty.
 - Root selectors: `ontap_cluster` / `node` / `aggr` / `svm` / `pod`, each a repeatable string list, sent as repeated parameters of the same name when non-empty; a `pod` value MUST take the form `<namespace>/<pod-name>` (before sending, the app MUST verify there is exactly one `/` and both segments are non-empty; an invalid value is not sent and the control prompts inline). All empty is equivalent to "the full storage flow of that estate".
-- `edge_type` / `prune` MUST NOT be sent (the backend would ignore them, but sending them would mislead a reader of a captured request).
+- `prune` MUST NOT be sent (the backend would ignore it, but sending it would mislead a reader of a captured request).
 
 Any change to `az` / `env` / root / `cluster` / `namespace` MUST trigger one refetch (while the page is mounted); the source of truth for these selections is the current route's URL query (see `app-shell` and `storage-flow-sankey`); as with the graph request, the clock advancing by itself MUST NOT trigger a request. A backend 400's `reason` MUST be presented verbatim in the error state.
 
@@ -108,7 +108,7 @@ When `demoMode` is `true`, the app SHALL feed a second built-in fixture (`/v1/st
 #### Scenario: First request only once az / env are both present
 
 - **WHEN** the user opens `/sankey?az=zone-a` and `env` is not yet selected
-- **THEN** the app issues no storage-graph request; once the user then selects `env: prod`, the app issues exactly one request whose query string contains `az=zone-a&env=prod` plus `start` / `end`, and contains neither `edge_type` nor `prune`
+- **THEN** the app issues no storage-graph request; once the user then selects `env: prod`, the app issues exactly one request whose query string contains `az=zone-a&env=prod` plus `start` / `end`, and contains no `prune`
 
 #### Scenario: No fetch without entering the Sankey view
 

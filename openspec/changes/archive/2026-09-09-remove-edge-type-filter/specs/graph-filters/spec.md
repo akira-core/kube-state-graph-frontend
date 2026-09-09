@@ -1,8 +1,4 @@
-## Purpose
-
-Defines the graph filtering sent to the backend: a row of filter controls below the nav bar (cluster / AZ / env / namespace and projection), how they become query parameters of `endpoints.graph`, where the options are enumerated from (the label values of the pod inventory), and the behaviour when that option source fails. This capability replaces what Grafana dashboard variables did. The controls are presented with the **dropdown interaction of Grafana dashboard variables** (this contract is also shared by the estate / narrowing selectors of `storage-flow-sankey`), and the selection is synced to the URL query of the current route. It is unrelated to `element-filter` (the visual filtering on the legend): the former decides what the backend returns, the latter only visually refines the graph already returned.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Filter bar and its controls
 
@@ -37,6 +33,74 @@ A value already selected in some dimension (whether from user action or from the
 
 - **WHEN** the user opens `/graph` outside demo mode with every endpoint configured
 - **THEN** the filter bar contains exactly the four identity dropdowns, the Projection control and Clear, with no Edge type control in the DOM, and no request is issued for an edge-type catalogue
+
+### Requirement: Filtering is performed by the backend, not the frontend
+
+The filter selection MUST be sent to `endpoints.graph` as query parameters, and MUST NOT be applied on the frontend to the graph already returned: what is being proven here is precisely that `cluster` / `az` / `env` / `namespace` reach the upstream PromQL as raw label matchers. The parameter mapping is `cluster` / `az` / `env` / `namespace` and `prune`. Repeating the same parameter name means OR; between different parameter names it is AND. A dimension whose list is empty MUST NOT appear in the query string at all; `prune` MUST always be carried (see `graph-data-source`). No graph request MUST carry an `edge_type` parameter, under any selection: the backend no longer supports it and ignores it silently, so sending it would misrepresent a request that narrows nothing.
+
+Changing any filter control MUST refetch `endpoints.graph` with the new selection, and take the same path as "reload": the existing graph stays visible while the request is in flight, the layout is not re-run, and the view state is not reset.
+
+The filter selection MUST be synced to the URL query of the current route (rules in the "view routing" of `app-shell`): the parameter names are the same as those sent to the backend (`cluster` / `az` / `env` / `namespace` / `prune`), multiple values are expressed as repeated keys; a dimension whose list is empty is not written, and `prune` is written only when `false` (the default `true` is not written). Changes update with replace. On page mount the initial selection MUST be read from the URL — **the URL is the source of truth for these selections**; a value the URL provides that is not in the option list MUST still be applied and marked as unlisted (the options may not have loaded yet, the source may have failed, or the value was custom to begin with). An `edge_type` parameter present in the URL MUST be ignored on mount and MUST NOT be written back, which is the established handling of any unknown parameter. The filter selection MUST NOT be written to browser local storage, and MUST NOT be written to the runtime config: an invisible filter applied automatically would present a narrowed estate as the whole of it, exactly the confusion between "there is nothing here" and "nothing is shown here" that the projection control is meant to avoid; a filter in the URL is visible in the address bar and on the controls at the same time, and a clean `/graph` means no filter.
+
+The kind / edge-type display toggles of `element-filter`, the ingress toggle, search, pod-parent mode and collapse state MUST NOT affect any parameter here, and vice versa. The legend's per-edge-type visibility toggles remain a purely client-side refinement of the graph already returned and are unaffected by the removal of the backend `edge_type` parameter.
+
+#### Scenario: Multi-select sends repeated parameters
+
+- **WHEN** the user selects `prod` and `dr` in Cluster, and `shop` in Namespace
+- **THEN** the graph request sent carries `cluster=prod&cluster=dr&namespace=shop`, and carries no `az` or `env`
+
+#### Scenario: Projection switch sends prune
+
+- **WHEN** the user changes the projection from `Traffic graph` to `Full inventory`
+- **THEN** the graph request sent carries `prune=false`, and the existing graph stays visible for the duration of that fetch
+
+#### Scenario: Filters restore from the URL
+
+- **WHEN** the user selects cluster `prod` and then refreshes the page
+- **THEN** the address bar contains `cluster=prod`, the Cluster control is still `prod`, the graph request carries `cluster=prod`, and the runtime config has not been written; opening a bare `/graph` separately leaves Cluster with an empty selection
+
+#### Scenario: Deep link carries an unlisted value
+
+- **WHEN** the user opens `/graph?namespace=ghost`, and the label values do not contain `ghost`
+- **THEN** Namespace shows `ghost` as selected and marked unlisted, the graph request carries `namespace=ghost`; the (possibly empty) graph the backend returns renders as usual
+
+#### Scenario: prune default is not written to the URL
+
+- **WHEN** the user switches the projection to `Full inventory`, then back to `Traffic graph`
+- **THEN** the address bar first contains `prune=false`, and after switching back does not contain `prune`; both graph requests carry `prune`
+
+#### Scenario: A legacy link carrying edge_type is ignored and stripped
+
+- **WHEN** the user opens `/graph?namespace=shop&edge_type=pod-calls-pod`
+- **THEN** the graph request carries `namespace=shop` and no `edge_type`, no control shows an edge-type selection, and the next filter change rewrites the address bar without `edge_type`
+
+### Requirement: An option source failure must not become a missing graph
+
+Failure of any option source (HTTP non-2xx, network error, JSON parse failure, shape mismatch, Prometheus `status` not `success`) MUST NOT make the graph fetch fail, MUST NOT block the filter bar from rendering, and MUST NOT throw an uncaught error. The failed dimension MUST be presented as a control with no options that still accepts custom values, and the filter bar MUST carry an indicator stating how many sources are unavailable, whose details (one line per failed source, with URL and reason) MUST be readable by the user. A vanished dropdown must never become a vanished graph.
+
+#### Scenario: One source fails, the rest proceed as usual
+
+- **WHEN** the `az` label-values request returns 503, while the other three respond normally
+- **THEN** the AZ control has no options but accepts custom values, the other three controls offer options normally, the filter bar shows an indicator of 1 source unavailable, and the graph still fetches and renders normally with the current selection
+
+#### Scenario: Failure details are readable
+
+- **WHEN** some source fails with `GET https://prom.example/api/v1/label/az/values…: data is not an array`
+- **THEN** that message is readable from the filter bar's source indicator, not only logged to the console
+
+## REMOVED Requirements
+
+### Requirement: Interaction contract of the dropdown control (Grafana style)
+
+**Reason**: The dropdown contract no longer needs an Edge type carve-out. It is restated as "Interaction contract of the dropdown control" below, without the scenario describing a control that no longer exists.
+**Migration**: None. The dropdown behaviour itself is unchanged; only the clause naming `edge_type` as the sole list dimension without custom values is gone.
+
+### Requirement: Option sources
+
+**Reason**: The filter bar now has a single option source. It is restated as "Filter option source" below, without the edge-type catalogue and its scenarios.
+**Migration**: Deployments drop `endpoints.edgeTypes`; the identity dimensions read from `endpoints.labelValues` exactly as before.
+
+## ADDED Requirements
 
 ### Requirement: Interaction contract of the dropdown control
 
@@ -79,46 +143,6 @@ Each dropdown control SHALL consist of a **trigger** and a **popover**, mimickin
 - **WHEN** Namespace has four values selected
 - **THEN** the trigger shows the first two pills and `+2`; after removing one of the pills the graph request updates immediately
 
-### Requirement: Filtering is performed by the backend, not the frontend
-
-The filter selection MUST be sent to `endpoints.graph` as query parameters, and MUST NOT be applied on the frontend to the graph already returned: what is being proven here is precisely that `cluster` / `az` / `env` / `namespace` reach the upstream PromQL as raw label matchers. The parameter mapping is `cluster` / `az` / `env` / `namespace` and `prune`. Repeating the same parameter name means OR; between different parameter names it is AND. A dimension whose list is empty MUST NOT appear in the query string at all; `prune` MUST always be carried (see `graph-data-source`). No graph request MUST carry an `edge_type` parameter, under any selection: the backend no longer supports it and ignores it silently, so sending it would misrepresent a request that narrows nothing.
-
-Changing any filter control MUST refetch `endpoints.graph` with the new selection, and take the same path as "reload": the existing graph stays visible while the request is in flight, the layout is not re-run, and the view state is not reset.
-
-The filter selection MUST be synced to the URL query of the current route (rules in the "view routing" of `app-shell`): the parameter names are the same as those sent to the backend (`cluster` / `az` / `env` / `namespace` / `prune`), multiple values are expressed as repeated keys; a dimension whose list is empty is not written, and `prune` is written only when `false` (the default `true` is not written). Changes update with replace. On page mount the initial selection MUST be read from the URL — **the URL is the source of truth for these selections**; a value the URL provides that is not in the option list MUST still be applied and marked as unlisted (the options may not have loaded yet, the source may have failed, or the value was custom to begin with). An `edge_type` parameter present in the URL MUST be ignored on mount and MUST NOT be written back, which is the established handling of any unknown parameter. The filter selection MUST NOT be written to browser local storage, and MUST NOT be written to the runtime config: an invisible filter applied automatically would present a narrowed estate as the whole of it, exactly the confusion between "there is nothing here" and "nothing is shown here" that the projection control is meant to avoid; a filter in the URL is visible in the address bar and on the controls at the same time, and a clean `/graph` means no filter.
-
-The kind / edge-type display toggles of `element-filter`, the ingress toggle, search, pod-parent mode and collapse state MUST NOT affect any parameter here, and vice versa. The legend's per-edge-type visibility toggles remain a purely client-side refinement of the graph already returned and are unaffected by the removal of the backend `edge_type` parameter.
-
-#### Scenario: Multi-select sends repeated parameters
-
-- **WHEN** the user selects `prod` and `dr` in Cluster, and `shop` in Namespace
-- **THEN** the graph request sent carries `cluster=prod&cluster=dr&namespace=shop`, and carries no `az` or `env`
-
-#### Scenario: Projection switch sends prune
-
-- **WHEN** the user changes the projection from `Traffic graph` to `Full inventory`
-- **THEN** the graph request sent carries `prune=false`, and the existing graph stays visible for the duration of that fetch
-
-#### Scenario: Filters restore from the URL
-
-- **WHEN** the user selects cluster `prod` and then refreshes the page
-- **THEN** the address bar contains `cluster=prod`, the Cluster control is still `prod`, the graph request carries `cluster=prod`, and the runtime config has not been written; opening a bare `/graph` separately leaves Cluster with an empty selection
-
-#### Scenario: Deep link carries an unlisted value
-
-- **WHEN** the user opens `/graph?namespace=ghost`, and the label values do not contain `ghost`
-- **THEN** Namespace shows `ghost` as selected and marked unlisted, the graph request carries `namespace=ghost`; the (possibly empty) graph the backend returns renders as usual
-
-#### Scenario: prune default is not written to the URL
-
-- **WHEN** the user switches the projection to `Full inventory`, then back to `Traffic graph`
-- **THEN** the address bar first contains `prune=false`, and after switching back does not contain `prune`; both graph requests carry `prune`
-
-#### Scenario: A legacy link carrying edge_type is ignored and stripped
-
-- **WHEN** the user opens `/graph?namespace=shop&edge_type=pod-calls-pod`
-- **THEN** the graph request carries `namespace=shop` and no `edge_type`, no control shows an edge-type selection, and the next filter change rewrites the address bar without `edge_type`
-
 ### Requirement: Filter option source
 
 The options of the four identity dimensions SHALL be read from the Prometheus-compatible HTTP API root that `endpoints.labelValues` points to: each dimension requests `<root>/api/v1/label/<dimension>/values?match[]=kube_pod_info`, the response MUST be validated against the Prometheus envelope `{"status":"success","data":[…]}`, and `data` MUST be an array of strings. When `status` is not `success` it MUST be treated as a failure and its `error` reported, and MUST NOT be read as an empty list — an empty dropdown and a broken store must not look the same.
@@ -143,17 +167,3 @@ The endpoint is optional: when absent (or an empty string), every identity contr
 
 - **WHEN** the runtime config has no `endpoints.labelValues`
 - **THEN** the app issues no option request at all, the four identity controls have no options but still accept custom values, and the graph still fetches and renders normally
-
-### Requirement: An option source failure must not become a missing graph
-
-Failure of any option source (HTTP non-2xx, network error, JSON parse failure, shape mismatch, Prometheus `status` not `success`) MUST NOT make the graph fetch fail, MUST NOT block the filter bar from rendering, and MUST NOT throw an uncaught error. The failed dimension MUST be presented as a control with no options that still accepts custom values, and the filter bar MUST carry an indicator stating how many sources are unavailable, whose details (one line per failed source, with URL and reason) MUST be readable by the user. A vanished dropdown must never become a vanished graph.
-
-#### Scenario: One source fails, the rest proceed as usual
-
-- **WHEN** the `az` label-values request returns 503, while the other three respond normally
-- **THEN** the AZ control has no options but accepts custom values, the other three controls offer options normally, the filter bar shows an indicator of 1 source unavailable, and the graph still fetches and renders normally with the current selection
-
-#### Scenario: Failure details are readable
-
-- **WHEN** some source fails with `GET https://prom.example/api/v1/label/az/values…: data is not an array`
-- **THEN** that message is readable from the filter bar's source indicator, not only logged to the console

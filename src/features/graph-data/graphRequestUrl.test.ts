@@ -46,7 +46,6 @@ describe('buildGraphRequestUrl', () => {
       az: ['local-a'],
       env: ['demo'],
       namespace: ['shop'],
-      edgeType: ['pod-calls-pod'],
       prune: false,
     };
     const q = params(buildGraphRequestUrl('/api/v1/graph', { kind: 'relative', window: '6h' }, filters, NOW_MS));
@@ -54,8 +53,21 @@ describe('buildGraphRequestUrl', () => {
     expect(q.get('az')).toBe('local-a');
     expect(q.get('env')).toBe('demo');
     expect(q.get('namespace')).toBe('shop');
-    expect(q.get('edge_type')).toBe('pod-calls-pod');
     expect(q.get('prune')).toBe('false');
+  });
+
+  it('never sends edge_type, whatever is selected', () => {
+    const filters: GraphFilters = {
+      cluster: ['ksg-demo'],
+      az: ['local-a'],
+      env: ['demo'],
+      namespace: ['shop'],
+      prune: false,
+    };
+    for (const selection of [DEFAULT_GRAPH_FILTERS, filters]) {
+      const q = params(buildGraphRequestUrl('/api/v1/graph', { kind: 'relative', window: '6h' }, selection, NOW_MS));
+      expect(q.has('edge_type')).toBe(false);
+    }
   });
 
   it('repeats a dimension the backend ORs rather than joining it', () => {

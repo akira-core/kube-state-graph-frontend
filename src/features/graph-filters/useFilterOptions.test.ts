@@ -24,29 +24,29 @@ describe('useFilterOptions', () => {
         if (url.includes('/label/az/')) return jsonResponse({ status: 'success', data: ['local-a'] });
         if (url.includes('/label/env/')) return jsonResponse({ status: 'success', data: ['demo'] });
         if (url.includes('/label/namespace/')) return jsonResponse({ status: 'success', data: ['shop'] });
-        return jsonResponse({ apiVersion: 'v1', edge_types: [{ type: 'pod-calls-pod' }] });
+        throw new Error(`unexpected request to ${url}`);
       })
     );
-    const { result } = renderHook(() => useFilterOptions('/metrics-api', '/api/v1/edge-types'));
+    const { result } = renderHook(() => useFilterOptions('/metrics-api'));
     await waitFor(() => {
       expect(result.current.cluster).toEqual(['ksg-demo']);
     });
     expect(result.current.az).toEqual(['local-a']);
     expect(result.current.env).toEqual(['demo']);
     expect(result.current.namespace).toEqual(['shop']);
-    expect(result.current.edgeType).toEqual(['pod-calls-pod']);
     expect(result.current.problems).toEqual([]);
   });
 
-  it('every request carries the pod-inventory selector', async () => {
+  it('issues exactly the four label-values requests and nothing else', async () => {
     const fetchMock = routed(() => jsonResponse({ status: 'success', data: [] }));
     vi.stubGlobal('fetch', fetchMock);
-    renderHook(() => useFilterOptions('/metrics-api', undefined));
+    renderHook(() => useFilterOptions('/metrics-api'));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(4);
     });
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).toContain('match%5B%5D=kube_pod_info');
+      expect(String(call[0])).not.toContain('edge-types');
     }
   });
 
@@ -59,7 +59,7 @@ describe('useFilterOptions', () => {
           : jsonResponse({ status: 'success', data: ['value'] })
       )
     );
-    const { result } = renderHook(() => useFilterOptions('/metrics-api', undefined));
+    const { result } = renderHook(() => useFilterOptions('/metrics-api'));
     await waitFor(() => {
       expect(result.current.problems).toHaveLength(1);
     });
@@ -71,7 +71,7 @@ describe('useFilterOptions', () => {
   it('consults nothing when no source is configured', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const { result } = renderHook(() => useFilterOptions(undefined, undefined));
+    const { result } = renderHook(() => useFilterOptions(undefined));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(result.current.problems).toEqual([]);
   });

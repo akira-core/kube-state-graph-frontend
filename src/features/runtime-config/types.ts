@@ -17,13 +17,6 @@ export interface RuntimeEndpoints {
    * series and returns an empty graph with a 200.
    */
   labelValues?: string;
-  /**
-   * The backend's edge-type catalogue (`/v1/edge-types`). It is served from the same
-   * registry that validates `?edge_type=`, so an option read from here is one the
-   * backend accepts — an unregistered value is a 400, not a quietly empty graph. Absent
-   * means the edge-type control is not offered.
-   */
-  edgeTypes?: string;
   codeChanges?: string;
   configChanges?: string;
   dashboard?: string;

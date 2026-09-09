@@ -83,7 +83,7 @@ function liveController(
 export function SankeyPage(): JSX.Element {
   const { config, time, setStatus, focusMode, setFocusMode } = useShellFrame();
   const navigate = useNavigate();
-  const filterOptions = useFilterOptions(config.demoMode ? undefined : config.endpoints.labelValues, undefined);
+  const filterOptions = useFilterOptions(config.demoMode ? undefined : config.endpoints.labelValues);
   const identity = config.demoMode
     ? DEMO_IDENTITY_OPTIONS
     : {

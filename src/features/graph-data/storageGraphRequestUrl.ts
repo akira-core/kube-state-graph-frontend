@@ -49,7 +49,7 @@ export function isValidPodRoot(value: string): boolean {
  * the backend 400s those as `missing_az` / `missing_env`, so the loader must not fire.
  *
  * `start` / `end` are resolved at call time (a relative window re-reads the clock).
- * `edge_type` and `prune` are never sent. Invalid pod roots are dropped, not encoded.
+ * `prune` is never sent. Invalid pod roots are dropped, not encoded.
  */
 export function buildStorageGraphRequestUrl(
   storageGraphEndpoint: string,

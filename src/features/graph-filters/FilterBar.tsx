@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 
-import type { GraphFilters, ListDimension } from '../../shared/types/graphFilters';
+import type { GraphFilters, IdentityDimension } from '../../shared/types/graphFilters';
 import { Button } from '../../shared/ui/Button';
 import { FilterIcon } from '../../shared/ui/icons';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
@@ -11,20 +11,19 @@ import type { FilterOptions } from './useFilterOptions';
 export interface FilterBarProps {
   filters: GraphFilters;
   options: FilterOptions;
-  onValues: (dimension: ListDimension, values: string[]) => void;
+  onValues: (dimension: IdentityDimension, values: string[]) => void;
   onPrune: (prune: boolean) => void;
   onClear: () => void;
 }
 
-const DIMENSION_LABEL: Record<ListDimension, string> = {
+const DIMENSION_LABEL: Record<IdentityDimension, string> = {
   cluster: 'Cluster',
   az: 'AZ',
   env: 'Env',
   namespace: 'Namespace',
-  edgeType: 'Edge type',
 };
 
-const LIST_DIMENSIONS: readonly ListDimension[] = ['cluster', 'az', 'env', 'namespace', 'edgeType'];
+const LIST_DIMENSIONS: readonly IdentityDimension[] = ['cluster', 'az', 'env', 'namespace'];
 
 function pruneLabel(value: string): string {
   return value === 'true' ? 'Traffic graph' : 'Full inventory';
@@ -33,9 +32,11 @@ function pruneLabel(value: string): string {
 /**
  * Backend-narrowing controls, as Grafana-style dropdowns.
  *
- * Identity dimensions accept custom values; `edge_type` does not — that catalogue and
- * the backend's validation are the same registry. Projection is the same component in
- * single-select. Applied values live on the trigger as pills, so the chip row is gone.
+ * Every list dimension accepts custom values: each reaches the upstream PromQL as a raw
+ * label matcher, so a typed value is as valid as an enumerated one. Projection is the
+ * same component in single-select, and is the one control here naming a closed set of
+ * positions rather than a narrowing — hence its `allowCustom={false}`. Applied values
+ * live on the trigger as pills, so the chip row is gone.
  */
 export function FilterBar({ filters, options, onValues, onPrune, onClear }: Readonly<FilterBarProps>): JSX.Element {
   const nothingNarrowed = LIST_DIMENSIONS.every((dimension) => filters[dimension].length === 0) && filters.prune;
@@ -59,7 +60,7 @@ export function FilterBar({ filters, options, onValues, onPrune, onClear }: Read
             options={options[dimension]}
             value={filters[dimension]}
             onChange={(next) => onValues(dimension, next)}
-            allowCustom={dimension !== 'edgeType'}
+            allowCustom
             testId={`filter-${dimension}`}
           />
         ))}

@@ -15,6 +15,10 @@ import type { GraphFilters } from '../../shared/types/graphFilters';
  * `start` and `end` are not optional upstream — the backend answers `missing_start` /
  * `missing_end` with a 400 — so they are always sent. `prune` is always sent too, even
  * at its default, so a captured request says which projection produced it.
+ *
+ * `edge_type` is never sent. The backend withdrew it and ignores unknown parameters
+ * rather than rejecting them, so a request carrying it would claim a narrowing that
+ * never happens.
  */
 export function buildGraphRequestUrl(
   graphEndpoint: string,
@@ -31,7 +35,6 @@ export function buildGraphRequestUrl(
     ...(filters.az.length > 0 ? { az: filters.az } : {}),
     ...(filters.env.length > 0 ? { env: filters.env } : {}),
     ...(filters.namespace.length > 0 ? { namespace: filters.namespace } : {}),
-    ...(filters.edgeType.length > 0 ? { edge_type: filters.edgeType } : {}),
   };
   return withQuery(graphEndpoint, params);
 }
