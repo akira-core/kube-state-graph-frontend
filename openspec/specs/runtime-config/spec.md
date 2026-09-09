@@ -37,7 +37,6 @@ The root of the configuration document MUST be a JSON object. The app SHALL vali
 | `endpoints.graph`         | string (URL)                        | required when `demoMode` is `false` | none       | URL of the backend's `GET /v1/graph`, the Graph view's fetch endpoint                                                                                                                                                                                           |
 | `endpoints.storageGraph`  | string (URL)                        | optional                            | absent     | URL of the backend's `GET /v1/storage-graph`, the Sankey view's fetch endpoint (**a separate endpoint from `graph`**)                                                                                                                                           |
 | `endpoints.labelValues`   | string (URL)                        | optional                            | absent     | Base URL of the Prometheus-compatible HTTP API holding the pod inventory; filter options are read from `<base>/api/v1/label/<name>/values`. **A different upstream from `graph`**: the graph API does not serve that path, and pointing at it only yields a 404 |
-| `endpoints.edgeTypes`     | string (URL)                        | optional                            | absent     | URL of the backend's `/v1/edge-types`, the source of `edge_type` filter options                                                                                                                                                                                 |
 | `endpoints.codeChanges`   | string (URL)                        | optional                            | absent     | URL of the backend's `/v1/graph/code_changes`                                                                                                                                                                                                                   |
 | `endpoints.configChanges` | string (URL)                        | optional                            | absent     | URL of the backend's `/v1/graph/config_changes`                                                                                                                                                                                                                 |
 | `endpoints.dashboard`     | string (URL)                        | optional                            | absent     | URL of the backend's `/dashboard`                                                                                                                                                                                                                               |
@@ -45,6 +44,8 @@ The root of the configuration document MUST be a JSON object. The app SHALL vali
 | `refreshIntervalSeconds`  | integer, `>= 0`                     | optional                            | `0` (off)  | Auto-refresh interval for graph data (seconds); `0` means no auto-refresh                                                                                                                                                                                       |
 | `defaultLayout`           | `"fcose"` \| `"dagre"`              | optional                            | `"fcose"`  | The Graph view's initial layout algorithm; the user can switch in the app                                                                                                                                                                                       |
 | `theme`                   | `"dark"` \| `"light"` \| `"system"` | optional                            | `"system"` | Initial theme; the user's in-app choice MUST take precedence over this value (see `app-shell`)                                                                                                                                                                  |
+
+There MUST be no `endpoints.edgeTypes` key. The backend no longer serves an edge-type catalogue, so the key names nothing; a document that still carries it is handled by "Unknown keys are ignored with a warning" and MUST NOT be a validation failure.
 
 `refreshIntervalSeconds` MUST be a JSON integer: fractions, negative numbers and numbers in string form are all validation failures. `demoMode` MUST be a JSON boolean: the strings `"true"` / `"false"` are validation failures. Enum fields MUST match exactly (case-sensitive). The app MUST NOT auto-correct any field (type coercion, trimming whitespace, adding a scheme).
 
@@ -125,11 +126,10 @@ When `demoMode` is `false` (including the default when absent), `endpoints.graph
 
 ### Requirement: Absent optional endpoints disable the corresponding feature
 
-When any of `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.edgeTypes`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard` is absent (or an empty string), the feature depending on that endpoint MUST be disabled: the app MUST NOT issue any request to that endpoint, UI depending on its data MUST not render (it must not be replaced by an error message, a disabled-state button, or a spinner), and MUST NOT show the user any error. "UI depending on its data" means UI that has no purpose without it: a dropdown that accepts a custom value still has one, because the value it sends is a raw label matcher and a typed value is as valid as an enumerated one — see the `labelValues` bullet. The mapping is as follows:
+When any of `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard` is absent (or an empty string), the feature depending on that endpoint MUST be disabled: the app MUST NOT issue any request to that endpoint, UI depending on its data MUST not render (it must not be replaced by an error message, a disabled-state button, or a spinner), and MUST NOT show the user any error. "UI depending on its data" means UI that has no purpose without it: a dropdown that accepts a custom value still has one, because the value it sends is a raw label matcher and a typed value is as valid as an enumerated one — see the `labelValues` bullet. The mapping is as follows:
 
 - `endpoints.storageGraph` absent → the Sankey view MUST NOT issue any fetch request, and replaces the diagram with a "storage graph endpoint not configured" explanatory state; the nav bar's Sankey link MUST remain reachable (routing unchanged), and MUST NOT replace the whole app with the config error screen.
 - `endpoints.labelValues` absent → the Sankey's `cluster` / `namespace` narrowing controls do not render: they narrow an estate that `az` / `env` have already scoped, and with nothing to enumerate they add nothing. **The Graph view filter bar's `cluster` / `az` / `env` / `namespace` controls and the Sankey's `az` / `env` MUST still render, with an empty option list, and MUST still accept a custom value** (dropdown contract in `graph-filters`): these dimensions reach the upstream PromQL as raw label matchers, so a typed value is as usable as an enumerated one, and for the Sankey the `storage-graph` endpoint requires `az` / `env` while being independently optional from `labelValues` — removing those controls would leave a deployment that has configured `storageGraph` permanently unable to fetch, with only a hint pointing at a control that does not exist. No request is issued to any label-values URL either way. See `storage-flow-sankey` and `graph-filters`.
-- `endpoints.edgeTypes` absent → the filter bar's `edge_type` control renders with no options and offers **no** custom value — its catalogue and the backend's validation of `?edge_type=` are the same registry, so a typed value could only ever earn a 400. Nothing being selectable, graph requests carry no `edge_type` parameter.
 - `endpoints.codeChanges` absent → the node detail's code change history section does not render.
 - `endpoints.configChanges` absent → the node detail's config change history section does not render.
 - `endpoints.dashboard` absent → the Dashboard button does not render, and no dashboard URL prefetch is issued.
@@ -140,7 +140,7 @@ Each endpoint is judged independently: one endpoint being absent MUST NOT affect
 
 - **WHEN** the configuration document's `endpoints` contains only `graph`
 - **THEN** the graph loads normally; when any node's detail panel is opened, the change history sections and the Dashboard button do not render, and no request is issued to code_changes / config_changes / dashboard
-- **AND** the filter bar's identity dimensions render with no options and still accept a custom value, while `edge_type` renders with no options and no custom value; switching to the Sankey view shows "storage graph endpoint not configured", and no storage-graph request is issued to any URL
+- **AND** the filter bar's identity dimensions render with no options and still accept a custom value; switching to the Sankey view shows "storage graph endpoint not configured", and no storage-graph request is issued to any URL
 
 #### Scenario: graph configured but storageGraph not configured
 
@@ -235,6 +235,11 @@ When a key not defined by this contract appears at the configuration document's 
 
 - **WHEN** the configuration document's `endpoints` contains `"metrics": "/api/metrics"`
 - **THEN** config validation passes, the console shows one warning stating that `endpoints.metrics` was ignored, and the app issues no request to that URL
+
+#### Scenario: A deployment still carrying edgeTypes keeps working
+
+- **WHEN** the configuration document's `endpoints` contains `graph` and a left-over `"edgeTypes": "/api/v1/edge-types"`
+- **THEN** config validation passes, the console shows one warning stating that `endpoints.edgeTypes` was ignored, the app issues no request to that URL, and the filter bar renders without an Edge type control
 
 ### Requirement: Config source can be overridden during development
 

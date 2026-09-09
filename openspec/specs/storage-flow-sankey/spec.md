@@ -814,7 +814,7 @@ When the storage-graph data updates because of a refresh (manual or automatic), 
 
 ### Requirement: Fully independent of the Graph view's controls
 
-The Sankey's data MUST be fully independent of the Graph view's kind / edge-type filters, ingress visibility toggle, search query, pod-parent mode, collapse state, `prune` setting, and the filter bar's multi-value `cluster` / `az` / `env` / `namespace` selections — any change to those MUST NOT change the Sankey's nodes, links or weights, and MUST NOT trigger a storage-graph refetch.
+The Sankey's data MUST be fully independent of the Graph view's kind / edge-type display toggles, ingress visibility toggle, search query, pod-parent mode, collapse state, `prune` setting, and the filter bar's multi-value `cluster` / `az` / `env` / `namespace` selections — any change to those MUST NOT change the Sankey's nodes, links or weights, and MUST NOT trigger a storage-graph refetch. The edge-type toggles named here are the legend's client-side display refinement (`element-filter`); there is no backend edge-type filter on either page.
 
 The reverse also holds: changes to the Sankey's `az` / `env` / roots / `cluster` / `namespace` / mode are written only to the `/sankey` query, MUST NOT rewrite the `/graph` query, and MUST NOT make the Graph page carry the Sankey's selections on its next mount. The Sankey's `Layout` control (`Flat` / `Node`) and the Graph's pod-parent `Layout` control (`Node` / `Controller`) are two unrelated pieces of transient state that happen to share a label: neither MUST read or write the other.
 
@@ -823,7 +823,7 @@ The only input the two pages share is the **view time range** (see `app-shell`; 
 #### Scenario: Graph view controls do not affect the Sankey
 
 - **WHEN** the user, on `/graph`, hides the `pvc` kind, enters the search `nats`, switches the pod-parent mode to `node`, switches the Projection to `Full inventory`, then presses Back to return to `/sankey?az=zone-a&env=prod`
-- **THEN** the storage-graph request's query string is the same as before (without `prune` / `edge_type` / the Graph's filters), and the Sankey's nodes, links and weights are the same as before
+- **THEN** the storage-graph request's query string is the same as before (without `prune` or the Graph's filters), and the Sankey's nodes, links and weights are the same as before
 
 #### Scenario: Sankey controls do not affect the Graph view
 
