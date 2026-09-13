@@ -36,12 +36,29 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-// The WHATWG URL parser treats a backslash exactly like a slash for special schemes,
-// so `/\evil.example/api` resolves to `http://evil.example/api` — an authority-form
-// escape that a bare `//` check misses. Reject both spellings of the second separator.
+// A root-relative endpoint must still land on the page's own origin once the WHATWG URL
+// parser is done with it. The parser treats a backslash exactly like a slash for special
+// schemes, so `/\evil.example/api` resolves to `http://evil.example/api` — an authority-form
+// escape that checking the second character misses. Resolving against a throwaway origin and
+// comparing the result catches every such spelling in the value itself.
+const ROOT_RELATIVE_PROBE = 'http://root-relative.invalid';
+
 function isRootRelative(value: string): boolean {
-  return value.startsWith('/') && value[1] !== '/' && value[1] !== '\\';
+  if (!value.startsWith('/')) {
+    return false;
+  }
+  try {
+    return new URL(value, ROOT_RELATIVE_PROBE).origin === ROOT_RELATIVE_PROBE;
+  } catch {
+    return false;
+  }
 }
+
+// The parser also deletes ASCII tab, LF and CR wherever they appear, so a value carrying one
+// is never the URL it spells — and the deletion happens again after a consumer appends to it:
+// `/\t` resolves to `/` on its own, but `/\t` + `/api/v1/label/…` fetches from host `api`. No
+// endpoint has a use for them, so they are refused before any other check.
+const URL_DELETED_CHARS = /[\t\n\r]/;
 
 export function describeEndpointUrlError(key: string): string {
   return `${key}: must be an absolute http(s) URL or a path starting with /`;
@@ -56,6 +73,9 @@ export function parseEndpointUrl(key: string, value: unknown): { ok: true; value
   }
   if (value === '') {
     return { ok: true, value: undefined };
+  }
+  if (URL_DELETED_CHARS.test(value)) {
+    return fail(`${key}: must not contain a tab or line break`);
   }
   if (!isRootRelative(value) && !isHttpUrl(value)) {
     return fail(describeEndpointUrlError(key));

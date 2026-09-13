@@ -62,6 +62,27 @@ describe('validateConfig', () => {
     expect(validateConfig({ endpoints: { graph: '//ksg.example/v1/graph' } }).ok).toBe(false);
   });
 
+  // The WHATWG parser treats `\` as `/` and deletes ASCII tab / LF / CR anywhere in the input,
+  // so each of these starts with a single `/` and still fetches from another host.
+  it.each([
+    ['a backslash', '/\\ksg.example/v1/graph'],
+    ['a tab', '/\t/ksg.example/v1/graph'],
+    ['a line feed', '/\n/ksg.example/v1/graph'],
+    ['a carriage return', '/\r\\ksg.example/v1/graph'],
+  ])('rejects a root-relative value hiding a second separator behind %s', (_label, graph) => {
+    expect(validateConfig({ endpoints: { graph } }).ok).toBe(false);
+  });
+
+  // A consumer that appends a path lets the parser's deletion join its leading `/` to the
+  // value's: `/\t` is `/` on its own, but `/\t` + `/api/v1/label/…` fetches from host `api`.
+  it('rejects a tab, LF or CR anywhere in an endpoint value', () => {
+    for (const labelValues of ['/\t', '/\n', '/metrics-api\r']) {
+      const result = validateConfig({ endpoints: { graph: '/api/v1/graph', labelValues } });
+      expect(!result.ok && result.error).toContain('endpoints.labelValues');
+    }
+    expect(validateConfig({ endpoints: { graph: 'https://ksg.example/v1\t/graph' } }).ok).toBe(false);
+  });
+
   it('rejects non-string endpoint values', () => {
     expect(validateConfig({ endpoints: { graph: 1 } }).ok).toBe(false);
     expect(validateConfig({ endpoints: { graph: {} } }).ok).toBe(false);
