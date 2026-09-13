@@ -45,3 +45,7 @@ ci/
 
 # Dev runtime override — never commit local backend config
 dev/config.local.json
+
+# Vite reads .env* at build time and inlines every referenced VITE_* into the public bundle
+.env
+.env.*

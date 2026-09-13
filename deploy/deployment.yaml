@@ -12,6 +12,9 @@ spec:
       labels:
         app: kube-state-graph-frontend
     spec:
+      # The front door calls no Kubernetes API; a mounted token would only be something
+      # for a compromised process to use.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -20,14 +23,18 @@ spec:
       containers:
         - name: frontend
           image: ghcr.io/example/kube-state-graph-frontend:main
-          imagePullPolicy: IfNotPresent
+          # `main` moves on every push, so re-resolve it at every Pod start. Pin a digest
+          # instead (see deploy/README.md) and IfNotPresent is safe again.
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080
           # Optional same-origin reverse proxies. Two upstreams, because the graph API
           # does not serve `/api/v1/label/<name>/values` — `endpoints.labelValues` needs a
           # Prometheus-compatible store or the az / env and filter controls enumerate
-          # nothing. Unset targets serve 404 on their own prefix and nothing else.
+          # nothing. Unset targets serve 404 on their own prefix and nothing else. Both
+          # forward GET/HEAD only, and the metrics proxy forwards `/api/v1/label/` and
+          # nothing else — the store's query and export APIs stay unreachable from a browser.
           # env:
           #   - name: KSG_API_PROXY_TARGET
           #     value: http://kube-state-graph.monitoring.svc:8080
@@ -37,10 +44,15 @@ spec:
             - name: config
               mountPath: /srv/config
               readOnly: true
+            # The root filesystem is read-only: the generated proxy config, the pid file
+            # and nginx's temp files are the only things the container writes.
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ['ALL']
+            readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 101
           resources:
@@ -62,3 +74,5 @@ spec:
         - name: config
           configMap:
             name: kube-state-graph-frontend
+        - name: tmp
+          emptyDir: {}
