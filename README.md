@@ -138,6 +138,12 @@ digests weekly, which is what keeps the pin from drifting back into CVEs. Reprod
 locally with `make scan` (needs `trivy`), and accept a known finding by adding its CVE id to a
 `.trivyignore` at the repository root — with a comment saying why.
 
+Every workflow action is pinned by full commit SHA, because a tag can be force-pushed to new
+code after review; Dependabot moves those pins weekly as well. Workflow tokens are
+least-privilege: pull-request builds get a read-only token, and only the job that pushes to the
+registry holds `packages: write`. At runtime the web server sends a Content-Security-Policy and
+framing / referrer headers from `docker/security-headers.conf`.
+
 ## Troubleshooting
 
 - **Dev server port in use** — Vite will pick the next port; open the URL it prints.
