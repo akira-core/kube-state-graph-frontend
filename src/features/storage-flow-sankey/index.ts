@@ -5,7 +5,9 @@ export {
   deriveSankey,
   formatBytesPerSec,
   hoverPathLinks,
+  hoverPathForFrame,
   hoverPathForWrapper,
+  resolveClaimAggregates,
   rootValueOptions,
   EMPTY_SANKEY_ROOT_OPTIONS,
   SANKEY_KIND_ORDER,
@@ -18,6 +20,8 @@ export type {
   SankeyNode,
   SankeyLinkTier,
   SankeyRootOptions,
+  SankeySvmDisplay,
+  SankeySvmFrame,
   StorageFlowTier,
 } from './deriveSankey';
 export type { SankeyPodLayout } from './layoutSankey';

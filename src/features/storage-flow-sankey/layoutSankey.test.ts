@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
-import { normalizeGraph } from '../graph-data';
+import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
 
 import { deriveSankey } from './deriveSankey';
 import { layoutSankey, LEAF_W, CARD_W, MIN_THICKNESS, ROW_MIN_H } from './layoutSankey';
@@ -251,6 +251,83 @@ describe('layoutSankey', () => {
     }
     expect(flat.wrappers).toEqual([]);
     expect(grouped.wrappers.length).toBeGreaterThan(0);
+  });
+
+  describe('SVM display: group', () => {
+    it('reads SVM / PVC as the pvc column header, with no SVM column', () => {
+      const graph = deriveSankey(elements, 'both', undefined, 'group');
+      const layout = layoutSankey(graph, PALETTE, 'flat', 'group');
+      expect(layout.columns.map((c) => c.label)).toEqual([
+        'NetApp node',
+        'NetApp aggregate',
+        'SVM / PVC',
+        'Pod',
+        'Application',
+        'Namespace',
+      ]);
+      const withNodeLayout = layoutSankey(graph, PALETTE, 'node', 'group');
+      expect(withNodeLayout.columns.map((c) => c.label)).toEqual([
+        'NetApp node',
+        'NetApp aggregate',
+        'SVM / PVC',
+        'Node / Pod',
+        'Application',
+        'Namespace',
+      ]);
+    });
+
+    it('orders frames by name, not by flow', () => {
+      const body = [
+        node('aggr1', 'netapp-aggr'),
+        node('svm_b', 'netapp-svm'),
+        node('svm_a', 'netapp-svm'),
+        node('pvc-b', 'pvc', { labels: { aggr: 'aggr1' } }),
+        node('pvc-a', 'pvc', { labels: { aggr: 'aggr1' } }),
+        flow('aggr1', 'svm_b', 'aggr-svm', 9_000_000, 0),
+        flow('aggr1', 'svm_a', 'aggr-svm', 1_000_000, 0),
+        flow('svm_b', 'pvc-b', 'svm-pvc', 9_000_000, 0),
+        flow('svm_a', 'pvc-a', 'svm-pvc', 1_000_000, 0),
+      ];
+      const graph = deriveSankey(body, 'read', undefined, 'group');
+      const layout = layoutSankey(graph, PALETTE, 'flat', 'group');
+      expect(layout.wrappers.map((w) => w.label)).toEqual(['svm_a', 'svm_b']);
+      const svmA = layout.wrappers.find((w) => w.label === 'svm_a');
+      const svmB = layout.wrappers.find((w) => w.label === 'svm_b');
+      expect(svmA!.y).toBeLessThan(svmB!.y);
+    });
+
+    it('members sit inside a frame in the PVC column’s own order', () => {
+      const graph = deriveSankey(elements, 'read', undefined, 'group');
+      const layout = layoutSankey(graph, PALETTE, 'flat', 'group');
+      const frame = layout.wrappers.find((w) => w.label === 'svm_shop');
+      expect(frame).toBeDefined();
+      const members = layout.nodes.filter((n) => frame!.memberIds.includes(n.id)).sort((a, b) => a.y - b.y);
+      // data-mongo-0 carries the largest single flow of the three, so it sorts first —
+      // the same rule the ungrouped PVC column uses.
+      expect(members[0]?.label).toBe('data-mongo-0');
+    });
+
+    it('draws an empty no-flow frame for an SVM selected as a root with no drawn PVCs', () => {
+      const body = [node('svm-empty', 'netapp-svm')];
+      const graph = deriveSankey(body, 'read', { ...EMPTY_STORAGE_GRAPH_ROOTS, svm: ['svm-empty'] }, 'group');
+      expect(graph.svmFrames).toEqual([{ id: 'svm-empty', label: 'svm-empty', pvcIds: [], noFlow: true }]);
+      const layout = layoutSankey(graph, PALETTE, 'flat', 'group');
+      const frame = layout.wrappers.find((w) => w.kind === 'netapp-svm');
+      expect(frame?.noFlow).toBe(true);
+      expect(frame?.status).toBeUndefined();
+      expect(frame?.locatable).toBe(false);
+    });
+
+    it('draws both wrapper kinds at once — SVM frames and Kubernetes-node wrappers', () => {
+      const graph = deriveSankey(elements, 'both', undefined, 'group');
+      const layout = layoutSankey(graph, PALETTE, 'node', 'group');
+      const svmFrame = layout.wrappers.find((w) => w.kind === 'netapp-svm');
+      const nodeWrapper = layout.wrappers.find((w) => w.kind === 'node');
+      expect(svmFrame).toBeDefined();
+      expect(nodeWrapper).toBeDefined();
+      expect(svmFrame!.locatable).toBe(false);
+      expect(nodeWrapper!.locatable).toBe(true);
+    });
   });
 });
 

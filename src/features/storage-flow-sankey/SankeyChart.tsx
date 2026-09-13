@@ -58,7 +58,7 @@ function wrapperBox(
     <g
       key={wrapper.id}
       data-testid={`sankey-wrapper-${wrapper.label}`}
-      data-kind="node"
+      data-kind={wrapper.kind}
       data-status={wrapper.status}
       style={{ opacity: faded ? 0.3 : 1 }}
     >
@@ -76,11 +76,11 @@ function wrapperBox(
       />
       <g
         data-testid={`sankey-wrapper-title-${wrapper.label}`}
-        data-locatable="true"
+        data-locatable={wrapper.locatable ? 'true' : 'false'}
         onMouseEnter={(evt) => onEnter(wrapper.id, evt)}
         onMouseLeave={onLeave}
-        onClick={() => onClick(wrapper.id)}
-        className="cursor-pointer"
+        onClick={wrapper.locatable ? () => onClick(wrapper.id) : undefined}
+        className={wrapper.locatable ? 'cursor-pointer' : 'cursor-default'}
       >
         <rect x={wrapper.x} y={wrapper.y} width={wrapper.width} height={WRAPPER_TITLE_H} fill="transparent" />
         <text
@@ -280,7 +280,7 @@ export function SankeyChart({
             wrapperBox(
               w,
               tokens,
-              lit !== null && !w.podIds.some((id) => lit.nodeIds.has(id)) && !lit.nodeIds.has(w.id),
+              lit !== null && !w.memberIds.some((id) => lit.nodeIds.has(id)) && !lit.nodeIds.has(w.id),
               onNodeEnter,
               onNodeLeave,
               onNodeClick

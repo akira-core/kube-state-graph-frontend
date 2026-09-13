@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
+import { normalizeGraph } from '../graph-data';
+
 import { syntheticBody } from './sankeyPerformance.test';
 import { cutTopPods } from './topPods';
 
@@ -98,6 +101,48 @@ describe('cutTopPods', () => {
     expect(idsOf(write.elements, 'pod')).toEqual(['pod/batch-7']);
     const read = cutTopPods(elements, 'read', 1);
     expect(idsOf(read.elements, 'pod')).toEqual(['pod/other']);
+  });
+
+  describe('claim-aware aggregate keeping', () => {
+    const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
+
+    it('the cut keeps only the kept claims’ aggregates', () => {
+      const cut = cutTopPods(elements, 'both', 1);
+      expect(idsOf(cut.elements, 'pod')).toEqual(['pod/mongo-0']);
+      expect(idsOf(cut.elements, 'netapp-aggr')).toEqual(['netapp/ontap-prod/aggr/aggr1']);
+      expect(idsOf(cut.elements, 'netapp-node')).toEqual(['netapp/ontap-prod/ontap-prod-01']);
+      expect(idsOf(cut.elements, 'pvc')).toEqual(['pvc/data-mongo-0', 'pvc/data-scratch']);
+      // svm_shop stays drawn even though aggr2 (dropped) also feeds it.
+      expect(idsOf(cut.elements, 'netapp-svm')).toContain('netapp/ontap-prod/svm/svm_shop');
+      const edgeEndpoints = cut.elements
+        .filter((el) => el.group === 'edges')
+        .flatMap((el) => [
+          String((el.data as Record<string, unknown>).source),
+          String((el.data as Record<string, unknown>).target),
+        ]);
+      expect(edgeEndpoints).not.toContain('netapp/ontap-prod/aggr/aggr2');
+      expect(edgeEndpoints).not.toContain('netapp/ontap-prod/ontap-prod-02');
+    });
+
+    it('keeps every aggregate feeding a kept SVM when the body carries no claim aggregate labels', () => {
+      const stripped = elements.map((el) => {
+        if (el.group !== 'nodes') {
+          return el;
+        }
+        const data = el.data as Record<string, unknown>;
+        const labels = data.labels as Record<string, string> | undefined;
+        if (labels?.aggr === undefined) {
+          return el;
+        }
+        const rest = Object.fromEntries(Object.entries(labels).filter(([key]) => key !== 'aggr'));
+        return { ...el, data: { ...data, labels: rest } };
+      });
+      const cut = cutTopPods(stripped, 'both', 1);
+      expect(idsOf(cut.elements, 'netapp-aggr')).toEqual([
+        'netapp/ontap-prod/aggr/aggr1',
+        'netapp/ontap-prod/aggr/aggr2',
+      ]);
+    });
   });
 
   it('leaves a no-flow pod untouched', () => {

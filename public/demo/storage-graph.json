@@ -118,17 +118,6 @@
       },
       {
         "data": {
-          "id": "netapp/ontap-prod/svm/svm_dr",
-          "name": "svm_dr",
-          "type": "netapp-svm",
-          "parent": "storage-cluster/ontap-prod",
-          "labels": {
-            "ontap_cluster": "ontap-prod"
-          }
-        }
-      },
-      {
-        "data": {
           "id": "cluster/prod",
           "name": "prod",
           "type": "cluster"
@@ -233,7 +222,8 @@
           "labels": {
             "namespace": "prod",
             "volumename": "pvc-9f3a1b2c",
-            "svm": "svm_shop"
+            "svm": "svm_shop",
+            "aggr": "netapp/ontap-prod/aggr/aggr1"
           }
         }
       },
@@ -252,7 +242,8 @@
           "labels": {
             "namespace": "prod",
             "volumename": "pvc-7e5d4c3b",
-            "svm": "svm_dr"
+            "svm": "svm_shop",
+            "aggr": "netapp/ontap-prod/aggr/aggr2"
           }
         }
       },
@@ -351,7 +342,7 @@
             "tier": "node-aggr"
           },
           "metrics": {
-            "read_bytes_per_sec": 5505024,
+            "read_bytes_per_sec": 5242880,
             "write_bytes_per_sec": 1048576
           }
         }
@@ -366,7 +357,7 @@
             "tier": "aggr-svm"
           },
           "metrics": {
-            "read_bytes_per_sec": 5505024,
+            "read_bytes_per_sec": 5242880,
             "write_bytes_per_sec": 1048576
           }
         }
@@ -486,7 +477,7 @@
           "id": "sf-as-2",
           "type": "storage-flow",
           "source": "netapp/ontap-prod/aggr/aggr2",
-          "target": "netapp/ontap-prod/svm/svm_dr",
+          "target": "netapp/ontap-prod/svm/svm_shop",
           "labels": {
             "tier": "aggr-svm"
           },
@@ -500,7 +491,7 @@
         "data": {
           "id": "sf-sp-2",
           "type": "storage-flow",
-          "source": "netapp/ontap-prod/svm/svm_dr",
+          "source": "netapp/ontap-prod/svm/svm_shop",
           "target": "pvc/data-mongo-1",
           "labels": {
             "tier": "svm-pvc"

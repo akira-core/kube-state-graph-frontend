@@ -10,6 +10,8 @@ import {
   type SankeyKind,
   type SankeyLinkTier,
   type SankeyNode,
+  type SankeySvmDisplay,
+  type SankeySvmFrame,
 } from './deriveSankey';
 
 // Intrinsic content-space geometry. These are independent of the container's pixel size —
@@ -94,16 +96,19 @@ export interface LayoutNode {
 
 export interface LayoutWrapper {
   id: string;
+  /** `node` (a Kubernetes node wrapping pods) or `netapp-svm` (an SVM frame wrapping PVCs). */
+  kind: 'node' | 'netapp-svm';
   label: string;
   subtitle: string;
-  locatable: true;
+  /** A Kubernetes node wrapper is locatable; an SVM frame is not — `/v1/graph` has no SVM node. */
+  locatable: boolean;
   status?: NodeStatus;
   noFlow?: boolean;
   x: number;
   y: number;
   width: number;
   height: number;
-  podIds: string[];
+  memberIds: string[];
 }
 
 export interface LayoutLink {
@@ -219,6 +224,10 @@ function orderPods(podNodes: SankeyNode[], flow: Map<string, number>): SankeyNod
 
 function podWord(count: number): string {
   return count === 1 ? '1 pod' : `${String(count)} pods`;
+}
+
+function pvcWord(count: number): string {
+  return count === 1 ? '1 PVC' : `${String(count)} PVCs`;
 }
 
 function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
@@ -375,57 +384,75 @@ function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: P
   };
 }
 
-function layoutPodWrappers(
-  pods: SankeyNode[],
-  k8sNodes: SankeyK8sNode[],
+/** A wrapper or frame to draw, ready for placement — the two kinds' own bookkeeping
+ *  (`SankeyK8sNode` / `SankeySvmFrame`) has already been reduced to this shared shape. */
+interface ColumnWrapperGroup {
+  id: string;
+  kind: 'node' | 'netapp-svm';
+  label: string;
+  memberIds: string[];
+  locatable: boolean;
+  subtitle: string;
+  status?: NodeStatus;
+  noFlow?: boolean;
+}
+
+/**
+ * Places one column's cards, some of them grouped into wrappers — a Kubernetes node
+ * wrapping its pods, or an SVM frame wrapping its PVCs (design D3). Groups are drawn first,
+ * ordered by label; members not claimed by any group are drawn loose beneath them, in
+ * `orderMembers`'s order. Both wrapper kinds share this placement and geometry so neither
+ * drifts from the other.
+ */
+function layoutColumnWrappers(
+  members: SankeyNode[],
+  groups: readonly ColumnWrapperGroup[],
   columnX: number,
-  ctx: PlaceCtx
+  ctx: PlaceCtx,
+  orderMembers: (nodes: SankeyNode[]) => SankeyNode[]
 ): { nodes: LayoutNode[]; wrappers: LayoutWrapper[]; bottom: number } {
-  const podsById = new Map(pods.map((p) => [p.id, p]));
-  const scheduled = new Set(k8sNodes.flatMap((k) => k.podIds));
-  const wrappersToDraw = [...k8sNodes].sort((a, b) => a.label.localeCompare(b.label));
+  const membersById = new Map(members.map((m) => [m.id, m]));
+  const scheduled = new Set(groups.flatMap((g) => g.memberIds));
+  const groupsToDraw = [...groups].sort((a, b) => a.label.localeCompare(b.label));
   const nodes: LayoutNode[] = [];
   const wrappers: LayoutWrapper[] = [];
   let y = PAD_TOP;
 
-  for (const k8s of wrappersToDraw) {
-    const inner = orderPods(
-      k8s.podIds.map((id) => podsById.get(id)).filter((p): p is SankeyNode => p !== undefined),
-      ctx.flow
+  for (const group of groupsToDraw) {
+    const inner = orderMembers(
+      group.memberIds.map((id) => membersById.get(id)).filter((m): m is SankeyNode => m !== undefined)
     );
     const wrapperY = y;
     const innerX = columnX + WRAPPER_PAD;
     const innerW = CARD_W - WRAPPER_PAD * 2;
     let innerY = wrapperY + WRAPPER_HEADER_H;
-    for (const pod of inner) {
-      const card = placeCard(pod, innerX, innerY, innerW, ctx);
+    for (const member of inner) {
+      const card = placeCard(member, innerX, innerY, innerW, ctx);
       nodes.push(card);
       innerY += card.height + V_GAP;
     }
     const last = nodes.length > 0 && inner.length > 0 ? nodes[nodes.length - 1] : undefined;
     const height = last === undefined ? WRAPPER_HEADER_H + WRAPPER_PAD : last.y + last.height + WRAPPER_PAD - wrapperY;
     wrappers.push({
-      id: k8s.id,
-      label: k8s.label,
-      subtitle: k8s.noFlow === true ? 'node · no flow' : `node · ${podWord(inner.length)}`,
-      locatable: true,
-      ...(k8s.status !== undefined ? { status: k8s.status } : {}),
+      id: group.id,
+      kind: group.kind,
+      label: group.label,
+      subtitle: group.subtitle,
+      locatable: group.locatable,
+      ...(group.status !== undefined ? { status: group.status } : {}),
       x: columnX,
       y: wrapperY,
       width: CARD_W,
       height,
-      podIds: inner.map((p) => p.id),
-      ...(k8s.noFlow === true ? { noFlow: true } : {}),
+      memberIds: inner.map((m) => m.id),
+      ...(group.noFlow === true ? { noFlow: true } : {}),
     });
     y = wrapperY + height + V_GAP;
   }
 
-  const unscheduled = orderPods(
-    pods.filter((p) => !scheduled.has(p.id)),
-    ctx.flow
-  );
-  for (const pod of unscheduled) {
-    const card = placeCard(pod, columnX, y, CARD_W, ctx);
+  const unscheduled = orderMembers(members.filter((m) => !scheduled.has(m.id)));
+  for (const member of unscheduled) {
+    const card = placeCard(member, columnX, y, CARD_W, ctx);
     nodes.push(card);
     y += card.height + V_GAP;
   }
@@ -433,10 +460,50 @@ function layoutPodWrappers(
   return { nodes, wrappers, bottom: y === PAD_TOP ? PAD_TOP : y - V_GAP };
 }
 
+function layoutPodWrappers(
+  pods: SankeyNode[],
+  k8sNodes: SankeyK8sNode[],
+  columnX: number,
+  ctx: PlaceCtx
+): { nodes: LayoutNode[]; wrappers: LayoutWrapper[]; bottom: number } {
+  const groups: ColumnWrapperGroup[] = k8sNodes.map((k) => ({
+    id: k.id,
+    kind: 'node',
+    label: k.label,
+    memberIds: k.podIds,
+    locatable: true,
+    subtitle: k.noFlow === true ? 'node · no flow' : `node · ${podWord(k.podIds.length)}`,
+    ...(k.status !== undefined ? { status: k.status } : {}),
+    ...(k.noFlow === true ? { noFlow: true } : {}),
+  }));
+  return layoutColumnWrappers(pods, groups, columnX, ctx, (nodes) => orderPods(nodes, ctx.flow));
+}
+
+function layoutSvmFrames(
+  pvcs: SankeyNode[],
+  svmFrames: readonly SankeySvmFrame[],
+  columnX: number,
+  ctx: PlaceCtx
+): { nodes: LayoutNode[]; wrappers: LayoutWrapper[]; bottom: number } {
+  const groups: ColumnWrapperGroup[] = svmFrames.map((f) => ({
+    id: f.id,
+    kind: 'netapp-svm',
+    label: f.label,
+    memberIds: f.pvcIds,
+    locatable: false,
+    subtitle: f.noFlow === true ? 'svm · no flow' : `svm · ${pvcWord(f.pvcIds.length)}`,
+    ...(f.noFlow === true ? { noFlow: true } : {}),
+  }));
+  // The PVC column's own order ("Sorting within a tier") — not the pod tier's
+  // namespace-grouped order, which does not apply to a PVC.
+  return layoutColumnWrappers(pvcs, groups, columnX, ctx, (nodes) => [...nodes].sort(byFlowThenLabel(ctx.flow)));
+}
+
 export function layoutSankey(
   graph: SankeyGraph,
   namespacePalette: readonly string[],
-  podLayout: SankeyPodLayout = 'flat'
+  podLayout: SankeyPodLayout = 'flat',
+  svmDisplay: SankeySvmDisplay = 'column'
 ): SankeyLayout {
   const flow = computeFlow(graph.links);
 
@@ -487,10 +554,15 @@ export function layoutSankey(
   // whose pods carry no `application` ancestor has that column empty — and a reserved slot
   // would open the diagram with a CARD_W + COL_GAP gutter through its middle while
   // "fit to window" scaled the whole chart down to enclose the gap.
-  const occupied = (kind: SankeyKind): boolean =>
-    kind === 'pod' && podLayout === 'node'
-      ? orderedByTier.pod.length > 0 || graph.k8sNodes.length > 0
-      : orderedByTier[kind].length > 0;
+  const occupied = (kind: SankeyKind): boolean => {
+    if (kind === 'pod' && podLayout === 'node') {
+      return orderedByTier.pod.length > 0 || graph.k8sNodes.length > 0;
+    }
+    if (kind === 'pvc' && svmDisplay === 'group') {
+      return orderedByTier.pvc.length > 0 || graph.svmFrames.length > 0;
+    }
+    return orderedByTier[kind].length > 0;
+  };
   const columnWidth = (tierIndex: number): number => (tierIndex === TIERS.length - 1 ? LEAF_W : CARD_W);
 
   const columnX: number[] = [];
@@ -520,6 +592,15 @@ export function layoutSankey(
     const width = columnWidth(tierIndex);
     if (kind === 'pod' && podLayout === 'node') {
       const placed = layoutPodWrappers(orderedByTier.pod, graph.k8sNodes, x, ctx);
+      for (const n of placed.nodes) {
+        nodesById.set(n.id, n);
+      }
+      wrappers.push(...placed.wrappers);
+      bottoms.push(placed.bottom);
+      return;
+    }
+    if (kind === 'pvc' && svmDisplay === 'group') {
+      const placed = layoutSvmFrames(orderedByTier.pvc, graph.svmFrames, x, ctx);
       for (const n of placed.nodes) {
         nodesById.set(n.id, n);
       }
@@ -569,7 +650,12 @@ export function layoutSankey(
   const nodes = [...nodesById.values()];
   const columns: ColumnHeader[] = TIERS.map((kind, i) => ({
     x: columnX[i] ?? PAD_X,
-    label: kind === 'pod' && podLayout === 'node' ? 'Node / Pod' : TIER_LABEL[kind],
+    label:
+      kind === 'pod' && podLayout === 'node'
+        ? 'Node / Pod'
+        : kind === 'pvc' && svmDisplay === 'group'
+          ? 'SVM / PVC'
+          : TIER_LABEL[kind],
   })).filter((_, i) => occupied(TIERS[i] as SankeyKind));
 
   let contentRight = PAD_X;

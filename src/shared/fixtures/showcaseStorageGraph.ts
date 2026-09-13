@@ -7,9 +7,18 @@ import type { WireGraph } from '../types/wire';
  * `SHOWCASE_GRAPH` so a demo-mode Locate can find them. `netapp-svm` is the
  * exception: `/v1/graph` never emits that kind.
  *
+ * `svm_shop` holds claims on BOTH `aggr1` (`data-mongo-0`) and `aggr2`
+ * (`data-mongo-1`), plus the FlexGroup claim `data-scratch` — the ambiguity the
+ * Sankey's SVM display switch (`Column` / `Group`) exists to resolve. Every PVC
+ * whose claim sits on an aggregate carries `labels.aggr` naming that aggregate's
+ * node id; `data-scratch` carries none.
+ *
  * Weights are conserved per intermediate node (in = out per direction), with a
  * FlexGroup path that starts at `svm-pvc` and a `pvc-pod` hop marked
- * `attribution: "split"`.
+ * `attribution: "split"` — EXCEPT at `svm_shop` itself, where in ≠ out: its
+ * inbound `aggr-svm` edges sum to less than its outbound `svm-pvc` edges,
+ * because `data-scratch`'s FlexGroup flow enters only at the `svm-pvc` tier and
+ * no `node-aggr` / `aggr-svm` hop carries it.
  *
  * `status` is stamped to the SAME value the matching id carries in `SHOWCASE_GRAPH`, and
  * on the NetApp tiers to whatever the `health` / `alerts` already on the node would fold
@@ -97,15 +106,6 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           labels: { ontap_cluster: 'ontap-prod' },
         },
       },
-      {
-        data: {
-          id: 'netapp/ontap-prod/svm/svm_dr',
-          name: 'svm_dr',
-          type: 'netapp-svm',
-          parent: 'storage-cluster/ontap-prod',
-          labels: { ontap_cluster: 'ontap-prod' },
-        },
-      },
       { data: { id: 'cluster/prod', name: 'prod', type: 'cluster' } },
       { data: { id: 'prod/ns/prod', name: 'prod', type: 'namespace', parent: 'cluster/prod' } },
       { data: { id: 'prod/app/mongodb', name: 'mongodb', type: 'application', parent: 'prod/ns/prod' } },
@@ -174,7 +174,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           parent: 'prod/app/mongodb',
           storageclass: 'netapp-nas',
           usage: { used_bytes: 7516192768, capacity_bytes: 10737418240 },
-          labels: { namespace: 'prod', volumename: 'pvc-9f3a1b2c', svm: 'svm_shop' },
+          labels: {
+            namespace: 'prod',
+            volumename: 'pvc-9f3a1b2c',
+            svm: 'svm_shop',
+            aggr: 'netapp/ontap-prod/aggr/aggr1',
+          },
         },
       },
       {
@@ -186,7 +191,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           parent: 'prod/app/mongodb',
           storageclass: 'netapp-nas',
           usage: { used_bytes: 2147483648, capacity_bytes: 10737418240 },
-          labels: { namespace: 'prod', volumename: 'pvc-7e5d4c3b', svm: 'svm_dr' },
+          labels: {
+            namespace: 'prod',
+            volumename: 'pvc-7e5d4c3b',
+            svm: 'svm_shop',
+            aggr: 'netapp/ontap-prod/aggr/aggr2',
+          },
         },
       },
       {
@@ -260,7 +270,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/ontap-prod-01',
           target: 'netapp/ontap-prod/aggr/aggr1',
           labels: { tier: 'node-aggr' },
-          metrics: { read_bytes_per_sec: 5505024, write_bytes_per_sec: 1048576 },
+          metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
         },
       },
       {
@@ -270,7 +280,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/aggr/aggr1',
           target: 'netapp/ontap-prod/svm/svm_shop',
           labels: { tier: 'aggr-svm' },
-          metrics: { read_bytes_per_sec: 5505024, write_bytes_per_sec: 1048576 },
+          metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
         },
       },
       {
@@ -357,7 +367,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           id: 'sf-as-2',
           type: 'storage-flow',
           source: 'netapp/ontap-prod/aggr/aggr2',
-          target: 'netapp/ontap-prod/svm/svm_dr',
+          target: 'netapp/ontap-prod/svm/svm_shop',
           labels: { tier: 'aggr-svm' },
           metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
         },
@@ -366,7 +376,7 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
         data: {
           id: 'sf-sp-2',
           type: 'storage-flow',
-          source: 'netapp/ontap-prod/svm/svm_dr',
+          source: 'netapp/ontap-prod/svm/svm_shop',
           target: 'pvc/data-mongo-1',
           labels: { tier: 'svm-pvc' },
           metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },

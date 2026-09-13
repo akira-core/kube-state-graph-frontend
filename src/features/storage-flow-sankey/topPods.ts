@@ -1,6 +1,6 @@
 import type cytoscape from 'cytoscape';
 
-import type { SankeyMode } from './deriveSankey';
+import { resolveClaimAggregates, type SankeyMode } from './deriveSankey';
 
 export const DEFAULT_TOP_PODS = 10;
 
@@ -68,7 +68,20 @@ interface FlowEdge {
   metrics: cytoscape.EdgeIoMetrics | undefined;
 }
 
-function reverseFrom(pods: ReadonlySet<string>, edges: readonly FlowEdge[]): Set<string> {
+/**
+ * Walks backward from `pods` to every storage node on a path to one of them. The `svm`
+ * hop is unconditional — an SVM feeding a kept pvc always stays drawn under `Column`. The
+ * `aggr` hop is claim-aware (design D5): when the body reports claim aggregates, an
+ * aggregate is kept only when it is a KEPT pvc's own claim aggregate — never merely
+ * because it feeds a kept SVM, which may also hold a claim on a different aggregate.
+ * Otherwise (no claim aggregates reported) every aggregate feeding a kept SVM is kept,
+ * which is all such a body can say.
+ */
+function reverseFrom(
+  pods: ReadonlySet<string>,
+  edges: readonly FlowEdge[],
+  claimAggregates: ReadonlyMap<string, string>
+): Set<string> {
   const keptPods = pods;
   const pvc = new Set<string>();
   for (const edge of edges) {
@@ -82,10 +95,20 @@ function reverseFrom(pods: ReadonlySet<string>, edges: readonly FlowEdge[]): Set
       svm.add(edge.source);
     }
   }
+  const reportsClaimAggregates = edges.some((edge) => edge.tier === 'svm-pvc' && claimAggregates.has(edge.target));
   const aggr = new Set<string>();
-  for (const edge of edges) {
-    if (edge.tier === 'aggr-svm' && svm.has(edge.target)) {
-      aggr.add(edge.source);
+  if (reportsClaimAggregates) {
+    for (const pvcId of pvc) {
+      const claimAggr = claimAggregates.get(pvcId);
+      if (claimAggr !== undefined) {
+        aggr.add(claimAggr);
+      }
+    }
+  } else {
+    for (const edge of edges) {
+      if (edge.tier === 'aggr-svm' && svm.has(edge.target)) {
+        aggr.add(edge.source);
+      }
     }
   }
   const nn = new Set<string>();
@@ -154,8 +177,9 @@ export function cutTopPods(elements: readonly cytoscape.ElementDefinition[], mod
   const keptRanked = new Set(ordered.slice(0, Math.min(keep, total)));
   const droppedRanked = new Set(ordered.slice(keptRanked.size));
 
-  const storageOnAny = reverseFrom(new Set(ordered), flowEdges);
-  const storageOnKept = reverseFrom(keptRanked, flowEdges);
+  const claimAggregates = resolveClaimAggregates(elements);
+  const storageOnAny = reverseFrom(new Set(ordered), flowEdges, claimAggregates);
+  const storageOnKept = reverseFrom(keptRanked, flowEdges, claimAggregates);
   const drop = new Set<string>(droppedRanked);
   for (const id of storageOnAny) {
     if (!storageOnKept.has(id)) {

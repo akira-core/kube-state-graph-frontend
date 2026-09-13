@@ -20,6 +20,7 @@ import {
   useSankeyQuery,
   type SankeyMode,
   type SankeyPodLayout,
+  type SankeySvmDisplay,
 } from '../storage-flow-sankey';
 import { DEFAULT_TOP_PODS, parseSankeyScope, serializeSankeyScope } from '../storage-flow-sankey/sankeyUrlScope';
 import { useRootCandidates } from '../storage-flow-sankey/useRootCandidates';
@@ -107,6 +108,7 @@ export function SankeyPage(): JSX.Element {
   const demoQuery = useSankeyQuery(identity);
   const [podError, setPodError] = useState<string | undefined>(undefined);
   const [podLayout, setPodLayout] = useState<SankeyPodLayout>('flat');
+  const [svmDisplay, setSvmDisplay] = useState<SankeySvmDisplay>('column');
   const [demoTopPods, setDemoTopPods] = useState(DEFAULT_TOP_PODS);
   const [demoModeValue, setDemoModeValue] = useState<SankeyMode>('both');
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
@@ -276,6 +278,8 @@ export function SankeyPage(): JSX.Element {
           onLocateNode={onLocateNode}
           podLayout={podLayout}
           onPodLayoutChange={setPodLayout}
+          svmDisplay={svmDisplay}
+          onSvmDisplayChange={setSvmDisplay}
         />
       </main>
     </>
