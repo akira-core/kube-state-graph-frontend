@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_RESPONSE_MESSAGE, describeGraphOutcome, type GraphOutcomeInput } from './describeGraphOutcome';
+import {
+  AWAITING_QUERY_MESSAGE,
+  CANCELLED_QUERY_MESSAGE,
+  EMPTY_RESPONSE_MESSAGE,
+  describeGraphOutcome,
+  type GraphOutcomeInput,
+} from './describeGraphOutcome';
 
 const DRAWN: GraphOutcomeInput = {
   status: 'ready',
@@ -14,6 +20,25 @@ const DRAWN: GraphOutcomeInput = {
 describe('describeGraphOutcome', () => {
   it('draws when there is something to draw', () => {
     expect(describeGraphOutcome(DRAWN)).toEqual({ kind: 'drawn' });
+  });
+
+  it('names awaiting Query and cancelled-with-no-data instead of loading', () => {
+    expect(
+      describeGraphOutcome({ ...DRAWN, status: 'idle', hasPayload: false, elementCount: 0, visibleNodeCount: 0 })
+    ).toEqual({
+      kind: 'awaiting',
+      message: AWAITING_QUERY_MESSAGE,
+    });
+    expect(
+      describeGraphOutcome({
+        ...DRAWN,
+        status: 'idle',
+        hasPayload: false,
+        cancelled: true,
+        elementCount: 0,
+        visibleNodeCount: 0,
+      })
+    ).toEqual({ kind: 'cancelled', message: CANCELLED_QUERY_MESSAGE });
   });
 
   it('shows the loader only before the first payload', () => {

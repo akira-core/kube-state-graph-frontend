@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildSearchString } from '../../shared/url/search';
 
-import { EMPTY_SANKEY_URL_SCOPE, parseSankeyScope, serializeSankeyScope } from './sankeyUrlScope';
+import { DEFAULT_TOP_PODS, EMPTY_SANKEY_URL_SCOPE, parseSankeyScope, serializeSankeyScope } from './sankeyUrlScope';
 
 function parse(raw: string): URLSearchParams {
   return new URLSearchParams(raw.startsWith('?') ? raw.slice(1) : raw);
@@ -48,6 +48,30 @@ describe('sankey URL scope', () => {
     expect(qs).not.toContain('layout=');
     expect(qs).not.toContain('group=');
     expect(qs).toBe('az=zone-a&env=prod&from=now-24h&to=now');
+  });
+
+  it('round-trips top_pods and falls back to 10 on garbage', () => {
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&aggr=aggr1&top_pods=25'));
+    expect(scope.topPods).toBe(25);
+    const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '24h' });
+    expect(qs).toContain('top_pods=25');
+    expect(parseSankeyScope(parse('top_pods=nope')).topPods).toBe(DEFAULT_TOP_PODS);
+    expect(parseSankeyScope(parse('top_pods=0')).topPods).toBe(DEFAULT_TOP_PODS);
+  });
+
+  it('omits top_pods at the default and when a pod root is present', () => {
+    const withDefault = parseSankeyScope(parse('az=zone-a&env=prod&aggr=aggr1'));
+    expect(withDefault.topPods).toBe(10);
+    expect(buildSearchString(serializeSankeyScope(withDefault), { kind: 'relative', window: '24h' })).not.toContain(
+      'top_pods'
+    );
+    const withPod: ReturnType<typeof parseSankeyScope> = {
+      ...parseSankeyScope(parse('az=zone-a&env=prod&pod=shop%2Forders-0')),
+      topPods: 25,
+    };
+    expect(buildSearchString(serializeSankeyScope(withPod), { kind: 'relative', window: '24h' })).not.toContain(
+      'top_pods'
+    );
   });
 
   it('strips unknown params on write', () => {

@@ -37,6 +37,7 @@ export interface SankeySummaryProps {
   nodes: NodeSummaryRow[];
   namespaces: NamespaceSubtotalRow[];
   applications: ApplicationSubtotalRow[];
+  podCut?: { shown: number; total: number };
 }
 
 /** The card border's colour, repeated as a dot so the table reads the same way the chart does. */
@@ -60,7 +61,7 @@ function StatusCell({ status }: Readonly<{ status: NodeStatus | undefined }>): J
 // tables tall enough to take half the column, and the chart — the thing the page is for —
 // opened squeezed into what was left. The header strip stays drawn either way: a summary
 // that disappears entirely is indistinguishable from one the estate has no numbers for.
-export function SankeySummary({ nodes, namespaces, applications }: Readonly<SankeySummaryProps>): JSX.Element {
+export function SankeySummary({ nodes, namespaces, applications, podCut }: Readonly<SankeySummaryProps>): JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex shrink-0 flex-col border-t border-hairline bg-surface" data-testid="sankey-summary">
@@ -77,6 +78,9 @@ export function SankeySummary({ nodes, namespaces, applications }: Readonly<Sank
         <span className={eyebrowClass}>Flow summary</span>
         <span className="text-[11px] text-secondary">
           {nodes.length} nodes · {applications.length} applications · {namespaces.length} namespaces
+          {podCut !== undefined && podCut.shown < podCut.total
+            ? ` · ${String(podCut.shown)} of ${String(podCut.total)} pods`
+            : ''}
         </span>
       </button>
 

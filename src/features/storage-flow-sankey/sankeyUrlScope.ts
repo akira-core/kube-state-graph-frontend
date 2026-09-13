@@ -15,9 +15,12 @@ export const SANKEY_ROOT_KINDS: ReadonlyArray<keyof StorageGraphRoots> = [
   'pod',
 ];
 
+export const DEFAULT_TOP_PODS = 10;
+
 export interface SankeyUrlScope {
   query: StorageGraphQuery;
   mode: SankeyMode;
+  topPods: number;
   droppedPods: string[];
 }
 
@@ -34,6 +37,17 @@ function parseMode(raw: string | null): SankeyMode {
     return raw;
   }
   return 'both';
+}
+
+function parseTopPods(raw: string | null): number {
+  if (raw === null || raw === '') {
+    return DEFAULT_TOP_PODS;
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    return DEFAULT_TOP_PODS;
+  }
+  return n;
 }
 
 export function parseSankeyScope(params: URLSearchParams): SankeyUrlScope {
@@ -55,6 +69,7 @@ export function parseSankeyScope(params: URLSearchParams): SankeyUrlScope {
       roots,
     },
     mode: parseMode(params.get('mode')),
+    topPods: parseTopPods(params.get('top_pods')),
     droppedPods,
   };
 }
@@ -85,6 +100,10 @@ export function serializeSankeyScope(scope: SankeyUrlScope): Array<[string, stri
   if (scope.mode === 'read' || scope.mode === 'write') {
     out.push(['mode', scope.mode]);
   }
+  const hasPodRoot = scope.query.roots.pod.length > 0;
+  if (!hasPodRoot && scope.topPods !== DEFAULT_TOP_PODS) {
+    out.push(['top_pods', String(scope.topPods)]);
+  }
   return out;
 }
 
@@ -97,5 +116,6 @@ export const EMPTY_SANKEY_URL_SCOPE: SankeyUrlScope = {
     roots: EMPTY_STORAGE_GRAPH_ROOTS,
   },
   mode: 'both',
+  topPods: DEFAULT_TOP_PODS,
   droppedPods: [],
 };

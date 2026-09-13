@@ -71,6 +71,7 @@ function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
         {!focusMode && (
           <NavBar
             demoMode={config.demoMode}
+            phase={status.phase}
             lastLoadedAt={status.lastLoadedAt}
             refreshing={status.refreshing}
             error={status.error}

@@ -2,24 +2,28 @@ import { useState, type JSX } from 'react';
 
 import { Button } from '../../shared/ui/Button';
 import { FilterIcon } from '../../shared/ui/icons';
+import { QueryButton } from '../../shared/ui/QueryButton';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
 import { eyebrowClass } from '../../shared/ui/Section';
-import type { StorageGraphRoots } from '../graph-data';
+import { hasAnyRoot, type StorageGraphRoots } from '../graph-data';
 
 import { EMPTY_SANKEY_ROOT_OPTIONS, type SankeyRootOptions } from './deriveSankey';
+import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
 import type { SankeyIdentityOptions, SankeyQueryController, SankeyRootKind } from './useSankeyQuery';
 
 export interface SankeyScopeBarProps {
   options: SankeyIdentityOptions;
   controller: SankeyQueryController;
-  /**
-   * Root values offered per kind, from the body currently drawn. Optional and empty by
-   * default: the control accepts custom values, so it stays fully operable with nothing
-   * to list — which is also its state before the first response arrives.
-   */
   rootOptions?: SankeyRootOptions;
-  /** Kubernetes `node` roots that have nowhere to draw under the Flat layout. */
   k8sNodeHint?: ReadonlyArray<{ id: string; label: string }>;
+  dirty?: boolean;
+  inFlight?: boolean;
+  onQuery?: () => void;
+  onCancel?: () => void;
+  topPods?: number;
+  onTopPods?: (value: number) => void;
+  hideQuery?: boolean;
+  onRootKindChange?: (kind: SankeyRootKind) => void;
 }
 
 const ROOT_KINDS: ReadonlyArray<{ kind: SankeyRootKind; label: string }> = [
@@ -50,29 +54,54 @@ function rootEntries(roots: StorageGraphRoots): Array<{ kind: SankeyRootKind; va
   return out;
 }
 
+function emptyHintFor(kind: SankeyRootKind, namespaces: readonly string[]): string | undefined {
+  if (kind === 'pod' && namespaces.length === 0) {
+    return 'Select a namespace to list pods, or type a value as <namespace>/<pod>.';
+  }
+  if (kind === 'ontap_cluster' || kind === 'aggr' || kind === 'svm') {
+    return 'These names are typed until a query has drawn them.';
+  }
+  return undefined;
+}
+
+function queryDisabledReason(azEnvReady: boolean, hasRoot: boolean): string | undefined {
+  if (azEnvReady && hasRoot) {
+    return undefined;
+  }
+  if (azEnvReady) {
+    return 'At least one root is required';
+  }
+  return 'Select one az, one env and at least one root';
+}
+
 /**
- * Sankey estate / root / narrowing. `az` / `env` stay operable with zero options
- * because custom values are allowed — the backend requires both, and a dropdown
- * that cannot accept a value would strand the view on the "pick an az and env" hint.
- *
- * Laid out as the Graph view's FilterBar is, and for the same reason: ONE row of
- * label-over-control columns on a shared baseline, then the prose underneath. Every control
- * here is a labelled column of the same height, `Add` included — a nested group with its own
- * heading (which "Root" used to be) puts a second label rank into a row that reads as one,
- * and the eye stops trusting the baseline. Roots, errors and hints sit on their own row so a
- * growing pill list can never reflow the controls.
+ * Sankey estate / root / narrowing. Laid out as the Graph view's FilterBar is: ONE row of
+ * label-over-control columns on a shared baseline, then the prose underneath.
  */
 export function SankeyScopeBar({
   options,
   controller,
   rootOptions = EMPTY_SANKEY_ROOT_OPTIONS,
   k8sNodeHint = [],
+  dirty = false,
+  inFlight = false,
+  onQuery = () => undefined,
+  onCancel = () => undefined,
+  topPods = DEFAULT_TOP_PODS,
+  onTopPods,
+  hideQuery = false,
+  onRootKindChange,
 }: Readonly<SankeyScopeBarProps>): JSX.Element {
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
-  const [rootValue, setRootValue] = useState('');
+  const [pending, setPending] = useState<string[]>([]);
   const showCluster = options.cluster.length > 0 || controller.query.cluster.length > 0;
   const showNamespace = options.namespace.length > 0 || controller.query.namespace.length > 0;
   const roots = rootEntries(controller.query.roots);
+  const hasRoot = hasAnyRoot(controller.query.roots);
+  const hasPodRoot = controller.query.roots.pod.length > 0;
+  const disabledReason = queryDisabledReason(controller.azEnvReady, hasRoot);
+  const hint = emptyHintFor(rootKind, controller.query.namespace);
+
   return (
     <div
       aria-label="Sankey scope"
@@ -108,8 +137,8 @@ export function SankeyScopeBar({
           className="flex items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (controller.addRoot(rootKind, rootValue)) {
-              setRootValue('');
+            if (controller.addRoots(rootKind, pending)) {
+              setPending([]);
             }
           }}
         >
@@ -123,30 +152,26 @@ export function SankeyScopeBar({
               const kind = next[0];
               if (kind === 'ontap_cluster' || kind === 'node' || kind === 'aggr' || kind === 'svm' || kind === 'pod') {
                 setRootKind(kind);
-                // A pending value belongs to the kind it was picked under: `aggr1` committed
-                // as a `pod` root is a 400, and `svm_demo` committed as an `aggr` root is a
-                // silently empty graph. Switching kind therefore drops it rather than
-                // carrying it into a list that does not contain it.
-                setRootValue('');
+                setPending([]);
+                onRootKindChange?.(kind);
               }
             }}
             allowCustom={false}
             testId="sankey-root-kind"
           />
-          {/* Same dropdown contract as every other control here. It offers the names the
-              current body carries and still takes a typed one, because that body is a
-              projection: it is the whole estate only while no root is applied. */}
           <ScopeSelect
             label="Root value"
-            mode="single"
+            mode="multi"
             options={rootOptions[rootKind]}
-            value={rootValue === '' ? [] : [rootValue]}
-            onChange={(next) => setRootValue(next[0] ?? '')}
+            value={pending}
+            onChange={setPending}
             allowCustom
-            emptyLabel="Select or type"
+            allRow={false}
+            emptyLabel="Pick values to add"
+            {...(hint !== undefined ? { emptyHint: hint } : {})}
             testId="sankey-root-value"
           />
-          <Button type="submit" size="md" disabled={rootValue === ''}>
+          <Button type="submit" size="md" disabled={pending.length === 0}>
             Add
           </Button>
         </form>
@@ -173,9 +198,46 @@ export function SankeyScopeBar({
             testId="sankey-namespace"
           />
         )}
+
+        <div className="flex min-w-[5.5rem] flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-eyebrow text-secondary">Top pods</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            aria-label="Top pods"
+            data-testid="sankey-top-pods"
+            disabled={hasPodRoot}
+            title={hasPodRoot ? 'A pod root names the pods' : undefined}
+            value={topPods}
+            onChange={(e) => {
+              const n = Number(e.currentTarget.value);
+              if (Number.isInteger(n) && n >= 1) {
+                onTopPods?.(n);
+              }
+            }}
+            className="h-8 w-[5.5rem] rounded-md border border-hairline-strong bg-raised px-2 font-mono text-xs text-primary disabled:opacity-45"
+          />
+        </div>
+        {hasPodRoot && (
+          <span className="mb-1.5 text-[11px] text-secondary" data-testid="sankey-top-pods-reason">
+            A pod root names the pods
+          </span>
+        )}
+
+        {!hideQuery && (
+          <QueryButton
+            dirty={dirty}
+            inFlight={inFlight}
+            disabled={disabledReason !== undefined}
+            {...(disabledReason !== undefined ? { disabledReason } : {})}
+            onQuery={onQuery}
+            onCancel={onCancel}
+          />
+        )}
       </div>
 
-      {(roots.length > 0 || controller.podError !== undefined) && (
+      {(roots.length > 0 || controller.podError !== undefined || !hasRoot) && (
         <div className="flex flex-wrap items-center gap-2">
           {roots.map((entry) => (
             <button
@@ -190,6 +252,11 @@ export function SankeyScopeBar({
           {controller.podError !== undefined && (
             <span className="text-[11px] text-[var(--ksg-status-warning)]" data-testid="sankey-pod-error">
               {controller.podError}
+            </span>
+          )}
+          {!hasRoot && (
+            <span className="text-[11px] text-secondary" data-testid="sankey-root-required">
+              At least one root is required
             </span>
           )}
         </div>

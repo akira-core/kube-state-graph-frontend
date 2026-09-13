@@ -44,8 +44,8 @@ export interface SankeyNode {
    * field Graph view borders a node by, so the two views cannot disagree about an estate.
    * Absent on every node the backend sends none for (SVMs, synthesised compounds), which
    * draws the neutral border rather than a green one it has no evidence for. On a card that
-   * HIDES other nodes (`application` / `namespace`, and the Node-layout wrapper) it is the
-   * worst status of the members instead, matching a collapsed compound in Graph view.
+   * HIDES other nodes: the Node-layout wrapper folds the worst of its members; derived
+   * `application` / `namespace` cards carry none.
    */
   status?: NodeStatus;
   hardware?: cytoscape.NodeDataDefinition['hardware'];
@@ -641,10 +641,10 @@ export function deriveSankey(
   }
 
   for (const agg of applications.values()) {
-    kept.push(toDerivedNode(agg, 'application', worstStatusOf(nodes, agg.members)));
+    kept.push(toDerivedNode(agg, 'application', undefined));
   }
   for (const agg of namespaces.values()) {
-    kept.push(toDerivedNode(agg, 'namespace', worstStatusOf(nodes, agg.members)));
+    kept.push(toDerivedNode(agg, 'namespace', undefined));
   }
 
   const keptPodIds = new Set(kept.filter((n) => n.kind === 'pod').map((n) => n.id));

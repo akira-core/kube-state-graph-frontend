@@ -64,6 +64,24 @@ describe('NavBar', () => {
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
   });
 
+  it('shows the awaiting-Query readout and disables Reload', () => {
+    renderNav({ phase: 'awaiting', lastLoadedAt: null });
+    expect(screen.getByTestId('nav-status-readout')).toHaveTextContent('awaiting Query');
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  });
+
+  it('shows cancelled with the last load time still visible', () => {
+    renderNav({ phase: 'cancelled', lastLoadedAt: Date.parse('2026-01-01T12:00:00') });
+    expect(screen.getByTestId('nav-status-readout')).toHaveTextContent('cancelled');
+    expect(screen.getByTestId('nav-status-readout').textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeEnabled();
+  });
+
+  it('disables Reload while phase is loading', () => {
+    renderNav({ phase: 'loading', refreshing: true, lastLoadedAt: Date.parse('2026-01-01T12:00:00') });
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  });
+
   it('renders from/to inputs for an absolute range', () => {
     const { onAbsolute } = renderNav({
       viewRange: { kind: 'absolute', window: { fromUnixSeconds: 1_700_000_000, toUnixSeconds: 1_700_003_600 } },

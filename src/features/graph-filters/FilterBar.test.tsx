@@ -15,12 +15,31 @@ const OPTIONS: FilterOptions = {
   problems: [],
 };
 
-function renderBar(filters: GraphFilters = DEFAULT_GRAPH_FILTERS) {
+const QUERY = { dirty: false, inFlight: false, onQuery: vi.fn(), onCancel: vi.fn() };
+
+function renderBar(
+  filters: GraphFilters = DEFAULT_GRAPH_FILTERS,
+  extra: Partial<Parameters<typeof FilterBar>[0]> = {}
+) {
   const onValues = vi.fn();
   const onPrune = vi.fn();
   const onClear = vi.fn();
-  render(<FilterBar filters={filters} options={OPTIONS} onValues={onValues} onPrune={onPrune} onClear={onClear} />);
-  return { onValues, onPrune, onClear };
+  const onQuery = extra.onQuery ?? vi.fn();
+  const onCancel = extra.onCancel ?? vi.fn();
+  render(
+    <FilterBar
+      filters={filters}
+      options={OPTIONS}
+      onValues={onValues}
+      onPrune={onPrune}
+      onClear={onClear}
+      dirty={extra.dirty ?? false}
+      inFlight={extra.inFlight ?? false}
+      onQuery={onQuery}
+      onCancel={onCancel}
+    />
+  );
+  return { onValues, onPrune, onClear, onQuery, onCancel };
 }
 
 describe('FilterBar', () => {
@@ -92,6 +111,7 @@ describe('FilterBar', () => {
         onValues={vi.fn()}
         onPrune={vi.fn()}
         onClear={vi.fn()}
+        {...QUERY}
       />
     );
     expect(screen.getByTestId('filter-problems').textContent).toContain('1 filter source');
@@ -131,6 +151,31 @@ describe('FilterBar', () => {
     expect(within(trigger).getByText('shop')).toBeInTheDocument();
     expect(within(trigger).getByText('platform')).toBeInTheDocument();
     expect(within(trigger).getByText('+2')).toBeInTheDocument();
+  });
+
+  it('renders Query, accents it while dirty, and Cancel while in flight', () => {
+    const { onQuery } = renderBar();
+    fireEvent.click(screen.getByRole('button', { name: 'Query' }));
+    expect(onQuery).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('query-button')).not.toHaveAttribute('data-dirty');
+  });
+
+  it('accents Query while the draft is dirty', () => {
+    renderBar(DEFAULT_GRAPH_FILTERS, { dirty: true });
+    expect(screen.getByTestId('query-button')).toHaveAttribute('data-dirty', 'true');
+  });
+
+  it('renders Cancel while in flight', () => {
+    const { onCancel } = renderBar(DEFAULT_GRAPH_FILTERS, { inFlight: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('Clear neither issues a request nor is wired to the URL — it only notifies the caller', () => {
+    const { onClear, onQuery } = renderBar({ ...DEFAULT_GRAPH_FILTERS, cluster: ['ksg-demo'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onQuery).not.toHaveBeenCalled();
   });
 
   it('a selection made here reaches the backend request', () => {

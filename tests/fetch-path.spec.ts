@@ -15,6 +15,7 @@ test('fetch path loads /demo/graph.json through normalize', async ({ page }) => 
     });
   });
   await page.goto('/graph');
+  await page.getByRole('button', { name: 'Query' }).click();
   await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('demo-badge')).toHaveCount(0);
   await expect(page.getByTestId('ingress-toggle')).toBeVisible();

@@ -1,6 +1,5 @@
 import { isPlainObject } from '../../shared/guards/isPlainObject';
 import { fetchJson } from '../../shared/http/fetchJson';
-import type { IdentityDimension } from '../../shared/types/graphFilters';
 
 /**
  * The series the identity filters are enumerated from.
@@ -20,9 +19,19 @@ export const POD_INVENTORY_SERIES = 'kube_pod_info';
  * The `/api/v1/...` suffix belongs to the API, not to the deployment, so the caller
  * configures the root and this owns the path.
  */
-export function labelValuesUrl(base: string, dimension: IdentityDimension): string {
+/** PromQL string-literal escaping of `\` and `"` inside a matcher value. */
+export function escapePromqlString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+export function podInventorySelector(namespace: string): string {
+  return `${POD_INVENTORY_SERIES}{namespace="${escapePromqlString(namespace)}"}`;
+}
+
+export function labelValuesUrl(base: string, label: string, selector?: string): string {
   const root = base.endsWith('/') ? base.slice(0, -1) : base;
-  return `${root}/api/v1/label/${dimension}/values?match%5B%5D=${POD_INVENTORY_SERIES}`;
+  const match = selector ?? POD_INVENTORY_SERIES;
+  return `${root}/api/v1/label/${label}/values?match%5B%5D=${encodeURIComponent(match)}`;
 }
 
 export type LabelValuesResult = { ok: true; values: string[] } | { ok: false; problem: string };
@@ -34,8 +43,8 @@ export type LabelValuesResult = { ok: true; values: string[] } | { ok: false; pr
  * empty and say why — throwing here would reach the graph load path and turn a missing
  * dropdown into a missing graph, which is the opposite of what an operator needs to see.
  */
-export async function fetchLabelValues(base: string, dimension: IdentityDimension): Promise<LabelValuesResult> {
-  const url = labelValuesUrl(base, dimension);
+export async function fetchLabelValues(base: string, label: string, selector?: string): Promise<LabelValuesResult> {
+  const url = labelValuesUrl(base, label, selector);
   let payload: unknown;
   try {
     payload = await fetchJson(url);

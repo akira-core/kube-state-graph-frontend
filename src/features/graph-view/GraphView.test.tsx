@@ -45,17 +45,24 @@ function firstPodId(): string {
 }
 
 function view(
-  props: { locateNodeId?: string | null; onLocateConsumed?: () => void; hasPayload?: boolean } = {}
+  props: {
+    locateNodeId?: string | null;
+    onLocateConsumed?: () => void;
+    hasPayload?: boolean;
+    status?: 'idle' | 'loading' | 'ready' | 'error';
+    cancelled?: boolean;
+  } = {}
 ): JSX.Element {
   return (
     <ThemeProvider>
       <GraphView
         config={CONFIG}
-        elements={elements}
+        elements={props.status === 'idle' ? [] : elements}
         errors={[]}
         error={undefined}
         hasPayload={props.hasPayload ?? true}
-        status="ready"
+        cancelled={props.cancelled ?? false}
+        status={props.status ?? 'ready'}
         viewTimeRange={{ fromUnixSeconds: 1_700_000_000, toUnixSeconds: 1_700_003_600 }}
         onAlertTimeClick={vi.fn()}
         locateNodeId={props.locateNodeId ?? null}
@@ -66,6 +73,18 @@ function view(
 }
 
 describe('GraphView', () => {
+  it('explains awaiting Query instead of showing the loading overlay', () => {
+    render(view({ status: 'idle', hasPayload: false }));
+    expect(screen.getByTestId('graph-awaiting-query')).toHaveTextContent('Query');
+    expect(screen.queryByTestId('loading-overlay')).not.toBeInTheDocument();
+  });
+
+  it('explains a cancelled first request instead of showing the loading overlay', () => {
+    render(view({ status: 'idle', hasPayload: false, cancelled: true }));
+    expect(screen.getByTestId('graph-cancelled')).toHaveTextContent('cancelled');
+    expect(screen.queryByTestId('loading-overlay')).not.toBeInTheDocument();
+  });
+
   it('does not announce a window resize when it becomes visible again', () => {
     // The resize hook reads a window resize as "the environment changed, re-frame", and
     // answers it with cy.fit() — which would throw away the pan/zoom the user left behind

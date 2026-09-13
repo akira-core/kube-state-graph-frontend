@@ -79,6 +79,27 @@ describe('ScopeSelect', () => {
     expect(screen.getByRole('option', { name: 'shop' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('omits the All row when allRow is false, keeping other multi-select behaviour', () => {
+    render(
+      <ScopeSelect
+        label="Root value"
+        mode="multi"
+        options={['aggr1', 'aggr2']}
+        value={[]}
+        onChange={vi.fn()}
+        allowCustom
+        allRow={false}
+        emptyLabel="Pick values to add"
+        testId="sankey-root-value"
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
+    expect(screen.queryByRole('option', { name: 'All' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'aggr1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: 'aggr1' }));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
   it('empties the dimension from the All row', () => {
     render(<Harness initial={['shop', 'infra']} />);
     open();

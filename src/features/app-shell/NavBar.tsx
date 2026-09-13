@@ -10,8 +10,11 @@ import { Select } from '../../shared/ui/Select';
 import { StatusLamp, type LampState } from '../../shared/ui/StatusLamp';
 import { useRequiredThemeController, type ThemeChoice } from '../theme';
 
+import type { PagePhase } from './ShellFrame';
+
 export interface NavBarProps {
   demoMode: boolean;
+  phase?: PagePhase;
   lastLoadedAt: number | null;
   refreshing: boolean;
   error: string | undefined;
@@ -63,6 +66,7 @@ const DATETIME_INPUT_CLASS =
 
 export function NavBar({
   demoMode,
+  phase,
   lastLoadedAt,
   refreshing,
   error,
@@ -74,13 +78,17 @@ export function NavBar({
   onAbsolute,
 }: Readonly<NavBarProps>): JSX.Element {
   const theme = useRequiredThemeController();
-  const lamp: LampState = refreshing
-    ? 'refreshing'
-    : error !== undefined
-      ? 'error'
-      : lastLoadedAt === null
-        ? 'idle'
-        : 'live';
+  const resolvedPhase: PagePhase =
+    phase ?? (refreshing ? 'loading' : error !== undefined ? 'error' : lastLoadedAt === null ? 'awaiting' : 'ready');
+  const lamp: LampState =
+    resolvedPhase === 'loading'
+      ? 'refreshing'
+      : resolvedPhase === 'error'
+        ? 'error'
+        : resolvedPhase === 'ready'
+          ? 'live'
+          : 'idle';
+  const reloadOff = reloadDisabled || resolvedPhase === 'awaiting' || resolvedPhase === 'loading';
   return (
     <nav
       aria-label="Application"
@@ -188,7 +196,17 @@ export function NavBar({
             title={error}
             data-testid="nav-status-readout"
           >
-            {error !== undefined ? (
+            {resolvedPhase === 'awaiting' ? (
+              <span className="whitespace-nowrap">awaiting Query</span>
+            ) : resolvedPhase === 'cancelled' ? (
+              <>
+                <span className="whitespace-nowrap">cancelled</span>
+                <span className="whitespace-nowrap">{formatLoaded(lastLoadedAt)}</span>
+                {refreshIntervalSeconds > 0 && (
+                  <span className="whitespace-nowrap text-muted">· {refreshIntervalSeconds}s</span>
+                )}
+              </>
+            ) : resolvedPhase === 'error' && error !== undefined ? (
               <>
                 <span className="text-[var(--ksg-status-critical)]">error</span>
                 <span className="max-w-[16rem] truncate text-muted">{error}</span>
@@ -206,8 +224,8 @@ export function NavBar({
             variant="ghost"
             size="icon-sm"
             aria-label="Reload data"
-            title={refreshing ? 'Reloading…' : 'Reload data'}
-            disabled={refreshing || reloadDisabled}
+            title={resolvedPhase === 'loading' ? 'Reloading…' : 'Reload data'}
+            disabled={reloadOff}
             onClick={onReload}
           >
             <RefreshIcon size={14} {...(refreshing ? { className: 'animate-spin' } : {})} />

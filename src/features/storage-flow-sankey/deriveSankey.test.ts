@@ -53,12 +53,12 @@ describe('deriveSankey', () => {
     expect(graph.nodes.find((n) => n.id === 'p')?.status).toBe('critical');
   });
 
-  it('folds a derived application / namespace card to the worst status among its member pods', () => {
+  it('does not assign status to derived application / namespace cards', () => {
     const graph = deriveSankey(elements, 'both');
     const byLabel = new Map(graph.nodes.map((n) => [`${n.kind}/${n.label}`, n]));
-    // mongo-0 / mongo-1 are normal; batch-pending is warning and shares the namespace.
-    expect(byLabel.get('application/mongodb')?.status).toBe('normal');
-    expect(byLabel.get('namespace/prod')?.status).toBe('warning');
+    expect(byLabel.get('pod/batch-pending')?.status).toBe('warning');
+    expect(byLabel.get('application/mongodb')?.status).toBeUndefined();
+    expect(byLabel.get('namespace/prod')?.status).toBeUndefined();
   });
 
   it('folds a node wrapper to the worst of the node and the pods it draws', () => {

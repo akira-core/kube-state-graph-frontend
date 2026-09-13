@@ -14,7 +14,7 @@ import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
-import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
+import { EMPTY_STORAGE_GRAPH_ROOTS, hasAnyRoot, type StorageGraphRoots } from '../graph-data';
 import { useThemeTokens } from '../theme';
 
 import {
@@ -36,6 +36,8 @@ import {
   type NamespaceSubtotalRow,
   type NodeSummaryRow,
 } from './SankeySummary';
+import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
+import { cutTopPods } from './topPods';
 import { openingViewport, useZoomPan, type Size } from './useZoomPan';
 
 /**
@@ -69,8 +71,12 @@ export interface SankeyViewProps {
   onModeChange?: (mode: SankeyMode) => void;
   /** `endpoints.storageGraph` is configured (or demo mode supplies a fixture). */
   endpointConfigured: boolean;
-  /** Both halves of the required scope are chosen, so a request has been sent. */
+  /** Both halves of the required estate are chosen. */
   azEnvReady: boolean;
+  /** At least one root is present in the current (draft or applied) scope. */
+  hasRoot?: boolean;
+  cancelled?: boolean;
+  topPods?: number;
   /**
    * The root selection the current payload was requested with. Only used to keep a
    * materialised root drawn when its whole path came back unmeasured — the wire carries
@@ -89,7 +95,7 @@ interface Tip {
   text: string[];
 }
 
-function emptyCopy(kind: 1 | 2 | 3 | 4, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
+function emptyCopy(kind: 1 | 2 | 3 | 4 | 5 | 6, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
   if (kind === 1) {
     return {
       testId: 'sankey-empty-unconfigured',
@@ -99,10 +105,22 @@ function emptyCopy(kind: 1 | 2 | 3 | 4, demoMode: boolean, mode: SankeyMode): { 
   if (kind === 2) {
     return {
       testId: 'sankey-empty-scope',
-      text: 'Select one az and one env to load storage flow. No request has been sent yet.',
+      text: 'Select one az, one env and at least one root. No request has been sent yet.',
     };
   }
   if (kind === 3) {
+    return {
+      testId: 'sankey-empty-awaiting',
+      text: 'Nothing has been requested yet. Press Query to load storage flow for the current scope and time range.',
+    };
+  }
+  if (kind === 4) {
+    return {
+      testId: 'sankey-empty-cancelled',
+      text: 'The request was cancelled. Press Query to load storage flow.',
+    };
+  }
+  if (kind === 5) {
     return {
       testId: 'sankey-empty-response',
       text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
@@ -173,7 +191,7 @@ function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): str
     `${node.kind} / ${node.label}`,
     ...(node.kind === 'application' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
     ...members,
-    ...(node.status !== undefined ? [`status ${node.status} (worst of member pods)`] : []),
+    // Derived cards carry no status: they are synthesised columns.
     ...flowLines.map((line) => `${line} (derived from member pods)`),
     ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
   ];
@@ -191,6 +209,9 @@ export function SankeyView({
   onModeChange,
   endpointConfigured,
   azEnvReady,
+  hasRoot,
+  cancelled = false,
+  topPods = DEFAULT_TOP_PODS,
   roots = EMPTY_STORAGE_GRAPH_ROOTS,
   onLocateNode,
   podLayout: podLayoutProp,
@@ -263,7 +284,13 @@ export function SankeyView({
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
   // weight conservation, which is why this view has no cluster selector of its own.
-  const graph = useMemo(() => deriveSankey(elements, mode, roots), [elements, mode, roots]);
+  const podRootPresent = roots.pod.length > 0;
+  const cut = useMemo(
+    () => (podRootPresent ? { elements, shown: 0, total: 0 } : cutTopPods(elements, mode, topPods)),
+    [elements, mode, podRootPresent, topPods]
+  );
+  const graph = useMemo(() => deriveSankey(cut.elements, mode, roots), [cut.elements, mode, roots]);
+  const scopeComplete = azEnvReady && (hasRoot ?? hasAnyRoot(roots));
   // Layout depends only on the derived graph and the theme's namespace palette — never on
   // container size or the pan/zoom viewport, so a resize or a drag can never re-run it
   // (see storage-flow-sankey "尺寸與容器 resize" / "圖區的縮放與平移").
@@ -442,18 +469,24 @@ export function SankeyView({
 
   // Four causes, four sentences. They are not interchangeable: an unfinished selection that
   // reads as "no storage flow" makes a working pipeline look broken, and vice versa.
-  const emptyKind: 1 | 2 | 3 | 4 | null = (() => {
+  const emptyKind: 1 | 2 | 3 | 4 | 5 | 6 | null = (() => {
     if (!demoMode && !endpointConfigured) {
       return 1;
     }
-    if (!azEnvReady) {
+    if (!demoMode && !scopeComplete) {
       return 2;
     }
-    if (graph.links.length === 0 && graph.hasStorageFlowEdges && !graph.hasCurrentDirectionMeasurement) {
+    if (!demoMode && status === 'idle' && !hasPayload && !cancelled) {
+      return 3;
+    }
+    if (!demoMode && cancelled && !hasPayload) {
       return 4;
     }
+    if (graph.links.length === 0 && graph.hasStorageFlowEdges && !graph.hasCurrentDirectionMeasurement) {
+      return 6;
+    }
     if (graph.nodes.length === 0 && !(podLayout === 'node' && graph.k8sNodes.length > 0)) {
-      return 3;
+      return 5;
     }
     return null;
   })();
@@ -604,6 +637,11 @@ export function SankeyView({
             onChange={setPodLayout}
             data-testid="sankey-layout"
           />
+          {cut.shown < cut.total && (
+            <span className="text-[11px] text-secondary" data-testid="sankey-top-pods-label">
+              Top {cut.shown} pods
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-3">
             {/* Border colours are the backend's folded `data.status`, the same three bands
                 Graph view borders by. Without this strip a green card and a red one are two
@@ -688,7 +726,12 @@ export function SankeyView({
       </div>
 
       {!focusMode && chartReady && (
-        <SankeySummary nodes={summary.nodes} namespaces={summary.namespaces} applications={summary.applications} />
+        <SankeySummary
+          nodes={summary.nodes}
+          namespaces={summary.namespaces}
+          applications={summary.applications}
+          {...(cut.shown < cut.total ? { podCut: { shown: cut.shown, total: cut.total } } : {})}
+        />
       )}
 
       {tip !== null && tipPos !== null && (

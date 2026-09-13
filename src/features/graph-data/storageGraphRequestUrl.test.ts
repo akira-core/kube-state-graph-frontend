@@ -24,7 +24,7 @@ function query(overrides: Partial<StorageGraphQuery> = {}): StorageGraphQuery {
     az: 'local-a',
     env: 'demo',
     ...overrides,
-    roots: { ...EMPTY_STORAGE_GRAPH_QUERY.roots, ...overrides.roots },
+    roots: { ...EMPTY_STORAGE_GRAPH_QUERY.roots, aggr: ['aggr1'], ...overrides.roots },
   };
 }
 
@@ -48,6 +48,17 @@ describe('buildStorageGraphRequestUrl', () => {
       buildStorageGraphRequestUrl('/api/v1/storage-graph', RANGE, query({ env: undefined }), NOW_MS)
     ).toBeUndefined();
     expect(buildStorageGraphRequestUrl('/api/v1/storage-graph', RANGE, query({ az: '' }), NOW_MS)).toBeUndefined();
+  });
+
+  it('does not produce a URL when no root is present', () => {
+    expect(
+      buildStorageGraphRequestUrl(
+        '/api/v1/storage-graph',
+        RANGE,
+        query({ roots: { ontap_cluster: [], node: [], aggr: [], svm: [], pod: [] } }),
+        NOW_MS
+      )
+    ).toBeUndefined();
   });
 
   it('always sends start, end, and a single az / env', () => {
@@ -91,9 +102,10 @@ describe('buildStorageGraphRequestUrl', () => {
 
   it('omits empty optional lists rather than sending blank values', () => {
     const q = params(buildStorageGraphRequestUrl('/api/v1/storage-graph', RANGE, query(), NOW_MS)!);
-    for (const key of ['cluster', 'namespace', 'ontap_cluster', 'node', 'aggr', 'svm', 'pod', 'prune']) {
+    for (const key of ['cluster', 'namespace', 'ontap_cluster', 'node', 'svm', 'pod', 'prune']) {
       expect(q.has(key)).toBe(false);
     }
+    expect(q.get('aggr')).toBe('aggr1');
   });
 
   it('re-reads the clock so a relative window does not freeze', () => {
