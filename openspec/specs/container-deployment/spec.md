@@ -24,6 +24,18 @@ The repo root SHALL provide a `Dockerfile` that produces the image with a multi-
 
 The final image SHALL run as a non-root user with a **numeric** UID (the `USER` instruction is numeric, so Kubernetes `runAsNonRoot` can verify it at admission) and listen for HTTP on the unprivileged port `8080`. The web server process SHALL be PID 1 or forward signals correctly, and MUST exit within 10 seconds of receiving `SIGTERM`. Building and running the image MUST NOT require any secret.
 
+The runtime user MUST NOT be able to write the static root or the web server's configuration: a compromised server process must not be able to rewrite the bundle every browser loads, nor reconfigure itself on its next reload. The image SHALL start and serve with a read-only root filesystem when only `/tmp` is writable.
+
+#### Scenario: Runtime user cannot modify what it serves
+
+- **WHEN** `docker run --rm --entrypoint sh ksg-frontend:test -c 'touch /usr/share/nginx/html/x; touch /etc/nginx/x'` is run
+- **THEN** both `touch` commands fail with a permission error
+
+#### Scenario: Serves with a read-only root filesystem
+
+- **WHEN** the container is started with `docker run --read-only --tmpfs /tmp -p 8080:8080 ksg-frontend:test` and `GET /healthz` is requested
+- **THEN** the response is `200`
+
 #### Scenario: Non-root with numeric UID
 
 - **WHEN** `docker inspect --format '{{.Config.User}}' ksg-frontend:test` is run
@@ -94,6 +106,31 @@ The static web server SHALL set the cache policy by resource type:
 - **WHEN** the largest `/assets/*.js` is requested with `Accept-Encoding: gzip`
 - **THEN** the response carries `Content-Encoding: gzip` (or `br`) and `Vary: Accept-Encoding`
 
+### Requirement: Browser security headers
+
+Every response the web server produces for a routed request — static files, the SPA fallback, its own `403` / `404` answers, and proxied responses — SHALL carry, besides `X-Content-Type-Options: nosniff`:
+
+- a `Content-Security-Policy` that loads scripts only from the page's own origin, forbids plugins (`object-src 'none'`), pins `base-uri` to the own origin, and forbids framing (`frame-ancestors 'none'`). It MUST admit `data:` images, which the graph canvas draws its node icons from; it MAY admit inline styles (`'unsafe-inline'` in `style-src`), because libraries in the bundle create `<style>` elements at runtime that the browser would otherwise block — scripts get no such exception; and it MUST NOT confine `connect-src` to the own origin, because runtime config may legitimately point an endpoint at an absolute cross-origin URL;
+- `X-Frame-Options: DENY`, for browsers that predate `frame-ancestors`;
+- `Referrer-Policy: same-origin`.
+
+Each of these MUST appear exactly once per response. The web server MUST NOT disclose its version, in the `Server` header or on its own error pages.
+
+#### Scenario: Headers on the document and on a proxied response
+
+- **WHEN** `GET /graph` and, with `KSG_API_PROXY_TARGET` set, `GET /api/v1/graph` are requested
+- **THEN** each response carries exactly one `Content-Security-Policy` containing `frame-ancestors 'none'`, plus `X-Frame-Options: DENY` and `Referrer-Policy: same-origin`
+
+#### Scenario: The app runs under its own policy
+
+- **WHEN** the image is started with `demoMode: true`, and `/graph` and `/sankey` are opened in a browser and their controls exercised
+- **THEN** the showcase graph renders and the browser reports no Content Security Policy violation
+
+#### Scenario: No version disclosure
+
+- **WHEN** `GET /` and, without a proxy target, `GET /api/v1/graph` are requested
+- **THEN** the `Server` header carries no version number, and neither does the `404` body
+
 ### Requirement: Health check endpoint
 
 The static web server SHALL provide `GET /healthz`, responding `200` with a very short plain-text body and `Cache-Control: no-store`. This endpoint MUST reflect only that the web server itself can serve, MUST NOT depend on whether `/srv/config/config.json` exists or whether any backend is reachable, and MUST NOT fall into the SPA fallback. The Deployment in `deploy/` SHALL use this endpoint as the liveness and readiness probe.
@@ -105,9 +142,13 @@ The static web server SHALL provide `GET /healthz`, responding `200` with a very
 
 ### Requirement: Optional same-origin reverse proxy
 
-The static web server SHALL support enabling a same-origin reverse proxy via the environment variable `KSG_API_PROXY_TARGET` (for example `http://kube-state-graph.monitoring.svc:8080`): when set, requests under the `/api/` prefix MUST be forwarded to that target with the `/api` prefix stripped (`/api/v1/graph` → `<target>/v1/graph`, `/api/dashboard` → `<target>/dashboard`), the path and query string preserved as-is, and the response status code, headers, and body returned as-is and MUST NOT be cached by the web server. This lets operators use root-relative endpoints (`/api/v1/graph`) in `config.json` and avoid CORS configuration. This feature is **optional**: when `KSG_API_PROXY_TARGET` is not set, requests under `/api/` MUST return `404` rather than `index.html`, so a misconfiguration surfaces as an explicit HTTP error rather than a JSON parse failure inside the app.
+The static web server SHALL support enabling a same-origin reverse proxy via the environment variable `KSG_API_PROXY_TARGET` (for example `http://kube-state-graph.monitoring.svc:8080`): when set, `GET` and `HEAD` requests under the `/api/` prefix MUST be forwarded to that target with the `/api` prefix stripped (`/api/v1/graph` → `<target>/v1/graph`, `/api/dashboard` → `<target>/dashboard`), the path and query string preserved as-is, and the response status code, headers, and body returned as-is and MUST NOT be cached by the web server. This lets operators use root-relative endpoints (`/api/v1/graph`) in `config.json` and avoid CORS configuration. This feature is **optional**: when `KSG_API_PROXY_TARGET` is not set, requests under `/api/` MUST return `404` rather than `index.html`, so a misconfiguration surfaces as an explicit HTTP error rather than a JSON parse failure inside the app.
 
-The web server SHALL additionally support a **second**, independent environment variable `KSG_METRICS_PROXY_TARGET`, proxying the `/metrics-api/` prefix by exactly the same rules to a **Prometheus-compatible** upstream (`/metrics-api/api/v1/label/az/values` → `<target>/api/v1/label/az/values`), likewise returning `404` when not set.
+Any other method MUST be refused with `403` without reaching the upstream: the app only ever reads, so no other method has a reason to cross the front door. `/api/metrics`, the backend's own Prometheus registry, MUST NOT be forwarded and returns `404` — it is for an in-cluster scraper, not for a browser.
+
+The web server SHALL additionally support a **second**, independent environment variable `KSG_METRICS_PROXY_TARGET`, forwarding **only** label enumeration to a **Prometheus-compatible** upstream by the same rules (`/metrics-api/api/v1/label/az/values` → `<target>/api/v1/label/az/values`). Every other path under `/metrics-api/` MUST return `404` whether or not the target is set: the front door carries no authentication, so forwarding the store's whole API would give every browser arbitrary PromQL (`query`, `query_range`) and a bulk export of every series.
+
+A proxy target MUST be a bare `http://` or `https://` URL. When a target carries anything the web server's configuration would parse — whitespace, `;`, braces, quotes, `$` — the container MUST exit non-zero before serving, with a message naming the variable, rather than splice the value into its configuration.
 
 The two upstreams **cannot** be merged into one: `endpoints.labelValues` reads `<base>/api/v1/label/<name>/values`, a path the graph API does not provide. Pointing `labelValues` at `/api` yields a 404, and what a 404 looks like in the UI is a set of identity dimension controls that list no options — indistinguishable from "this estate has no pods".
 
@@ -129,11 +170,31 @@ Operators who need server behavior beyond this scope (for example, the metrics s
 - **THEN** vmselect receives `GET /api/v1/label/az/values?match[]=kube_pod_info`, and the backend receives no request
 - **AND** when only `KSG_API_PROXY_TARGET` is set, the same request returns `404` rather than being forwarded to the graph API, which does not provide that path
 
+#### Scenario: Only GET and HEAD reach an upstream
+
+- **WHEN** the container is started with `KSG_API_PROXY_TARGET=http://backend:8080` and `POST /api/v1/graph` is requested
+- **THEN** the response is `403` and the backend receives no request
+
+#### Scenario: The backend's metrics registry is not forwarded
+
+- **WHEN** the container is started with `KSG_API_PROXY_TARGET=http://backend:8080` and `GET /api/metrics` is requested
+- **THEN** the response is `404` and the backend receives no request
+
+#### Scenario: The metrics store's query and export APIs are not reachable
+
+- **WHEN** the container is started with `KSG_METRICS_PROXY_TARGET=http://vmselect:8481/select/0/prometheus`, and `GET /metrics-api/api/v1/query?query=up`, `GET /metrics-api/api/v1/export` or `GET /metrics-api/api/v1/label/../../query?query=up` is requested
+- **THEN** each returns `404` and vmselect receives no request
+
+#### Scenario: A target that is not a bare URL stops the container
+
+- **WHEN** the container is started with `KSG_API_PROXY_TARGET='http://backend:8080; }'`
+- **THEN** the container exits non-zero before serving, and its log names `KSG_API_PROXY_TARGET`
+
 ### Requirement: Kubernetes manifests
 
 `deploy/` SHALL contain `kustomization.yaml` and the `deployment.yaml`, `service.yaml`, `configmap.yaml` it references, applicable with `kubectl apply -k deploy/`; each file MUST also be a valid manifest applicable on its own, so that `kubectl apply -f deploy/` also works. The manifests MUST NOT hardcode a namespace.
 
-- **Deployment** SHALL: reference the image published by CI; declare container port `8080` (named `http`); configure liveness and readiness probes with `GET /healthz`; declare CPU / memory `requests` and `limits`; mount the ConfigMap as a directory at `/srv/config`; comply with the Pod Security Standards `restricted` profile (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`); and demonstrate in comments how to set `KSG_API_PROXY_TARGET` and `KSG_METRICS_PROXY_TARGET`, and the comments MUST explain that the two are different upstreams.
+- **Deployment** SHALL: reference the image published by CI; declare container port `8080` (named `http`); configure liveness and readiness probes with `GET /healthz`; declare CPU / memory `requests` and `limits`; mount the ConfigMap as a directory at `/srv/config`; comply with the Pod Security Standards `restricted` profile (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`); run with `readOnlyRootFilesystem: true`, mounting an `emptyDir` at `/tmp` as the only writable path; set `automountServiceAccountToken: false`, since the app calls no Kubernetes API; pull with `imagePullPolicy: Always` while it references a moving tag such as `main`; and demonstrate in comments how to set `KSG_API_PROXY_TARGET` and `KSG_METRICS_PROXY_TARGET`, and the comments MUST explain that the two are different upstreams.
 - **Service** SHALL be `ClusterIP`, with port `80` mapped to targetPort `http`. Ingress and TLS are provided by cluster operations and are outside the scope of this capability.
 - **ConfigMap** SHALL carry a **complete** example configuration under the key `config.json`: every documented key appears (`endpoints.graph`, `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard`, `demoMode`, `refreshIntervalSeconds`, `defaultLayout`, `theme`), `demoMode` defaults to `true`, and endpoints are demonstrated in root-relative form. The example MUST NOT carry `endpoints.edgeTypes`, which is no longer a documented key: an example that names a key the app ignores teaches a deployment to configure something inert. Example values MUST point at the prefix where that endpoint is **actually served**: graph API endpoints go through `/api/...`, while `endpoints.labelValues` MUST be `/metrics-api` — the example is meant to be copied verbatim, and an example value that 404s is equivalent to being broken by default.
 
@@ -177,6 +238,8 @@ Image startup and readiness MUST NOT depend on any backend being reachable: the 
 
 A GitHub Actions workflow SHALL, on every push to `main` and every `v*` tag, build the image with the repo's `Dockerfile` and push it to the documented registry, defaulting to GitHub Container Registry (`ghcr.io/<owner>/kube-state-graph-frontend`); pull requests SHALL only build without pushing, to verify the `Dockerfile`. Pushing MUST use only the credentials the CI platform provides by default, requiring no manually created secret.
 
+Every action a workflow uses MUST be pinned by full commit SHA, with the version it corresponds to in a trailing comment, and Dependabot SHALL move those pins: a tag can be pointed at different code after review, a SHA cannot. Workflow tokens SHALL be least-privilege — every workflow declares its permissions; a pull request's image build runs with a read-only token; `packages: write` is held only by the job that pushes, which never runs for a pull request; no unused permission is granted; and checkouts do not persist the token into the working tree.
+
 Image tags SHALL be: on push to `main`, `main` and `sha-<short-sha>`; on tag `vX.Y.Z`, `X.Y.Z` and `latest`. The image MUST carry the OCI labels `org.opencontainers.image.source` and `org.opencontainers.image.revision` (corresponding to the commit SHA). `deploy/README.md` MUST explain how to pin a deployed version with these tags.
 
 #### Scenario: Image is pullable after a push to main
@@ -189,9 +252,14 @@ Image tags SHALL be: on push to `main`, `main` and `sha-<short-sha>`; on tag `vX
 - **WHEN** a pull request containing `Dockerfile` changes is opened
 - **THEN** the workflow runs the image build and reports the result, and no new tag appears in the registry
 
+#### Scenario: No action is referenced by a movable ref
+
+- **WHEN** every `uses:` line under `.github/workflows/` is listed
+- **THEN** each names a 40-character commit SHA followed by a `# vX.Y.Z` comment
+
 ### Requirement: Deployment documentation
 
-`deploy/README.md` SHALL record: prerequisites (an available cluster and `kubectl`), the image registry and tag rules, the apply commands (`kubectl apply -k deploy/` and `make deploy IMAGE=...`), the `config.json` mount path `/srv/config/config.json` and the "publicly readable, must not contain secrets" warning, the usage of `KSG_API_PROXY_TARGET` and `KSG_METRICS_PROXY_TARGET`, the reason the two are different upstreams, and the CORS trade-off (root-relative endpoints + proxy, or absolute URLs + backend allowing the frontend origin), the path for overriding the web server configuration file, the `/healthz` endpoint, how changes take effect after editing the ConfigMap and the propagation delay, how to upgrade the image tag, and the steps to verify a deployment with `demoMode: true` and `/demo/graph.json`.
+`deploy/README.md` SHALL record: prerequisites (an available cluster and `kubectl`), the image registry and tag rules, the apply commands (`kubectl apply -k deploy/` and `make deploy IMAGE=...`), the `config.json` mount path `/srv/config/config.json` and the "publicly readable, must not contain secrets" warning, the usage of `KSG_API_PROXY_TARGET` and `KSG_METRICS_PROXY_TARGET`, the reason the two are different upstreams, and the CORS trade-off (root-relative endpoints + proxy, or absolute URLs + backend allowing the frontend origin), the path for overriding the web server configuration file, the `/healthz` endpoint, how changes take effect after editing the ConfigMap and the propagation delay, how to upgrade the image tag, the steps to verify a deployment with `demoMode: true` and `/demo/graph.json`, how to pin a digest instead of a moving tag, the proxy scope (`GET` / `HEAD` only, label enumeration only under `/metrics-api/`, `/api/metrics` never forwarded) and the accepted target format, the security headers and what a replacement web server configuration must keep (the header include, `pid` and temp paths under `/tmp`), and that the front door carries no authentication.
 
 #### Scenario: Operator completes deployment and verification from the documentation alone
 

@@ -8,3 +8,5 @@ images:
   - name: ghcr.io/example/kube-state-graph-frontend
     newName: ghcr.io/example/kube-state-graph-frontend
     newTag: main
+    # Pin an exact build by replacing newTag with its digest:
+    # digest: sha256:<from `docker buildx imagetools inspect <image>:<tag>`>

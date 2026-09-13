@@ -7,12 +7,16 @@
 
 `config.json` is **publicly readable**. Do not put secrets in it.
 
+The front door carries **no authentication**: anyone who can reach it sees the whole topology the backend serves — pod names, IPs, container images, alerts. The sample Service is `ClusterIP`; if you publish it through an Ingress, put an authenticating proxy in front of it.
+
 ## Image tags
 
 CI publishes to `ghcr.io/<owner>/kube-state-graph-frontend`:
 
 - push to `main` → `main` and `sha-<short>`
 - tag `vX.Y.Z` → `X.Y.Z` and `latest`
+
+`main` moves on every push, which is why the sample Deployment pulls with `imagePullPolicy: Always`. To pin an exact build, replace `newTag:` in `kustomization.yaml` with the image's `digest:` (`docker buildx imagetools inspect ghcr.io/<owner>/kube-state-graph-frontend:<tag>` prints it); with a digest, `IfNotPresent` is safe again.
 
 ## Apply
 
@@ -35,7 +39,11 @@ To talk to a real backend, either:
 1. Set `KSG_API_PROXY_TARGET` on the container (see the commented env in `deployment.yaml`) and keep root-relative endpoints such as `/api/v1/graph/service_graph`, or
 2. Use absolute `https://…` URLs and allow the frontend origin in the backend CORS policy.
 
-`endpoints.labelValues` is a **second** upstream, not the graph API: the controls read `<base>/api/v1/label/<name>/values?match[]=kube_pod_info`, which the graph API does not serve — pointing it at `/api` returns 404 and the az / env and filter dropdowns come up empty. Set `KSG_METRICS_PROXY_TARGET` to a Prometheus-compatible root (Prometheus, Thanos Query, VictoriaMetrics `vmselect`) and keep `"labelValues": "/metrics-api"`, or use an absolute URL with CORS. If that store needs credentials, do not put them in `config.json` (it is publicly readable) — mount a replacement `nginx.conf` that attaches the header in-cluster.
+`endpoints.labelValues` is a **second** upstream, not the graph API: the controls read `<base>/api/v1/label/<name>/values?match[]=kube_pod_info`, which the graph API does not serve — pointing it at `/api` returns 404 and the az / env and filter dropdowns come up empty. Set `KSG_METRICS_PROXY_TARGET` to a Prometheus-compatible root (Prometheus, Thanos Query, VictoriaMetrics `vmselect`) and keep `"labelValues": "/metrics-api"`, or use an absolute URL with CORS.
+
+The metrics proxy forwards **only** `/metrics-api/api/v1/label/…`; every other path under `/metrics-api/` is a `404`, so the store's `query`, `query_range`, `series` and `export` APIs stay unreachable through the front door. Both proxies forward `GET` / `HEAD` only (anything else is a `403`), and `/api/metrics` — the backend's own Prometheus registry — is never forwarded. A target must be a bare `http(s)://` URL: one carrying whitespace, `;`, braces, quotes or `$` stops the container at start instead of being pasted into the server config.
+
+If the metrics store needs credentials, do not put them in `config.json` (it is publicly readable) — mount a replacement `nginx.conf` that attaches the header in-cluster, on the label location only.
 
 ## Health
 
@@ -43,7 +51,10 @@ To talk to a real backend, either:
 
 ## Web server config
 
-Image path: `/etc/nginx/nginx.conf`. Override by mounting a replacement file if you need extra server behaviour.
+Image path: `/etc/nginx/nginx.conf`. Override by mounting a replacement file if you need extra server behaviour. A replacement must keep two things the sample relies on:
+
+- `include /etc/nginx/security-headers.conf;` in every `location` that sets its own `add_header` — nginx does not inherit headers into such a block. That file carries the `Content-Security-Policy` (scripts from the page's own origin only, no framing; `connect-src` admits any http(s) origin so absolute endpoint URLs keep working), `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` and `X-Content-Type-Options: nosniff`.
+- `pid` and every `*_temp_path` under `/tmp`: the sample runs with `readOnlyRootFilesystem: true`, and `/tmp` is its only writable mount.
 
 ## Verify without a backend
 

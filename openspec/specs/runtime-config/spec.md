@@ -79,9 +79,9 @@ There MUST be no `endpoints.edgeTypes` key. The backend no longer serves an edge
 Every `endpoints.*` value MUST take one of the following two forms, otherwise it is a validation failure:
 
 1. **Absolute URL**: scheme is `http` or `https` (case-insensitive) and includes a host, for example `https://ksg.example/v1/graph`.
-2. **Root-relative path**: a path beginning with a single `/`, for example `/api/v1/graph`; the app MUST resolve it against the current page's origin (`scheme://host[:port]`), not the app base path — when the app is deployed at `https://host/ksg/`, `/api/v1/graph` resolves to `https://host/api/v1/graph`. This form is for a same-origin reverse proxy.
+2. **Root-relative path**: a path beginning with a single `/` that still resolves to the page's own origin, for example `/api/v1/graph`; the app MUST resolve it against the current page's origin (`scheme://host[:port]`), not the app base path — when the app is deployed at `https://host/ksg/`, `/api/v1/graph` resolves to `https://host/api/v1/graph`. This form is for a same-origin reverse proxy.
 
-The following forms MUST be judged validation failures: relative paths not beginning with `/` (`api/v1/graph`, `./graph`, `../graph`), protocol-relative URLs (`//host/path`), non-`http(s)` schemes (`ftp:`, `javascript:`, `file:`, `data:`), strings that cannot be parsed as a URL, and any non-string value.
+The following forms MUST be judged validation failures: relative paths not beginning with `/` (`api/v1/graph`, `./graph`, `../graph`), protocol-relative URLs (`//host/path`) including every spelling the URL parser turns into one — it treats `\` as `/`, so `/\host/path` resolves to another host — any value containing an ASCII tab, LF or CR anywhere, non-`http(s)` schemes (`ftp:`, `javascript:`, `file:`, `data:`), strings that cannot be parsed as a URL, and any non-string value. The URL parser deletes tab, LF and CR wherever they appear, so such a value is never the URL it spells: `/` followed by a tab and then `/host/path` resolves to another host, and even `/` followed by a tab — `/` on its own — reaches host `api` once a consumer appends `/api/v1/label/…` to it.
 
 The empty string `""` MUST be treated as absent for an optional endpoint (feature disabled, not an error); for `endpoints.graph` it MUST be treated as absent (a validation failure when `demoMode` is `false`). URL values MUST be used as-is (including their query string); how each consumer appends parameters after it is governed by the corresponding capability.
 
@@ -104,6 +104,16 @@ The empty string `""` MUST be treated as absent for an optional endpoint (featur
 
 - **WHEN** any `endpoints.*` is `"ftp://ksg.example/v1/graph"`, `"javascript:alert(1)"` or `"//ksg.example/v1/graph"`
 - **THEN** config validation fails and the error screen names the key and the problem
+
+#### Scenario: Protocol-relative URLs in disguise are rejected
+
+- **WHEN** any `endpoints.*` is the JSON string `"/\\ksg.example/v1/graph"`, `"/\t/ksg.example/v1/graph"` or `"/\n/ksg.example/v1/graph"`
+- **THEN** config validation fails, because each resolves to `ksg.example` rather than to the page's origin
+
+#### Scenario: A tab or line break anywhere is rejected
+
+- **WHEN** `endpoints.labelValues` is the JSON string `"/\t"`, or any `endpoints.*` contains a tab, LF or CR anywhere
+- **THEN** config validation fails and the error screen names the key
 
 #### Scenario: Non-string values are rejected
 

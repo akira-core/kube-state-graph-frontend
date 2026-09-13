@@ -13,3 +13,7 @@ openspec
 .claude
 .cursor
 .opencode
+.codegraph
+.env
+.env.*
+dev/config.local.json

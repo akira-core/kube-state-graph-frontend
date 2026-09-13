@@ -11,3 +11,12 @@ updates:
     groups:
       base-images:
         patterns: ['*']
+  # Workflow actions are pinned by commit SHA (see the workflows). This moves each pin
+  # and its `# vX.Y.Z` comment together, weekly, as one reviewable PR.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
