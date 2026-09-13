@@ -41,9 +41,22 @@ location $1 {
 EOF
 }
 
+require_label_name() {
+  if ! printf '%s' "$2" | grep -Eqx '[A-Za-z_][A-Za-z0-9_]*'; then
+    echo "entrypoint: $1 must be a PromQL label name, got: $2" >&2
+    exit 1
+  fi
+}
+
 # GET (and HEAD) only: the SPA never writes, so no other method has a reason to reach an
 # upstream through the front door.
+# $3 = "exact" emits `location = PATH`. A static proxy_pass with a URI part still forwards
+# the request's query string, so no `$is_args$args` (whose variables would force runtime
+# DNS through a `resolver`) is needed.
 proxy_location() {
+  if [ "${3:-}" = "exact" ]; then
+    set -- "= $1" "$2"
+  fi
   cat <<EOF
 location $1 {
     limit_except GET { deny all; }
@@ -63,6 +76,16 @@ location $1 {
 }
 EOF
 }
+
+KSG_AZ_LABEL=${KSG_AZ_LABEL:-az}
+KSG_ENV_LABEL=${KSG_ENV_LABEL:-env}
+require_label_name KSG_AZ_LABEL "$KSG_AZ_LABEL"
+require_label_name KSG_ENV_LABEL "$KSG_ENV_LABEL"
+if [ "$KSG_AZ_LABEL" = "$KSG_ENV_LABEL" ]; then
+  echo "entrypoint: KSG_AZ_LABEL and KSG_ENV_LABEL must differ, got: $KSG_AZ_LABEL" >&2
+  # Name both variables so an operator can find either side of the collision.
+  exit 1
+fi
 
 [ -z "${KSG_API_PROXY_TARGET:-}" ] || require_upstream_url KSG_API_PROXY_TARGET "$KSG_API_PROXY_TARGET"
 [ -z "${KSG_METRICS_PROXY_TARGET:-}" ] || require_upstream_url KSG_METRICS_PROXY_TARGET "$KSG_METRICS_PROXY_TARGET"
@@ -84,6 +107,16 @@ fi
 {
   not_found /metrics-api/
   if [ -n "${KSG_METRICS_PROXY_TARGET:-}" ]; then
+    if [ "$KSG_AZ_LABEL" != "az" ]; then
+      proxy_location /metrics-api/api/v1/label/az/values \
+        "${KSG_METRICS_PROXY_TARGET}/api/v1/label/${KSG_AZ_LABEL}/values" \
+        exact
+    fi
+    if [ "$KSG_ENV_LABEL" != "env" ]; then
+      proxy_location /metrics-api/api/v1/label/env/values \
+        "${KSG_METRICS_PROXY_TARGET}/api/v1/label/${KSG_ENV_LABEL}/values" \
+        exact
+    fi
     proxy_location /metrics-api/api/v1/label/ "${KSG_METRICS_PROXY_TARGET}/api/v1/label/"
   fi
 } > /tmp/metrics_proxy.conf

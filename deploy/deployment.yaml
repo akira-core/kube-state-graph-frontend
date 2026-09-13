@@ -40,6 +40,12 @@ spec:
           #     value: http://kube-state-graph.monitoring.svc:8080
           #   - name: KSG_METRICS_PROXY_TARGET
           #     value: http://vmselect.monitoring.svc:8481/select/0/prometheus
+          #   # Must equal the backend's --az-label / --env-label. The SPA still
+          #   # requests logical `az` / `env`; the front door rewrites the label-values path.
+          #   - name: KSG_AZ_LABEL
+          #     value: az
+          #   - name: KSG_ENV_LABEL
+          #     value: env
           volumeMounts:
             - name: config
               mountPath: /srv/config

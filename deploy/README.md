@@ -43,6 +43,8 @@ To talk to a real backend, either:
 
 The metrics proxy forwards **only** `/metrics-api/api/v1/label/…`; every other path under `/metrics-api/` is a `404`, so the store's `query`, `query_range`, `series` and `export` APIs stay unreachable through the front door. Both proxies forward `GET` / `HEAD` only (anything else is a `403`), and `/api/metrics` — the backend's own Prometheus registry — is never forwarded. A target must be a bare `http(s)://` URL: one carrying whitespace, `;`, braces, quotes or `$` stops the container at start instead of being pasted into the server config.
 
+`KSG_AZ_LABEL` and `KSG_ENV_LABEL` (defaults `az` / `env`) rebind those two logical dimensions at the front door: `/metrics-api/api/v1/label/az/values` is forwarded to `<target>/api/v1/label/<KSG_AZ_LABEL>/values` (and `env` alike), query string preserved. They must match the backend's `--az-label` / `--env-label`. The app never sees the upstream names — it keeps requesting `az` / `env` and sending `?az=` / `?env=`. A mismatch shows up as `az` / `env` controls listing values the backend then matches nothing against. Each variable must be a PromQL label name and the two must differ; an invalid or colliding value stops the container before serving, even when `KSG_METRICS_PROXY_TARGET` is unset.
+
 If the metrics store needs credentials, do not put them in `config.json` (it is publicly readable) — mount a replacement `nginx.conf` that attaches the header in-cluster, on the label location only.
 
 ## Health
