@@ -1,6 +1,5 @@
 import { useState, type JSX } from 'react';
 
-import { Button } from '../../shared/ui/Button';
 import { FilterIcon } from '../../shared/ui/icons';
 import { QueryButton } from '../../shared/ui/QueryButton';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
@@ -15,7 +14,6 @@ export interface SankeyScopeBarProps {
   options: SankeyIdentityOptions;
   controller: SankeyQueryController;
   rootOptions?: SankeyRootOptions;
-  k8sNodeHint?: ReadonlyArray<{ id: string; label: string }>;
   dirty?: boolean;
   inFlight?: boolean;
   onQuery?: () => void;
@@ -76,13 +74,13 @@ function queryDisabledReason(azEnvReady: boolean, hasRoot: boolean): string | un
 
 /**
  * Sankey estate / root / narrowing. Laid out as the Graph view's FilterBar is: ONE row of
- * label-over-control columns on a shared baseline, then the prose underneath.
+ * label-over-control columns on a shared baseline, closed by the Query action, with the
+ * roots and their errors underneath.
  */
 export function SankeyScopeBar({
   options,
   controller,
   rootOptions = EMPTY_SANKEY_ROOT_OPTIONS,
-  k8sNodeHint = [],
   dirty = false,
   inFlight = false,
   onQuery = () => undefined,
@@ -93,14 +91,29 @@ export function SankeyScopeBar({
   onRootKindChange,
 }: Readonly<SankeyScopeBarProps>): JSX.Element {
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
-  const [pending, setPending] = useState<string[]>([]);
   const showCluster = options.cluster.length > 0 || controller.query.cluster.length > 0;
   const showNamespace = options.namespace.length > 0 || controller.query.namespace.length > 0;
   const roots = rootEntries(controller.query.roots);
+  const kindRoots = controller.query.roots[rootKind];
   const hasRoot = hasAnyRoot(controller.query.roots);
   const hasPodRoot = controller.query.roots.pod.length > 0;
   const disabledReason = queryDisabledReason(controller.azEnvReady, hasRoot);
   const hint = emptyHintFor(rootKind, controller.query.namespace);
+
+  // The checked values ARE this kind's draft roots: checking one adds it, unchecking removes
+  // it. The draft is already what Query commits, so a second pending list confirmed by an
+  // Add would only be one more step between a pick and the pill it produces.
+  const setKindRoots = (next: string[]): void => {
+    const added = next.filter((value) => !kindRoots.includes(value));
+    if (added.length > 0) {
+      controller.addRoots(rootKind, added);
+    }
+    for (const value of kindRoots) {
+      if (!next.includes(value)) {
+        controller.removeRoot(rootKind, value);
+      }
+    }
+  };
 
   return (
     <div
@@ -133,48 +146,34 @@ export function SankeyScopeBar({
           testId="sankey-env"
         />
 
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (controller.addRoots(rootKind, pending)) {
-              setPending([]);
+        <ScopeSelect
+          label="Root kind"
+          mode="single"
+          options={ROOT_KIND_VALUES}
+          optionLabel={rootKindLabel}
+          value={[rootKind]}
+          onChange={(next) => {
+            const kind = next[0];
+            if (kind === 'ontap_cluster' || kind === 'node' || kind === 'aggr' || kind === 'svm' || kind === 'pod') {
+              setRootKind(kind);
+              onRootKindChange?.(kind);
             }
           }}
-        >
-          <ScopeSelect
-            label="Root kind"
-            mode="single"
-            options={ROOT_KIND_VALUES}
-            optionLabel={rootKindLabel}
-            value={[rootKind]}
-            onChange={(next) => {
-              const kind = next[0];
-              if (kind === 'ontap_cluster' || kind === 'node' || kind === 'aggr' || kind === 'svm' || kind === 'pod') {
-                setRootKind(kind);
-                setPending([]);
-                onRootKindChange?.(kind);
-              }
-            }}
-            allowCustom={false}
-            testId="sankey-root-kind"
-          />
-          <ScopeSelect
-            label="Root value"
-            mode="multi"
-            options={rootOptions[rootKind]}
-            value={pending}
-            onChange={setPending}
-            allowCustom
-            allRow={false}
-            emptyLabel="Pick values to add"
-            {...(hint !== undefined ? { emptyHint: hint } : {})}
-            testId="sankey-root-value"
-          />
-          <Button type="submit" size="md" disabled={pending.length === 0}>
-            Add
-          </Button>
-        </form>
+          allowCustom={false}
+          testId="sankey-root-kind"
+        />
+        <ScopeSelect
+          label="Root value"
+          mode="multi"
+          options={rootOptions[rootKind]}
+          value={kindRoots}
+          onChange={setKindRoots}
+          allowCustom
+          allRow={false}
+          emptyLabel="Pick values"
+          {...(hint !== undefined ? { emptyHint: hint } : {})}
+          testId="sankey-root-value"
+        />
 
         {showCluster && (
           <ScopeSelect
@@ -261,19 +260,6 @@ export function SankeyScopeBar({
           )}
         </div>
       )}
-
-      <div className="flex flex-col gap-0.5 text-[11px] leading-snug text-secondary">
-        <p>
-          Node matches both NetApp controllers and Kubernetes nodes. Mixing storage-side and workload-side roots takes
-          the intersection.
-        </p>
-        {k8sNodeHint.length > 0 && (
-          <p data-testid="sankey-k8s-node-hint">
-            {k8sNodeHint.map((n) => n.label).join(', ')} {k8sNodeHint.length === 1 ? 'is a' : 'are'} Kubernetes{' '}
-            {k8sNodeHint.length === 1 ? 'node' : 'nodes'} visible only under the Node layout.
-          </p>
-        )}
-      </div>
     </div>
   );
 }

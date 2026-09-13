@@ -103,8 +103,6 @@ export function FilterBar({
           Clear
         </Button>
 
-        <QueryButton dirty={dirty} inFlight={inFlight} disabled={false} onQuery={onQuery} onCancel={onCancel} />
-
         {options.problems.length > 0 && (
           <span
             className="flex items-center gap-1.5 text-[11px] text-[var(--ksg-status-warning)]"
@@ -114,6 +112,8 @@ export function FilterBar({
             {options.problems.length} filter source(s) unavailable
           </span>
         )}
+
+        <QueryButton dirty={dirty} inFlight={inFlight} disabled={false} onQuery={onQuery} onCancel={onCancel} />
       </div>
     </div>
   );

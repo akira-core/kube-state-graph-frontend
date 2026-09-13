@@ -14,7 +14,6 @@ import {
 } from '../graph-data';
 import { useFilterOptions } from '../graph-filters';
 import {
-  kubernetesNodeRoots,
   rootValueOptions,
   SankeyScopeBar,
   SankeyView,
@@ -208,10 +207,6 @@ export function SankeyPage(): JSX.Element {
     },
     [navigate]
   );
-  const k8sNodeHint = useMemo(
-    () => (podLayout === 'flat' ? kubernetesNodeRoots(storage.state.elements, controller.query.roots) : []),
-    [controller.query.roots, podLayout, storage.state.elements]
-  );
   const drawnOptions = useMemo(() => rootValueOptions(storage.state.elements), [storage.state.elements]);
   const candidates = useRootCandidates({
     labelValuesBase: config.demoMode ? undefined : config.endpoints.labelValues,
@@ -249,7 +244,6 @@ export function SankeyPage(): JSX.Element {
           options={identity}
           controller={controller}
           rootOptions={candidates.options}
-          k8sNodeHint={k8sNodeHint}
           dirty={config.demoMode ? false : dirty}
           inFlight={inFlight}
           onQuery={onQuery}

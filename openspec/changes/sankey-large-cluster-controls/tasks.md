@@ -46,7 +46,7 @@
 ## 7. Front door label rebinding (design D9)
 
 - [x] 7.1 Extend `docker/entrypoint.sh`: read `KSG_AZ_LABEL` / `KSG_ENV_LABEL` (defaults `az` / `env`), validate each against `[A-Za-z_][A-Za-z0-9_]*` and reject equality with a message naming the variable, before and regardless of `KSG_METRICS_PROXY_TARGET`; verify by running the script's validation with `sh -n` and with `KSG_AZ_LABEL='zone; }'` and `KSG_AZ_LABEL=site KSG_ENV_LABEL=site` that it exits non-zero naming the variable
-- [x] 7.2 Emit exact-match `location = /metrics-api/api/v1/label/az/values` / `…/env/values` blocks (via `proxy_location` extended with an exact flag and `$is_args$args`) ahead of the prefix block when the metrics target is set and a binding differs from its default; verify `nginx -t` passes inside the image and `make image` builds
+- [x] 7.2 Emit exact-match `location = /metrics-api/api/v1/label/az/values` / `…/env/values` blocks (via `proxy_location` extended with an exact flag; a static `proxy_pass` keeps the query string, so no `$is_args$args` and no runtime `resolver`) ahead of the prefix block when the metrics target is set and a binding differs from its default; verify `nginx -t` passes inside the image and `make image` builds
 - [x] 7.3 Run the container matrix against a stub upstream that echoes the request path: with `KSG_AZ_LABEL=zone KSG_ENV_LABEL=environment`, `GET /metrics-api/api/v1/label/az/values?match%5B%5D=kube_pod_info` reaches `/api/v1/label/zone/values?match[]=kube_pod_info`, `env` reaches `environment`, `namespace` is unchanged; with the variables unset all three pass through unchanged; `/metrics-api/api/v1/query` still 404s; record the commands and results in the PR description
 - [x] 7.4 Document the two variables in `deploy/deployment.yaml` (commented env directly after `KSG_METRICS_PROXY_TARGET`, stating they must equal the backend's `--az-label` / `--env-label`), `deploy/README.md` (what they rewrite, parity with the backend, the mismatch symptom) and `README.md` › Connecting to a backend; verify `kubectl apply -k deploy/ --dry-run=client` succeeds and the README renders the new section
 
@@ -62,3 +62,9 @@
 - [x] 9.2 Run `make check` (lint, typecheck, fixture check, unit tests with coverage ≥ 80% on the new modules) and `npm run e2e`; verify both are green and record counts in the PR description
 - [x] 9.3 Build and scan the image (`make image`, `make scan`), start it with `demoMode: true` and confirm both routes render the fixtures on mount with no Query control and no CSP violation; verify with the browser console and the container logs
 - [x] 9.4 Run `openspec validate sankey-large-cluster-controls --strict` and `/opsx:verify`; verify every scenario in the six delta specs maps to a passing test or a recorded manual check before archiving
+
+## 10. Scope bar follow-ups (after review)
+
+- [x] 10.1 Drop the standing prose under the Sankey scope bar — "`node` matches both…", the intersection note and the Flat-layout Kubernetes-node hint — together with `kubernetesNodeRoots`, which only fed the hint; verify `SankeyScopeBar.test.tsx` asserts the prose is absent and the delta spec's "Layout switch" requirement no longer asks for the hint
+- [x] 10.2 Make Query read as an action rather than one more field: no label above it, a filled button after a divider at the row's end (`solid` when clean, `primary` while dirty, `outline` with a spinner as Cancel), and "Changes not applied" beside it while dirty; verify `QueryButton.test.tsx` and screenshots of both bars in light and dark
+- [x] 10.3 Replace the root value Add step with direct checking: the dropdown's checked set is the current kind's draft roots; verify `SankeyScopeBar.test.tsx`, `AppShell.test.tsx` and `tests/storage-graph.spec.ts` pass with no Add button

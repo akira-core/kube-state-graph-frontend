@@ -4,8 +4,10 @@ import type { ButtonHTMLAttributes, JSX } from 'react';
 
 // Chrome buttons never carry a hue: on a canvas where colour means "this is a pod" or
 // "this is critical", a coloured toolbar button would read as data. Emphasis is spent on
-// surface and border instead. `primary` is the one exception, reserved for the single
-// recovery action on a blocking screen.
+// surface and border instead. `solid` is the strongest hue-free emphasis, kept for a bar's
+// one commit action so it cannot read as another bordered input. `primary` is the one
+// exception to the rule, reserved for the single recovery action on a blocking screen and
+// for a Query whose draft is not applied yet.
 export const buttonVariants = cva(
   'inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-100 disabled:pointer-events-none disabled:opacity-45',
   {
@@ -14,6 +16,7 @@ export const buttonVariants = cva(
         outline:
           'border border-hairline-strong bg-raised text-primary hover:bg-raised-hover active:bg-selected shadow-sm',
         ghost: 'border border-transparent text-secondary hover:bg-raised-hover hover:text-primary',
+        solid: 'bg-[var(--ksg-fg-primary)] text-[var(--ksg-bg-canvas)] shadow-sm hover:opacity-90 active:opacity-80',
         primary: 'bg-[var(--ksg-accent-primary)] text-white hover:brightness-110 active:brightness-95',
       },
       size: {

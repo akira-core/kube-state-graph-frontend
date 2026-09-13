@@ -70,6 +70,14 @@ export function SearchIcon(props: Readonly<IconProps>): JSX.Element {
   );
 }
 
+export function PlayIcon(props: Readonly<IconProps>): JSX.Element {
+  return (
+    <SvgIcon {...props}>
+      <path d="M8 5.5v13l10.5-6.5L8 5.5Z" fill="currentColor" />
+    </SvgIcon>
+  );
+}
+
 export function SpinnerIcon({ size = 14, className }: Readonly<IconProps>): JSX.Element {
   return (
     <svg

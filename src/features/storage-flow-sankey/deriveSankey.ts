@@ -401,26 +401,6 @@ export function rootValueOptions(elements: readonly cytoscape.ElementDefinition[
 }
 
 /**
- * Kubernetes nodes in the body whose name is one of the request's `node` roots.
- * Used to hint under the Flat layout, where those nodes have nowhere to be drawn.
- */
-export function kubernetesNodeRoots(
-  elements: readonly cytoscape.ElementDefinition[],
-  roots: StorageGraphRoots
-): Array<{ id: string; label: string }> {
-  if (roots.node.length === 0) {
-    return [];
-  }
-  const hits: Array<{ id: string; label: string }> = [];
-  for (const rec of indexNodes(elements).values()) {
-    if (rec.kind === 'node' && roots.node.includes(rec.label)) {
-      hits.push({ id: rec.id, label: rec.label });
-    }
-  }
-  return hits;
-}
-
-/**
  * Derive a Sankey from a storage-graph body.
  *
  * Backend-tier weights come from each `storage-flow` edge's metrics as-is. The only

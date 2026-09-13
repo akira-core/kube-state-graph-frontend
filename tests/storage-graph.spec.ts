@@ -58,7 +58,6 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await page.getByRole('button', { name: 'Root value' }).click();
   await page.getByRole('combobox', { name: 'Search Root value' }).fill('aggr1');
   await page.getByRole('option', { name: 'Use "aggr1"' }).click();
-  await page.getByRole('button', { name: 'Add' }).click();
   await page.getByRole('button', { name: 'Query' }).click();
   await expect.poll(() => storageUrls.length).toBe(1);
   await expect(page.getByTestId('sankey-node-aggr1')).toBeVisible();
@@ -73,7 +72,6 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await page.getByRole('option', { name: 'Aggregate' }).click();
   await page.getByTestId('sankey-root-value').click();
   await page.getByRole('option', { name: 'aggr2' }).click();
-  await page.getByRole('button', { name: 'Add' }).click();
   await expect(page.getByRole('button', { name: /aggr:aggr2/ })).toBeVisible();
   expect(storageUrls).toHaveLength(1);
 
@@ -86,7 +84,6 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await page.getByTestId('sankey-root-value').click();
   await page.getByRole('combobox', { name: 'Search Root value' }).fill('shop/orders-0');
   await page.getByRole('option', { name: 'Use "shop/orders-0"' }).click();
-  await page.getByRole('button', { name: 'Add' }).click();
   await expect(page.getByTestId('sankey-top-pods')).toBeDisabled();
 });
 
@@ -226,7 +223,6 @@ test('a pod root added to the draft leaves the drawn Top pods cut in place until
   await page.getByTestId('sankey-root-value').click();
   await page.getByRole('combobox', { name: 'Search Root value' }).fill('ns/pod-12');
   await page.getByRole('option', { name: 'ns/pod-12', exact: true }).click();
-  await page.getByRole('button', { name: 'Add' }).click();
   await expect(page.getByRole('button', { name: /pod:ns\/pod-12/ })).toBeVisible();
 
   await expect(page.locator('[data-testid^="sankey-node-"][data-kind="pod"]')).toHaveCount(10);

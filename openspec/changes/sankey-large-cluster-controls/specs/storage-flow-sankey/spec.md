@@ -88,21 +88,21 @@ The view SHALL provide a root control that lets the operator start the search fr
 | SVM           | `svm`           | One SVM                                                                                                             |
 | Pod           | `pod`           | One pod, with the value in the form `<namespace>/<pod-name>`                                                        |
 
-Every kind may be repeated and mixed. The control MUST state explicitly that `node` matches both kinds of node (operators often do not know which kind the name in hand is), and MUST state explicitly that when both sides are mixed the backend takes the **intersection** (a path must touch both a storage-side root and a workload-side root), not the union.
+Every kind may be repeated and mixed. When both sides are mixed the backend takes the **intersection** (a path must touch both a storage-side root and a workload-side root), not the union. The scope bar MUST NOT restate either rule — `node` matching both kinds of node, or the intersection — as standing prose under its controls: they are properties of the backend's projection, documented with the root kinds, and a paragraph under every scope bar spends a line of every session on something read once.
 
 A `pod` value MUST be validated before being added as containing exactly one `/` with both segments non-empty; when invalid it MUST prompt inline, MUST NOT be added, and MUST NOT be sent (the backend would reject the whole request with 400 `invalid_scope`, taking the other valid roots down with it).
 
-The root kind is chosen with the shared dropdown (single-select, custom values not allowed). The root values are chosen with that **same** dropdown in **multi-select** form (custom values allowed, no `All` row, its empty text saying that values are picked to be added) and committed to the draft with an **Add** action, which adds every checked value as a root pill of that kind and clears the pending values; Add MUST be inert while nothing is pending, and changing the root kind MUST clear the pending values — a value picked under one kind is wrong under another. Adding, removing or clearing roots edits the draft only and MUST NOT issue a request (see `explicit-query`).
+The root kind is chosen with the shared dropdown (single-select, custom values not allowed). The root values are chosen with that **same** dropdown in **multi-select** form (custom values allowed, no `All` row, its empty text inviting a pick), and its checked values **are** the draft's roots of the selected kind: checking a value adds it as a root pill of that kind at once, unchecking it — or removing its pill — takes it out, and there is no separate Add step, because the draft is already the staging area Query commits. Changing the root kind shows that kind's roots as the checked values and leaves every other kind's roots in the draft. Adding, removing or clearing roots edits the draft only and MUST NOT issue a request (see `explicit-query`).
 
 The values offered MUST be per kind, from the sources that can answer **before anything is drawn** — a required root can no longer wait for a body:
 
-- `node`: the Kubernetes node names enumerated from `endpoints.labelValues` (the `node` label of `kube_pod_info`, see `graph-filters`), plus the NetApp controller names of the drawn body when one is drawn; the list states that the two families are mixed.
+- `node`: the Kubernetes node names enumerated from `endpoints.labelValues` (the `node` label of `kube_pod_info`, see `graph-filters`), plus the NetApp controller names of the drawn body when one is drawn.
 - `pod`: `<namespace>/<pod>` enumerated from `endpoints.labelValues` for each namespace the `namespace` narrowing names, plus the drawn body's pods that carry a namespace; with no namespace narrowing selected the list is empty and explains that a namespace must be selected to list pods, or a value typed. A pod carrying no namespace MUST NOT be offered at all, since a bare name is a 400 rather than a narrower graph.
 - `ontap_cluster` / `aggr` / `svm`: the drawn body when one is drawn (`ontap_cluster` from the NetApp nodes' `ontap_cluster` label, the others from those kinds' names); with nothing drawn the list is empty and explains that these names are typed until a query has drawn them — `endpoints.labelValues` reaches only the store holding `kube_pod_info`, which carries none of the NetApp label names.
 
 A value belonging to another kind, committed here, is a silently empty graph rather than an error, which is why the list is per kind. Once a root is applied the backend answers with that projection only, so the body's contribution NARROWS to it: the control MUST keep accepting a typed custom value, because the body is a projection and never the authority on what exists. Failure of a label-values request follows `graph-filters`: the list is empty, the source indicator reports it, and a typed value still works.
 
-The root value control MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — `AZ`, `Env`, `Root kind`, `Root value`, `Add`, `Top pods` and `Query` — the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error, the "root required" text and the explanatory text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The applied roots MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys), written by the Query commit; on page mount they are read from the URL into the draft, and an invalid `pod` value in the URL MUST NOT be added and MUST prompt inline.
+The root value control MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — `AZ`, `Env`, `Root kind`, `Root value` and `Top pods` — closed by the Query action (see `explicit-query`), the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error and the "root required" text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The applied roots MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys), written by the Query commit; on page mount they are read from the URL into the draft, and an invalid `pod` value in the URL MUST NOT be added and MUST prompt inline.
 
 The app MUST NOT further filter the elements returned by the backend by root on the client side — the projection has already been done by the backend, and client-side filtering by root would break weight conservation (the Top pods cut is the one sanctioned client-side narrowing, see "Top pods projection").
 
@@ -113,7 +113,7 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 #### Scenario: One row, one baseline
 
 - **WHEN** the user views the scope bar
-- **THEN** `AZ`, `Env`, `Root kind`, `Root value`, `Add`, `Top pods` and `Query` are in the same row with their labels on one baseline, no control sits under a group heading of its own, and adding a root puts its removable pill on a row below rather than between the controls
+- **THEN** `AZ`, `Env`, `Root kind`, `Root value` and `Top pods` are in the same row with their labels on one baseline, closed by the Query button with no label of its own; no control sits under a group heading of its own, and adding a root puts its removable pill on a row below rather than between the controls
 
 #### Scenario: No root is a valid state
 
@@ -123,22 +123,27 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 #### Scenario: The root value dropdown offers what is drawn, per kind
 
 - **WHEN** nothing has been drawn yet, `endpoints.labelValues` reports nodes `worker-0` / `worker-1`, and the operator selects the root kind `Node`
-- **THEN** the root value dropdown lists `worker-0` and `worker-1`; switching the kind to `Aggregate` clears the pending values, lists nothing, explains that aggregate names are typed until a query has drawn them, and still offers the custom-value row for a typed `aggr1`
+- **THEN** the root value dropdown lists `worker-0` and `worker-1`; switching the kind to `Aggregate` lists nothing and checks nothing, explains that aggregate names are typed until a query has drawn them, and still offers the custom-value row for a typed `aggr1`
 
 #### Scenario: Pod candidates follow the namespace narrowing
 
 - **WHEN** the operator selects namespace `shop` in the narrowing and the root kind `Pod`, and the label-values store lists pods `orders-0` and `catalog-0` in `shop`
 - **THEN** the root value dropdown lists `shop/orders-0` and `shop/catalog-0`; with the namespace narrowing cleared the list is empty and explains that a namespace must be selected to list pods
 
-#### Scenario: Several values of one kind are added at once
+#### Scenario: Checking values adds roots at once
 
-- **WHEN** after a committed query the body holds aggregates `aggr1` / `aggr2` / `aggr3`, the root kind is `Aggregate`, and the operator checks `aggr1` and `aggr2` and activates Add
-- **THEN** two root pills `aggr: aggr1` and `aggr: aggr2` appear below the row, the pending values are cleared, no request is issued, and the Query control indicates a pending draft
+- **WHEN** after a committed query the body holds aggregates `aggr1` / `aggr2` / `aggr3`, the root kind is `Aggregate`, and the operator checks `aggr1` and `aggr2` in the root value dropdown
+- **THEN** two root pills `aggr: aggr1` and `aggr: aggr2` appear below the row at once, with no Add step, no request is issued, and the Query control indicates a pending draft; unchecking `aggr1` removes its pill
+
+#### Scenario: Each kind shows its own roots as checked
+
+- **WHEN** the draft holds root `aggr: aggr1` and the operator switches the root kind to `SVM`, then back to `Aggregate`
+- **THEN** under `SVM` the root value control checks nothing while the `aggr: aggr1` pill stays below the row; back under `Aggregate`, `aggr1` is checked again
 
 #### Scenario: A name the current projection omits is still reachable
 
 - **WHEN** the operator knows of `aggr9`, which no source lists, and types it into the root value dropdown
-- **THEN** the custom-value row offers it, committing it adds root `aggr: aggr9`, and the request Query then sends carries `aggr=aggr9`
+- **THEN** the custom-value row offers it, taking it adds root `aggr: aggr9`, and the request Query then sends carries `aggr=aggr9`
 
 #### Scenario: Storage-side root
 
@@ -153,7 +158,7 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 #### Scenario: Mixing both sides takes the intersection
 
 - **WHEN** the user adds both `aggr: aggr1` and `pod: shop/orders-0` and activates Query, and that pod also mounts a claim located on `aggr2`
-- **THEN** both roots are sent together; the control's explanatory text states that the two sides are intersected, and the view draws only the path from `aggr1` to that pod (the backend has already done the projection)
+- **THEN** both roots are sent together, and the view draws only the path from `aggr1` to that pod (the backend has already done the projection); the scope bar carries no prose explaining the intersection
 
 #### Scenario: An invalid pod root is not sent
 
@@ -255,6 +260,54 @@ No text inside a box card MUST receive pointer events (`pointer-events: none`): 
 
 - **WHEN** the layout is `Node` and the user views `worker-0`
 - **THEN** a solid-stroked wrapper titled `worker-0` with the subtitle `1 pod` encloses the `mongo-0` card; the `svm_shop → data-mongo-0 → mongo-0` ribbon ends at the `mongo-0` card's left edge inside the wrapper, and the wrapper itself has no slots
+
+### Requirement: Layout switch: flat and node grouping
+
+The Sankey control bar SHALL provide a **layout segmented control** labelled `Layout` with two segments, `Flat` (default) and `Node`. It selects how the pod column is arranged and nothing else: the other six columns, every link and every weight MUST be identical under both layouts, and switching MUST NOT issue any request.
+
+- **`Flat`**: pods are laid out by "Sorting within a tier" and "Namespace grouping color bars and adjacent placement on the pod tier". Kubernetes nodes are not drawn.
+- **`Node`**: every pod that is the source of a `pod-node` edge in the body is drawn **inside a wrapper** representing its Kubernetes node (that edge's target), placed in the pod column. A wrapper has a title row carrying the node's `label` and a subtitle carrying its member pod count; its pods are stacked beneath the title. Wrappers are ordered top to bottom by node `label` **lexicographically ascending** (`localeCompare`) — not by flow: a node is an inventory item the operator looks up by name. Within a wrapper, pods follow the pod column's own rules (namespace adjacency, then total flow descending, ties by label). Pods with no `pod-node` edge (unscheduled) are placed **below every wrapper**, unwrapped, in the pod column's own order. Ribbons attach to the pod cards, never to the wrapper. A wrapper is drawn only when it holds at least one drawn pod, with one exception: a Kubernetes node selected as a `node` root whose pods are all undrawn MUST still be drawn as an empty wrapper marked no-flow (the "root is always drawn" rule). The pod column header reads `Node / Pod` under this layout.
+
+Under the `Flat` layout a `node` root that matched a **Kubernetes** node has nowhere to be drawn. That is not an error, and the view MUST NOT raise a hint about it beside the root control either: the paths flowing through that node's pods are drawn as usual, and the `Node` layout is where the node itself appears. A standing sentence naming every such root read as a warning on a perfectly valid draw.
+
+The layout is **transient view state** (see "Page transient state lives and dies with the route" in `app-shell`): it MUST NOT be written to the URL, MUST NOT be persisted, and MUST return to `Flat` after the page remounts or a full refresh. It is independent of the Graph page's pod-parent mode, which happens to carry the same `Layout` label and a `Node` segment: changing either MUST NOT change the other.
+
+Switching the layout re-runs the layout (the pod column's intrinsic coordinates change) but MUST preserve the zoom / pan viewport, the mode, the estate / root / narrowing selections and — when the hovered card still exists — the hover highlight. It MUST complete within the redraw bound of "Performance bounds".
+
+#### Scenario: Flat is the default
+
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod`
+- **THEN** the layout control highlights `Flat`, no wrapper is drawn, and no Kubernetes node appears in any column
+
+#### Scenario: Node layout wraps pods in name order
+
+- **WHEN**, on the fixture, the user switches the layout to `Node`
+- **THEN** the pod column shows the wrapper `worker-0` holding `mongo-0` above the wrapper `worker-1` holding `mongo-1`; the pod column header reads `Node / Pod`; the ribbons `svm_shop → data-mongo-0 → mongo-0 → mongodb` attach to the pod card; no `pod-node` ribbon is drawn; and the storage-graph request count is unchanged
+
+#### Scenario: Wrappers are ordered by name, not by flow
+
+- **WHEN** the body holds pods on nodes `worker-b` (pods totalling 9 MB/s) and `worker-a` (pods totalling 1 MB/s)
+- **THEN** under the `Node` layout the wrapper `worker-a` is above `worker-b`
+
+#### Scenario: An unscheduled pod sits below the wrappers
+
+- **WHEN** some pod has a `pvc-pod` inbound edge but no `pod-node` edge, and the layout is `Node`
+- **THEN** that pod is drawn in the pod column below every wrapper, unwrapped, and no placeholder wrapper appears for it
+
+#### Scenario: A Kubernetes node root under the Flat layout
+
+- **WHEN** the user uses `node: worker-0` as root under the `Flat` layout, and the backend returns the paths through `worker-0`'s pods
+- **THEN** those paths are drawn, no card for `worker-0` appears, and neither an error nor a hint is shown; switching to `Node` draws it as a wrapper
+
+#### Scenario: Switching the layout preserves the viewport and does not refetch
+
+- **WHEN** the user zooms to 180%, pans, hovers `data-mongo-0`, then switches from `Flat` to `Node`
+- **THEN** the zoom readout is still 180%, the mode and every selector are unchanged, the path of `data-mongo-0` is still highlighted, and the storage-graph request count is unchanged
+
+#### Scenario: The layout is transient and independent of the Graph
+
+- **WHEN** the user switches the Sankey layout to `Node`, navigates to `/graph`, then presses Back
+- **THEN** the Sankey remounts with the layout `Flat`; the Graph page's pod-parent mode was `controller` throughout; and the address bar never carried a layout parameter
 
 ### Requirement: Numeric summary outside the chart
 

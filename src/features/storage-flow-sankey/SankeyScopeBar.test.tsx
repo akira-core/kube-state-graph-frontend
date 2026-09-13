@@ -27,15 +27,11 @@ function Harness({
   );
 }
 
-/** Type a value the offered list does not contain and take the custom row. */
+/** Type a value the offered list does not contain and take the custom row, which adds it. */
 function typeRootValue(text: string): void {
   fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
   fireEvent.change(screen.getByRole('combobox', { name: 'Search Root value' }), { target: { value: text } });
   fireEvent.click(screen.getByRole('option', { name: `Use "${text}"` }));
-}
-
-function submitRoot(): void {
-  fireEvent.submit(screen.getByRole('button', { name: 'Root value' }).closest('form')!);
 }
 
 const EMPTY_ROOT_OPTIONS: SankeyRootOptions = { ontap_cluster: [], node: [], aggr: [], svm: [], pod: [] };
@@ -96,7 +92,6 @@ describe('SankeyScopeBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'Pod' }));
     typeRootValue('orders-0');
-    submitRoot();
     expect(screen.getByTestId('sankey-pod-error')).toHaveTextContent('<namespace>/<pod>');
     expect(screen.queryByRole('button', { name: /pod:orders-0/ })).not.toBeInTheDocument();
   });
@@ -104,11 +99,10 @@ describe('SankeyScopeBar', () => {
   it('adds a valid root and keeps empty roots legal', () => {
     render(<Harness az={['local-a']} env={['demo']} />);
     typeRootValue('aggr1');
-    submitRoot();
     expect(screen.getByRole('button', { name: /aggr:aggr1/ })).toBeInTheDocument();
   });
 
-  it('offers the drawn body\u2019s root values for the selected kind, and only that kind\u2019s', () => {
+  it('offers the drawn body’s root values for the selected kind, and only that kind’s', () => {
     const rootOptions: SankeyRootOptions = {
       ontap_cluster: ['ontap-lab'],
       node: ['ontap-lab-01', 'worker-0'],
@@ -125,13 +119,12 @@ describe('SankeyScopeBar', () => {
     // it is a silently empty graph, not an error.
     expect(screen.queryByRole('option', { name: 'svm_demo' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: 'aggr2' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(screen.getByRole('button', { name: /aggr:aggr2/ })).toBeInTheDocument();
 
-    // Switching kind re-lists, and drops the pending value with it.
+    // Switching kind re-lists; the aggr root stays in the draft.
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'SVM' }));
-    expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('Pick values to add');
+    expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('Pick values');
     fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
     expect(screen.getByRole('option', { name: 'svm_demo' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'aggr1' })).not.toBeInTheDocument();
@@ -142,7 +135,6 @@ describe('SankeyScopeBar', () => {
     // the operator knows about must stay reachable even when the current result omits it.
     render(<Harness az={['local-a']} env={['demo']} rootOptions={{ ...EMPTY_ROOT_OPTIONS, aggr: ['aggr1'] }} />);
     typeRootValue('aggr9');
-    submitRoot();
     expect(screen.getByRole('button', { name: /aggr:aggr9/ })).toBeInTheDocument();
   });
 
@@ -150,99 +142,74 @@ describe('SankeyScopeBar', () => {
     render(<Harness />);
     const row = screen.getByRole('button', { name: 'AZ' }).closest('[data-testid="sankey-controls"] > div');
     expect(row).not.toBeNull();
-    // AZ, Env, Root kind, the root value input and Add all live in the same flex row, so
-    // their labels share one baseline. "Root" used to be a group heading ABOVE "Root kind",
+    // AZ, Env, Root kind, the root value input and Query all live in the same flex row, so
+    // their controls share one baseline. "Root" used to be a group heading ABOVE "Root kind",
     // which put a second label rank into a row that reads as one and threw the whole bar
     // out of alignment.
-    for (const name of ['Env', 'Root kind']) {
+    for (const name of ['Env', 'Root kind', 'Root value', 'Query']) {
       expect(row?.contains(screen.getByRole('button', { name }))).toBe(true);
     }
-    expect(row?.contains(screen.getByRole('button', { name: 'Root value' }))).toBe(true);
-    expect(row?.contains(screen.getByRole('button', { name: 'Add' }))).toBe(true);
     expect(screen.queryByText('Root', { selector: 'span, label, h3' })).not.toBeInTheDocument();
   });
 
   it('moves added roots off the control row so a growing pill list cannot reflow it', () => {
     render(<Harness az={['local-a']} env={['demo']} />);
     typeRootValue('aggr1');
-    submitRoot();
     const pill = screen.getByRole('button', { name: /aggr:aggr1/ });
     const controlRow = screen.getByRole('button', { name: 'AZ' }).closest('[data-testid="sankey-controls"] > div');
     expect(controlRow?.contains(pill)).toBe(false);
   });
 
-  it('explains that node matches both sides and mixed roots take the intersection', () => {
-    render(<Harness />);
-    expect(screen.getByText(/NetApp controllers and Kubernetes nodes/)).toBeInTheDocument();
-    expect(screen.getByText(/intersection/)).toBeInTheDocument();
+  it('carries no explanatory prose about node matching or the intersection', () => {
+    render(<Harness az={['local-a']} env={['demo']} />);
+    expect(screen.queryByText(/NetApp controllers and Kubernetes nodes/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/intersection/)).not.toBeInTheDocument();
   });
 
-  it('hints that a Kubernetes node root is visible only under the Node layout', () => {
+  it('adds a checked value as a root at once, with no Add step, and unchecking removes it', () => {
     render(
-      <SankeyScopeBar
-        options={{ az: ['a'], env: ['e'], cluster: [], namespace: [] }}
-        controller={{
-          query: {
-            az: 'a',
-            env: 'e',
-            cluster: [],
-            namespace: [],
-            roots: { ...EMPTY_STORAGE_GRAPH_ROOTS, node: ['worker-0'] },
-          },
-          azEnvReady: true,
-          podError: undefined,
-          setAz: () => {},
-          setEnv: () => {},
-          setCluster: () => {},
-          setNamespace: () => {},
-          addRoot: () => true,
-          addRoots: () => true,
-          removeRoot: () => {},
-          clearRoots: () => {},
-        }}
-        k8sNodeHint={[{ id: 'node/worker-0', label: 'worker-0' }]}
+      <Harness
+        az={['local-a']}
+        env={['demo']}
+        rootOptions={{ ...EMPTY_ROOT_OPTIONS, aggr: ['aggr1', 'aggr2', 'aggr3'] }}
       />
     );
-    expect(screen.getByTestId('sankey-k8s-node-hint')).toHaveTextContent('worker-0');
-    expect(screen.getByTestId('sankey-k8s-node-hint')).toHaveTextContent('Node layout');
-  });
-
-  it('adds several pending values at once', () => {
-    const rootOptions: SankeyRootOptions = {
-      ontap_cluster: [],
-      node: [],
-      aggr: ['aggr1', 'aggr2', 'aggr3'],
-      svm: [],
-      pod: [],
-    };
-    render(<Harness az={['local-a']} env={['demo']} rootOptions={rootOptions} />);
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
     fireEvent.click(screen.getByRole('option', { name: 'aggr1' }));
     fireEvent.click(screen.getByRole('option', { name: 'aggr2' }));
-    submitRoot();
     expect(screen.getByRole('button', { name: /aggr:aggr1/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /aggr:aggr2/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('Pick values to add');
+
+    fireEvent.click(screen.getByRole('option', { name: 'aggr1' }));
+    expect(screen.queryByRole('button', { name: /aggr:aggr1/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /aggr:aggr2/ })).toBeInTheDocument();
   });
 
-  it('clears pending values when the root kind changes', () => {
-    const rootOptions: SankeyRootOptions = {
-      ontap_cluster: [],
-      node: [],
-      aggr: ['aggr1'],
-      svm: [],
-      pod: [],
-    };
-    render(<Harness az={['local-a']} env={['demo']} rootOptions={rootOptions} />);
+  it('shows each kind’s own roots as its checked values', () => {
+    render(
+      <Harness
+        az={['local-a']}
+        env={['demo']}
+        rootOptions={{ ...EMPTY_ROOT_OPTIONS, aggr: ['aggr1'], svm: ['svm_demo'] }}
+      />
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
     fireEvent.click(screen.getByRole('option', { name: 'aggr1' }));
     expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('aggr1');
+
+    // Under another kind the control shows that kind's roots; the aggr root stays in the draft.
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'SVM' }));
-    expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('Pick values to add');
+    expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('Pick values');
+    expect(screen.getByRole('button', { name: /aggr:aggr1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Aggregate' }));
+    expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('aggr1');
   });
 
-  it('refuses the whole Add when any pod value is malformed', () => {
+  it('refuses a malformed pod value on its own and keeps the valid one', () => {
     render(<Harness az={['local-a']} env={['demo']} />);
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'Pod' }));
@@ -253,9 +220,8 @@ describe('SankeyScopeBar', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Use "shop/orders-0"' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Search Root value' }), { target: { value: 'orders-0' } });
     fireEvent.click(screen.getByRole('option', { name: 'Use "orders-0"' }));
-    submitRoot();
     expect(screen.getByTestId('sankey-pod-error')).toHaveTextContent('<namespace>/<pod>');
-    expect(screen.queryByRole('button', { name: /pod:shop\/orders-0/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /pod:shop\/orders-0/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /pod:orders-0/ })).not.toBeInTheDocument();
   });
 
@@ -285,7 +251,6 @@ describe('SankeyScopeBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'Pod' }));
     typeRootValue('shop/orders-0');
-    submitRoot();
     expect(screen.getByLabelText('Top pods')).toBeDisabled();
     expect(screen.getByTestId('sankey-top-pods-reason')).toHaveTextContent('pod root');
   });

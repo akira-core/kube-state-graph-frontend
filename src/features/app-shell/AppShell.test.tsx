@@ -81,7 +81,6 @@ async function addTypedRoot(value: string): Promise<void> {
   await waitFor(() => {
     expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent(value);
   });
-  fireEvent.submit(screen.getByRole('button', { name: 'Root value' }).closest('form')!);
   await waitFor(() => {
     expect(screen.getByRole('button', { name: new RegExp(`aggr:${value}`) })).toBeInTheDocument();
   });

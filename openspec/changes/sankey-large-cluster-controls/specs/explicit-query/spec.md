@@ -24,7 +24,7 @@ While the draft differs from the applied selection the page MUST indicate it —
 
 ### Requirement: The Query control commits the draft
 
-Each page SHALL present a **Query** control on its filter / scope bar — in the same label-over-control row as the other controls, with an accessible name, operable by keyboard. Activating it MUST, in this order: write the draft to the route's query string as one **replace** (scope and `from` / `to` together, see `app-shell`), take the draft as the new applied selection, and issue exactly one request built from it (parameter rules in `graph-data-source`). Query with a draft equal to the applied selection is a re-run and is allowed.
+Each page SHALL present a **Query** control on its filter / scope bar, closing the same control row as the other controls but set apart from them as an **action**: a filled button with no field label above it, after a divider at the end of the row, so that it cannot be read as one more input beside the bordered dropdowns. It carries an accessible name and is operable by keyboard. Activating it MUST, in this order: write the draft to the route's query string as one **replace** (scope and `from` / `to` together, see `app-shell`), take the draft as the new applied selection, and issue exactly one request built from it (parameter rules in `graph-data-source`). Query with a draft equal to the applied selection is a re-run and is allowed.
 
 Query MUST be unavailable while the draft cannot be sent: on the Sankey page when `az`, `env` or at least one root is missing, or a `pod` root is malformed; the reason MUST be stated beside the control. It MUST NOT be unavailable merely because a request is in flight — in that state it becomes Cancel (next requirement).
 

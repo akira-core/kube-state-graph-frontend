@@ -60,4 +60,40 @@ describe('QueryButton', () => {
     fireEvent.click(button);
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it('is an action, not a labelled field: no label above the button', () => {
+    renderButton();
+    // The first cut put a QUERY label over an outlined button, and it read as one more
+    // dropdown in the row. The only "Query" text now is the button's own.
+    expect(screen.getAllByText('Query')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Query' })).toHaveTextContent('Query');
+  });
+
+  it('says in words that the draft is not applied while it is dirty', () => {
+    renderButton({ dirty: true });
+    expect(screen.getByTestId('query-pending')).toHaveTextContent('Changes not applied');
+  });
+
+  it('drops the pending words when clean, in flight, or unavailable', () => {
+    const noop = (): void => undefined;
+    const { rerender } = render(
+      <QueryButton dirty={false} inFlight={false} disabled={false} onQuery={noop} onCancel={noop} />
+    );
+    expect(screen.queryByTestId('query-pending')).not.toBeInTheDocument();
+    rerender(<QueryButton dirty inFlight disabled={false} onQuery={noop} onCancel={noop} />);
+    expect(screen.queryByTestId('query-pending')).not.toBeInTheDocument();
+    // An unsendable draft says why instead: the reason is the more useful sentence.
+    rerender(
+      <QueryButton
+        dirty
+        inFlight={false}
+        disabled
+        disabledReason="At least one root is required"
+        onQuery={noop}
+        onCancel={noop}
+      />
+    );
+    expect(screen.queryByTestId('query-pending')).not.toBeInTheDocument();
+    expect(screen.getByTestId('query-disabled-reason')).toHaveTextContent('At least one root is required');
+  });
 });
