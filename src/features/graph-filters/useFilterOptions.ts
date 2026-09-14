@@ -45,7 +45,7 @@ export function useFilterOptions(labelValuesBase: string | undefined): FilterOpt
         const results = await Promise.all(
           IDENTITY_DIMENSIONS.map(async (dimension) => ({
             dimension,
-            result: await fetchLabelValues(labelValuesBase, dimension),
+            result: await fetchLabelValues(labelValuesBase, dimension, undefined, controller.signal),
           }))
         );
         for (const { dimension, result } of results) {
