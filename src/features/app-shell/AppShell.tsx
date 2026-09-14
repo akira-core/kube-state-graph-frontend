@@ -7,6 +7,7 @@ import { GraphPage } from './GraphPage';
 import { NavBar } from './NavBar';
 import { NetworkPage } from './NetworkPage';
 import { NotFoundPage } from './NotFoundPage';
+import { categoryHome, documentTitle, isKnownPath, routeFor } from './routes';
 import { SankeyPage } from './SankeyPage';
 import { IDLE_PAGE_STATUS, ShellFrameProvider, type PageStatus } from './ShellFrame';
 import { useViewTimeRange } from './useViewTimeRange';
@@ -26,43 +27,26 @@ function pathKey(pathname: string): string {
  */
 function RootRedirect(): JSX.Element {
   const location = useLocation();
-  return <Navigate to={{ pathname: '/graph', search: location.search }} replace />;
+  return <Navigate to={{ pathname: categoryHome('storage'), search: location.search }} replace />;
 }
 
 /** `/network` is an alias for `/network/graph`, carrying the query for the same reason. */
 function NetworkRedirect(): JSX.Element {
   const location = useLocation();
-  return <Navigate to={{ pathname: '/network/graph', search: location.search }} replace />;
-}
-
-function titleFor(path: string): string {
-  switch (path) {
-    case '/graph':
-      return 'Kube State Graph — Graph';
-    case '/sankey':
-      return 'Kube State Graph — Sankey';
-    case '/network/graph':
-      return 'Kube State Graph — Network Graph';
-    case '/network/sankey':
-      return 'Kube State Graph — Network Sankey';
-    default:
-      return 'Kube State Graph';
-  }
+  return <Navigate to={{ pathname: categoryHome('network'), search: location.search }} replace />;
 }
 
 function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
   const location = useLocation();
   const path = pathKey(location.pathname);
-  const isGraph = path === '/graph';
-  const isSankey = path === '/sankey';
-  const isNetwork = path === '/network/graph' || path === '/network/sankey';
-  const isAnySankey = isSankey || path === '/network/sankey';
+  const route = routeFor(path);
+  const isAnySankey = route?.view === 'sankey';
   const time = useViewTimeRange();
   const [status, setStatus] = useState<PageStatus>(IDLE_PAGE_STATUS);
   const [focusMode, setFocusMode] = useState(false);
 
   useEffect(() => {
-    document.title = titleFor(path);
+    document.title = documentTitle(path);
   }, [path]);
 
   useEffect(() => {
@@ -71,7 +55,7 @@ function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
     }
   }, [focusMode, isAnySankey]);
 
-  const notFound = !isGraph && !isSankey && !isNetwork && path !== '/' && path !== '/network';
+  const notFound = !isKnownPath(path);
   const reloadDisabled = notFound || status.reloadDisabled;
 
   return (
@@ -84,7 +68,7 @@ function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
             lastLoadedAt={status.lastLoadedAt}
             refreshing={status.refreshing}
             error={status.error}
-            refreshIntervalSeconds={isGraph || isSankey || isNetwork ? config.refreshIntervalSeconds : 0}
+            refreshIntervalSeconds={route !== undefined ? config.refreshIntervalSeconds : 0}
             onReload={status.reload}
             reloadDisabled={reloadDisabled}
             viewRange={time.range}

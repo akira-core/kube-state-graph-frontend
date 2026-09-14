@@ -10,6 +10,7 @@ import { Select } from '../../shared/ui/Select';
 import { StatusLamp, type LampState } from '../../shared/ui/StatusLamp';
 import { useRequiredThemeController, type ThemeChoice } from '../theme';
 
+import { CATEGORY_LABEL, categoryHome, categoryOf, viewsOf, type Category } from './routes';
 import type { PagePhase } from './ShellFrame';
 
 export interface NavBarProps {
@@ -56,34 +57,28 @@ function datetimeLocalToUnix(value: string): number | null {
   return Math.floor(ms / 1000);
 }
 
-type Category = 'storage' | 'network';
-
 /**
  * Two-level navigation: a category (what is being traced — the cluster's storage estate,
  * or a switch's traffic) and, inside it, a view of the same body (Graph or Sankey).
- * Switching category lands on its Graph with a fresh scope; switching view inside the
- * Network category keeps the query string, because that page's loader is shared by both
- * views and the controls must keep showing what was drawn.
+ * Switching category lands on its Graph with a fresh scope; whether switching view keeps
+ * the query string is each route's own `keepSearch` (see `routes.ts`).
  */
-const CATEGORIES: ReadonlyArray<{ key: Category; to: string; label: string }> = [
-  { key: 'storage', to: '/graph', label: 'Storage' },
-  { key: 'network', to: '/network/graph', label: 'Network' },
-];
+const CATEGORIES: ReadonlyArray<{ key: Category; to: string; label: string }> = (['storage', 'network'] as const).map(
+  (key) => ({ key, to: categoryHome(key), label: CATEGORY_LABEL[key] })
+);
 
 const VIEWS_BY_CATEGORY: Record<Category, ReadonlyArray<{ to: string; label: string; keepSearch: boolean }>> = {
-  storage: [
-    { to: '/graph', label: 'Graph', keepSearch: false },
-    { to: '/sankey', label: 'Sankey', keepSearch: false },
-  ],
-  network: [
-    { to: '/network/graph', label: 'Graph', keepSearch: true },
-    { to: '/network/sankey', label: 'Sankey', keepSearch: true },
-  ],
+  storage: viewsOf('storage').map((r) => ({
+    to: r.path,
+    label: r.view === 'graph' ? 'Graph' : 'Sankey',
+    keepSearch: r.keepSearch,
+  })),
+  network: viewsOf('network').map((r) => ({
+    to: r.path,
+    label: r.view === 'graph' ? 'Graph' : 'Sankey',
+    keepSearch: r.keepSearch,
+  })),
 };
-
-function categoryOf(pathname: string): Category {
-  return pathname.startsWith('/network') ? 'network' : 'storage';
-}
 
 const SEGMENT_CLASS = 'flex h-6 items-center rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-100';
 const SEGMENT_ACTIVE = 'bg-selected text-primary shadow-sm';

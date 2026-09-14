@@ -17,6 +17,7 @@ import {
 } from '../network-trace';
 
 import { NotFoundPage } from './NotFoundPage';
+import { routeFor } from './routes';
 import { useShellFrame } from './ShellFrame';
 import { useAppliedScope, useSeedTimeOnMount } from './useAppliedScope';
 import { useDraft } from './useDraft';
@@ -105,7 +106,10 @@ export function NetworkPage(): JSX.Element {
 
   const hostnameOptions = useHostnameCandidates(trace.state.elements);
 
-  if (view !== 'graph' && view !== 'sankey') {
+  // Same chrome as the shell's `*` route (both render under AppLayout); the table decides
+  // which `:view` values exist so this guard cannot drift from the nav.
+  const route = routeFor(`/network/${view ?? ''}`);
+  if (route === undefined || (view !== 'graph' && view !== 'sankey')) {
     return <NotFoundPage />;
   }
 
