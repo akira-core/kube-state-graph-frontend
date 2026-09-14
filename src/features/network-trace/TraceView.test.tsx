@@ -139,6 +139,37 @@ function openSummary(): void {
 /** Empty-state props for the live (non-demo) page before anything was drawn. */
 const LIVE_EMPTY: Overrides = { demoMode: false, hasPayload: false, status: 'idle', elements: [] };
 
+describe('TraceView threshold debounce', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('fires once after the pause even when the parent re-renders with a new callback each time', () => {
+    vi.useFakeTimers();
+    const first = vi.fn();
+    const { rerender } = renderTrace({ onMinBpsChange: first });
+    fireEvent.change(screen.getByTestId('trace-min-bps'), { target: { value: '5000000000' } });
+
+    // Three parent renders inside the 200 ms window, each with a fresh callback identity —
+    // the shape a pan drag produces. None of them may restart the timer.
+    const later = [vi.fn(), vi.fn(), vi.fn()];
+    for (const cb of later) {
+      act(() => {
+        vi.advanceTimersByTime(60);
+      });
+      rerender(wrap(baseProps({ onMinBpsChange: cb })));
+    }
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(first).not.toHaveBeenCalled();
+    expect(later[0]).not.toHaveBeenCalled();
+    expect(later[1]).not.toHaveBeenCalled();
+    expect(later[2]).toHaveBeenCalledTimes(1);
+    expect(later[2]).toHaveBeenCalledWith(5_000_000_000);
+  });
+});
+
 describe('TraceView chart host lifecycle', () => {
   it('wheel-zooms a chart that mounted after the loading gate', () => {
     // Same shape as the storage Sankey: live mode first commits `loading` with no host in

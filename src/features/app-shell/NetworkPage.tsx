@@ -65,7 +65,10 @@ export function NetworkPage(): JSX.Element {
   const [layout, setLayout] = useState<TraceLayout>('flat');
   const [locateNodeId, setLocateNodeId] = useState<string | null>(null);
 
-  const appliedRange = parseTimeQuery(searchParams) ?? time.range;
+  // Memoised on the params object: `parseTimeQuery` returns a fresh object per call, and an
+  // identity that changed every render would churn every callback below and, through
+  // `onMinBpsChange`, restart the view's threshold debounce on each render.
+  const appliedRange = useMemo(() => parseTimeQuery(searchParams) ?? time.range, [searchParams, time.range]);
   const minBps = config.demoMode ? demoMinBps : applied.minBps;
 
   const onQuery = useCallback(() => {

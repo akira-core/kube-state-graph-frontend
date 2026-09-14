@@ -163,7 +163,9 @@ export function SankeyPage(): JSX.Element {
     run(() => undefined);
   }, [config.demoMode, run]);
 
-  const appliedRange = parseTimeQuery(searchParams) ?? time.range;
+  // Memoised on the params object (see NetworkPage): a fresh range object every render would
+  // churn `onTopPods` / `onModeChange` for nothing.
+  const appliedRange = useMemo(() => parseTimeQuery(searchParams) ?? time.range, [searchParams, time.range]);
   const topPods = config.demoMode ? demoTopPods : applied.topPods;
   const mode = config.demoMode ? demoModeValue : applied.mode;
 

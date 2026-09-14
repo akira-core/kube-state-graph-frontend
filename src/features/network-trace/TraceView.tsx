@@ -133,14 +133,19 @@ export function TraceView({
   useEffect(() => {
     setMinText(minBps > 0 ? String(minBps) : '');
   }, [minBps]);
+  // The callback lives in a ref so the timer depends only on the text and the applied
+  // value: a parent that hands down a new `onMinBpsChange` identity on each render (any
+  // render faster than the debounce — a pan drag, say) must not keep restarting it.
+  const onMinBpsChangeRef = useRef(onMinBpsChange);
+  onMinBpsChangeRef.current = onMinBpsChange;
   useEffect(() => {
     const next = cleanMinBps(minText);
     if (next === minBps) {
       return;
     }
-    const t = window.setTimeout(() => onMinBpsChange(next), MIN_BPS_DEBOUNCE_MS);
+    const t = window.setTimeout(() => onMinBpsChangeRef.current(next), MIN_BPS_DEBOUNCE_MS);
     return () => window.clearTimeout(t);
-  }, [minBps, minText, onMinBpsChange]);
+  }, [minBps, minText]);
 
   const [hoverId, setHoverId] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
