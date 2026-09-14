@@ -53,6 +53,45 @@ function roundsToUnitBoundary(value: number): boolean {
   return Number(value.toPrecision(SIGNIFICANT_DIGITS)) >= BYTES_PER_UNIT;
 }
 
+// Decimal bit-rate units, as network gear reports them — a 10 Gbps port is 1e10 bits/s.
+// A separate ladder from BYTE_UNITS on purpose: a byte rate and a bit rate differ by 8×,
+// and rendering both through one formatter would invite reading a `5 Mbps` link as five
+// megabytes per second.
+const BIT_RATE_UNITS = ['bps', 'kbps', 'Mbps', 'Gbps', 'Tbps'] as const;
+
+const BITS_PER_UNIT = 1000;
+
+/**
+ * Bit rate at up to 3 significant digits with an SI unit, e.g. `8.5 Gbps`.
+ *
+ * Unsigned: this is a magnitude formatter. Negative inputs never reach it from normalize
+ * (rejected there) and would render with a leading `-`; `0` renders as `0 bps`, a real
+ * reading distinct from the absent field the caller renders as no row. Promotes on the
+ * ROUNDED value like `formatBytes`, so 999 999 bps reads `1 Mbps`, not `1000 kbps`.
+ */
+export function formatBitsPerSec(bps: number): string {
+  let value = bps;
+  let unit = 0;
+  while (roundsToUnitBoundary(Math.abs(value)) && unit < BIT_RATE_UNITS.length - 1) {
+    value /= BITS_PER_UNIT;
+    unit += 1;
+  }
+  return `${formatSignificant(value)} ${BIT_RATE_UNITS[unit]}`;
+}
+
+/**
+ * A rate DELTA (the switch-trace `delta_bps` family), e.g. `+8.5 Gbps`.
+ *
+ * The ONLY place a leading `+` is attached. It marks the value as "how much the rate
+ * rose", so a reader cannot mistake it for the interface's absolute throughput; a delta
+ * of exactly `0` carries no sign (`0 bps`), and a negative one — which normalize never
+ * emits — keeps the `-` that `formatBitsPerSec` already gives it.
+ */
+export function formatDeltaBps(bps: number): string {
+  const magnitude = formatBitsPerSec(bps);
+  return bps > 0 ? `+${magnitude}` : magnitude;
+}
+
 /**
  * Storage usage as `<used> / <capacity> (<pct>%)`, e.g. `700 GB / 1 TB (70%)`.
  *

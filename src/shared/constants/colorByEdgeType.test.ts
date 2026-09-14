@@ -1,3 +1,5 @@
+import { DARK_TOKENS } from '../theme/tokens';
+
 import {
   EDGE_STYLE_BY_TYPE,
   EDGE_ENDPOINTS_BY_TYPE,
@@ -56,10 +58,19 @@ describe('colorByEdgeType', () => {
 
   it('routes every non-fabric edge type as bezier', () => {
     for (const [type, style] of Object.entries(EDGE_STYLE_BY_TYPE)) {
-      if (type !== 'switch-to-switch' && type !== 'node-to-switch') {
+      if (type !== 'switch-to-switch' && type !== 'node-to-switch' && type !== 'network-flow') {
         expect(`${type}:${style.routing}`).toBe(`${type}:bezier`);
       }
     }
+  });
+
+  it('routes the traced network-flow hop like the fabric it rides (solid, taxi, cyan family, non-traffic)', () => {
+    expect(EDGE_STYLE_BY_TYPE['network-flow'].routing).toBe('taxi');
+    expect(EDGE_STYLE_BY_TYPE['network-flow'].lineStyle).toBe('solid');
+    expect(EDGE_STYLE_BY_TYPE['network-flow'].color).toBe(DARK_TOKENS.edge['network-flow']);
+    // Bits on a wire are not requests through a gateway — never dashed as ingress traffic.
+    expect(EDGE_IS_TRAFFIC_BY_TYPE['network-flow']).toBe(false);
+    expect(EDGE_ENDPOINTS_BY_TYPE['network-flow']).toEqual({ from: 'switch', to: 'host' });
   });
 
   it('classifies only the request-carrying edge types as traffic', () => {

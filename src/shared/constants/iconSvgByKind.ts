@@ -94,6 +94,12 @@ export const ICON_SVG_BY_KIND: Record<NodeKind, string> = {
   network: icon(
     '<path d="M3.5 11.5 a12 12 0 0 1 17 0 M6.5 14.5 a7.8 7.8 0 0 1 11 0 M9.4 17.3 a3.7 3.7 0 0 1 5.2 0"/><circle cx="12" cy="19.8" r="1.1"/>'
   ),
+  // Generic network endpoint: a small box (the machine) with a single lead running up
+  // to a port dot — "something plugged into the fabric". Deliberately plainer than the
+  // `node` monitor so a traced client / external port reads apart from a K8s node.
+  host: icon(
+    '<rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M12 11V6.5"/><circle cx="12" cy="4.6" r="1.4"/><path d="M8.5 15.5h7"/>'
+  ),
 };
 
 // Folder glyph for a COLLAPSED decorative group (cluster / namespace / application).

@@ -8,6 +8,8 @@ export {
   storageGraphRequestKey,
 } from './storageGraphRequestUrl';
 export type { StorageGraphQuery, StorageGraphRoots } from './storageGraphRequestUrl';
+export { buildTraceRequestUrl, TRACE_DEFAULTS } from './traceRequestUrl';
+export type { TraceDirection, TraceQuery } from './traceRequestUrl';
 export { normalizeGraph } from './normalize';
 export type { NormalizeResult } from './normalize';
 export { wrapSwitchFabric } from './wrapSwitchFabric';

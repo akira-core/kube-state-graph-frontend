@@ -80,11 +80,41 @@ export interface WireIoMetrics {
   max_bytes_per_sec?: number;
 }
 
-export type WireMetrics = WireRedMetrics | WireIoMetrics;
+/**
+ * Switch-trace measurement on a `network-flow` edge (`GET /v1/trace`). A rate DELTA in
+ * bits per second over the query window, ≥ 0 — not an absolute throughput. Absent ≠ 0.
+ */
+export interface WireFlowMetrics {
+  delta_bps?: number;
+}
+
+export type WireMetrics = WireRedMetrics | WireIoMetrics | WireFlowMetrics;
+
+/** The trace's starting point, on exactly one node of a `/v1/trace` response. */
+export interface WireInvestigation {
+  /** The switch interface the operator asked about. Required, non-empty. */
+  iface: string;
+  /** Rate delta measured at that interface, bits/s, > 0. Required. */
+  delta_bps: number;
+  /** Which side of the port the delta was seen on; absent = the request's `track_dir` decides. */
+  direction?: 'in' | 'out';
+  note?: string;
+}
+
+/**
+ * One endpoint a `host` / trace-stop node stands for. At least one of `ip` / `hostname`
+ * must be present for normalize to keep the entry; `owner` is free-form attribution.
+ */
+export interface WireClient {
+  ip?: string;
+  hostname?: string;
+  owner?: string;
+}
 
 export interface WireNodeData {
   id: string;
-  name: string;
+  /** Display name. Optional: normalize falls back to `id`, and `/v1/trace` omits it on hosts. */
+  name?: string;
   /**
    * The backend's node `type` enum plus its synthesized compound-group types
    * (`cluster` / `storage-cluster` / `namespace` / `application` / `controller`).
@@ -138,6 +168,16 @@ export interface WireNodeData {
   status?: string;
   /** PANEL-ONLY. See WireAlert. */
   alerts?: WireAlert[];
+  /** `/v1/trace` only. See WireInvestigation. */
+  investigation?: WireInvestigation;
+  /** `/v1/trace` only, on `host` / trace-stop nodes. See WireClient. */
+  clients?: WireClient[];
+  /**
+   * `/v1/trace` only. Traffic (bits/s, ≥ 0) that entered / left this hop but was not
+   * followed by the trace. Independently optional; absent is NOT a measured 0.
+   */
+  other_in_bps?: number;
+  other_out_bps?: number;
 }
 
 export interface WireEdgeData {

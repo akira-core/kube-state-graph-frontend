@@ -46,6 +46,7 @@ export interface ThemeTokens {
     'storage-cluster': string;
     network: string;
     external: string;
+    host: string;
   };
   edge: {
     'pod-to-node': string;
@@ -57,6 +58,8 @@ export interface ThemeTokens {
     'switch-to-switch': string;
     'node-to-switch': string;
     'storage-flow': string;
+    /** A traced interface hop (`/v1/trace`). Cyan family, like the two fabric edges. */
+    'network-flow': string;
     fallback: string;
   };
   sankey: {
@@ -80,6 +83,19 @@ export interface ThemeTokens {
     namespace3: string;
     namespace4: string;
     namespace5: string;
+    /**
+     * Network-trace ribbons. `traceFlow` / `traceFlowEnd` bound the gradient on a forward
+     * Δbps ribbon (same cyan family as the `network-flow` edge, so the Graph and Sankey
+     * views agree about what a traced hop looks like); `traceBackward` / `traceBackwardEnd`
+     * bound a ribbon that runs against column order. The two residual tokens paint the
+     * "other in" (amber) / "other out" (rose) blocks — the traffic the trace did not follow.
+     */
+    traceFlow: string;
+    traceFlowEnd: string;
+    traceBackward: string;
+    traceBackwardEnd: string;
+    traceResidualIn: string;
+    traceResidualOut: string;
   };
 }
 
@@ -129,6 +145,7 @@ export const DARK_TOKENS: ThemeTokens = {
     'storage-cluster': '#818cf8',
     network: '#22d3ee',
     external: '#cbd5e1',
+    host: '#a5f3fc',
   },
   edge: {
     'pod-to-node': '#3b82f6',
@@ -140,6 +157,7 @@ export const DARK_TOKENS: ThemeTokens = {
     'switch-to-switch': '#06b6d4',
     'node-to-switch': '#06b6d4',
     'storage-flow': '#6366f1',
+    'network-flow': '#22d3ee',
     fallback: '#94a3b8',
   },
   sankey: {
@@ -158,6 +176,12 @@ export const DARK_TOKENS: ThemeTokens = {
     namespace3: '#fbbf24',
     namespace4: '#818cf8',
     namespace5: '#fb7185',
+    traceFlow: '#22d3ee',
+    traceFlowEnd: '#06b6d4',
+    traceBackward: '#a78bfa',
+    traceBackwardEnd: '#8b5cf6',
+    traceResidualIn: '#f59e0b',
+    traceResidualOut: '#fb7185',
   },
 };
 
@@ -205,6 +229,7 @@ export const LIGHT_TOKENS: ThemeTokens = {
     'storage-cluster': '#4338ca',
     network: '#0e7490',
     external: '#334155',
+    host: '#155e75',
   },
   edge: {
     'pod-to-node': '#3b82f6',
@@ -216,6 +241,7 @@ export const LIGHT_TOKENS: ThemeTokens = {
     'switch-to-switch': '#06b6d4',
     'node-to-switch': '#06b6d4',
     'storage-flow': '#4f46e5',
+    'network-flow': '#0891b2',
     fallback: '#94a3b8',
   },
   sankey: {
@@ -232,6 +258,12 @@ export const LIGHT_TOKENS: ThemeTokens = {
     namespace3: '#d97706',
     namespace4: '#4f46e5',
     namespace5: '#e11d48',
+    traceFlow: '#0891b2',
+    traceFlowEnd: '#0e7490',
+    traceBackward: '#7c3aed',
+    traceBackwardEnd: '#6d28d9',
+    traceResidualIn: '#d97706',
+    traceResidualOut: '#e11d48',
   },
 };
 

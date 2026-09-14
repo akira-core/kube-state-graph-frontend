@@ -10,8 +10,9 @@ import type { EdgeType, PodParentMode } from './types';
 //
 // `switch-to-switch` / `node-to-switch` are physical network-fabric edges
 // (backend v0.0.18) involving neither pods nor controllers, so they are drawn in
-// BOTH modes.
-const SWITCH_EDGES = ['switch-to-switch', 'node-to-switch'] as const;
+// BOTH modes. `network-flow` (a traced interface hop, `/v1/trace` only) rides the
+// same fabric and is likewise mode-independent.
+const SWITCH_EDGES = ['switch-to-switch', 'node-to-switch', 'network-flow'] as const;
 const DRAWN_BY_MODE: Record<PodParentMode, readonly EdgeType[]> = {
   node: [
     'pod-mounts-pvc',

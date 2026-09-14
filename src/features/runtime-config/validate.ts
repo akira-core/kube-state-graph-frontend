@@ -14,6 +14,7 @@ const KNOWN_ROOT_KEYS = new Set(['endpoints', 'demoMode', 'refreshIntervalSecond
 const KNOWN_ENDPOINT_KEYS = new Set([
   'graph',
   'storageGraph',
+  'trace',
   'labelValues',
   'codeChanges',
   'configChanges',
@@ -146,6 +147,7 @@ export function validateConfig(input: unknown): ValidateResult {
       for (const key of [
         'graph',
         'storageGraph',
+        'trace',
         'labelValues',
         'codeChanges',
         'configChanges',

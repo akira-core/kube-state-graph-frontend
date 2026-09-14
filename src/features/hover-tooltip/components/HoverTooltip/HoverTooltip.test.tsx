@@ -76,4 +76,38 @@ describe('HoverTooltip', () => {
     render(<HoverTooltip cyRef={cyRefStub} ready />);
     expect(screen.getByTestId('hover-tooltip').textContent).toMatch(/B\/s|MB\/s|KB\/s/);
   });
+
+  it('renders a signed Δ rate row for a traced network-flow hop', () => {
+    mockHover.mockReturnValue({
+      group: 'edges',
+      id: 'e3',
+      data: {
+        id: 'e3',
+        source: 'sw1',
+        target: 'sw2',
+        edgeType: 'network-flow',
+        labels: { source_iface: 'Ethernet1/1', target_iface: 'Ethernet2/1' },
+        metrics: { deltaBps: 8_500_000_000 },
+      },
+      position: { x: 10, y: 10 },
+    });
+    render(<HoverTooltip cyRef={cyRefStub} ready />);
+    const tip = screen.getByTestId('hover-tooltip');
+    // The `+` marks a rate DELTA, so the reader cannot mistake it for the port's throughput.
+    expect(tip).toHaveTextContent('Δ rate:+8.5 Gbps');
+    expect(tip.textContent).not.toMatch(/req\/s|B\/s/);
+  });
+
+  it('lists the Δ rate row before any I/O rows when a payload carries both', () => {
+    mockHover.mockReturnValue({
+      group: 'edges',
+      id: 'e4',
+      data: { id: 'e4', source: 'a', target: 'b', edgeType: 'network-flow', metrics: { deltaBps: 12, readOps: 3 } },
+      position: { x: 10, y: 10 },
+    });
+    render(<HoverTooltip cyRef={cyRefStub} ready />);
+    const text = screen.getByTestId('hover-tooltip').textContent ?? '';
+    expect(text.indexOf('Δ rate')).toBeGreaterThan(-1);
+    expect(text.indexOf('Δ rate')).toBeLessThan(text.indexOf('ops/s'));
+  });
 });

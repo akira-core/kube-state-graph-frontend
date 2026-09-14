@@ -95,11 +95,20 @@ function parseEdgeMetrics(v: unknown): cytoscape.EdgeMetrics | undefined {
   };
 }
 
-// The storage half. Every field rides its own upstream Harvest series family, so each is
-// kept or dropped independently and absence is never padded to 0. Values are verbatim —
-// Harvest has already resolved ONTAP's base counters, so these are not rates to derive.
-// Returns undefined when nothing survives, so the edge simply carries no `metrics`.
-function parseIoMetrics(v: Record<string, unknown>): cytoscape.EdgeIoMetrics | undefined {
+// A bits-per-second reading the backend actually measured: finite and non-negative. Shared
+// by the switch-trace fields (`delta_bps`, `other_in_bps`, `other_out_bps`) — a rate delta
+// of 0 is a real reading (the interface did not move), so it passes; only nonsense fails.
+function isNonNegativeBps(v: unknown): v is number {
+  return isFiniteNumber(v) && v >= 0;
+}
+
+// The storage half — plus the switch-trace `delta_bps`, which shares this branch because
+// both families are what is left once `rate` is absent. Every field rides its own upstream
+// series, so each is kept or dropped independently and absence is never padded to 0.
+// Values are verbatim — Harvest has already resolved ONTAP's base counters, and the trace
+// backend has already differenced its interface counters, so these are not rates to
+// derive. Returns undefined when nothing survives, so the edge simply carries no `metrics`.
+function parseIoMetrics(v: Record<string, unknown>): (cytoscape.EdgeIoMetrics & cytoscape.EdgeFlowMetrics) | undefined {
   const {
     read_ops: readOps,
     write_ops: writeOps,
@@ -109,8 +118,9 @@ function parseIoMetrics(v: Record<string, unknown>): cytoscape.EdgeIoMetrics | u
     write_bytes_per_sec: writeBytesPerSec,
     max_iops: maxIops,
     max_bytes_per_sec: maxBytesPerSec,
+    delta_bps: deltaBps,
   } = v;
-  const io: cytoscape.EdgeIoMetrics = {
+  const io: cytoscape.EdgeIoMetrics & cytoscape.EdgeFlowMetrics = {
     ...(isFiniteNumber(readOps) ? { readOps } : {}),
     ...(isFiniteNumber(writeOps) ? { writeOps } : {}),
     ...(isFiniteNumber(readLatencyUs) ? { readLatencyUs } : {}),
@@ -123,6 +133,10 @@ function parseIoMetrics(v: Record<string, unknown>): cytoscape.EdgeIoMetrics | u
     // contract this layer does not own would let an upstream change silently drop data.
     ...(isFiniteNumber(maxIops) ? { maxIops } : {}),
     ...(isFiniteNumber(maxBytesPerSec) ? { maxBytesPerSec } : {}),
+    // A rate DELTA, so unlike the Harvest readings a negative value is not a measurement
+    // the trace can draw — the Sankey conserves flow per hop and a ribbon cannot carry
+    // less than nothing. Dropped like any other unusable field; the edge survives.
+    ...(isNonNegativeBps(deltaBps) ? { deltaBps } : {}),
   };
   return Object.keys(io).length > 0 ? io : undefined;
 }
@@ -315,6 +329,87 @@ function parsePerf(v: unknown): cytoscape.NodeDataDefinition['perf'] {
   return Object.keys(perf).length > 0 ? perf : undefined;
 }
 
+// ── Switch-trace (`/v1/trace`) node fields ──
+//
+// Unlike the decorative RED / I/O metrics, these DO report through `errors` (design D3
+// applies the other way round here): the trace Sankey conserves flow per hop, so a
+// dropped anchor or residual changes what the picture says, and the operator must be
+// told the topology is incomplete. Each parser returns `{ value }` on success, `{ error }`
+// when a PRESENT field is unusable, and nothing when the key is simply absent — an absent
+// key is the normal case on every other endpoint and must produce neither field nor error.
+
+type Investigation = NonNullable<cytoscape.NodeDataDefinition['investigation']>;
+type TraceClient = NonNullable<cytoscape.NodeDataDefinition['clients']>[number];
+
+type Guarded<T> = { value: T } | { error: true } | undefined;
+
+// The trace anchor. `iface` and a POSITIVE `delta_bps` are the identity — a trace that
+// started from a zero delta has nothing to follow, so 0 is invalid here even though the
+// per-edge delta accepts it. `direction` is only kept when it is one of the two literals
+// the Sankey can act on; `note` is free text.
+function parseInvestigation(v: unknown): Guarded<Investigation> {
+  if (v === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(v) || !isString(v.iface) || !isFiniteNumber(v.delta_bps) || v.delta_bps <= 0) {
+    return { error: true };
+  }
+  const { direction, note } = v;
+  if (direction !== undefined && direction !== 'in' && direction !== 'out') {
+    return { error: true };
+  }
+  if (note !== undefined && typeof note !== 'string') {
+    return { error: true };
+  }
+  return {
+    value: {
+      iface: v.iface,
+      deltaBps: v.delta_bps,
+      ...(direction !== undefined ? { direction } : {}),
+      ...(note !== undefined ? { note } : {}),
+    },
+  };
+}
+
+// The endpoints a host stands for. An entry is kept when it names the machine by at
+// least one of `ip` / `hostname`; one that names it by neither is silently dropped (there
+// is nothing to show), while a non-array container is a malformed field and reported.
+// An array that keeps no entry yields no field — never an empty list.
+function parseClients(v: unknown): Guarded<TraceClient[]> {
+  if (v === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(v)) {
+    return { error: true };
+  }
+  const clients: TraceClient[] = [];
+  for (const entry of v) {
+    if (!isPlainObject(entry)) {
+      continue;
+    }
+    const ip = isString(entry.ip) ? entry.ip : undefined;
+    const hostname = isString(entry.hostname) ? entry.hostname : undefined;
+    if (ip === undefined && hostname === undefined) {
+      continue;
+    }
+    clients.push({
+      ...(ip !== undefined ? { ip } : {}),
+      ...(hostname !== undefined ? { hostname } : {}),
+      ...(isString(entry.owner) ? { owner: entry.owner } : {}),
+    });
+  }
+  return clients.length > 0 ? { value: clients } : undefined;
+}
+
+// A residual (`other_in_bps` / `other_out_bps`): a present value must be a usable
+// bits-per-second reading, 0 included.
+function parseResidualBps(v: unknown): Guarded<number> {
+  if (v === undefined) {
+    return undefined;
+  }
+  return isNonNegativeBps(v) ? { value: v } : { error: true };
+}
+
 function deriveUsageRatio(usage: { usedBytes?: number; capacityBytes?: number } | undefined): number | undefined {
   if (usage === undefined) {
     return undefined;
@@ -501,6 +596,26 @@ function parseNodes(rawNodes: unknown[], nodeWorstFromPods: ReadonlyMap<string, 
     // and a netapp-node without them stays without them. Never padded to {}.
     const hardware = parseHardware(d.hardware);
     const perf = parsePerf(d.perf);
+    // Switch-trace fields. Guarded by key presence, not by kind — the trace backend
+    // decides which node carries an anchor or a residual. A present-but-malformed value
+    // is dropped AND reported (see the parsers): the Sankey conserves flow per hop, so
+    // losing one silently would change what the picture claims.
+    const investigation = parseInvestigation(d.investigation);
+    if (investigation !== undefined && 'error' in investigation) {
+      errors.push(`nodes[${String(index)}] investigation is malformed`);
+    }
+    const clients = parseClients(d.clients);
+    if (clients !== undefined && 'error' in clients) {
+      errors.push(`nodes[${String(index)}] clients is not an array`);
+    }
+    const otherInBps = parseResidualBps(d.other_in_bps);
+    if (otherInBps !== undefined && 'error' in otherInBps) {
+      errors.push(`nodes[${String(index)}] other_in_bps is not a non-negative number`);
+    }
+    const otherOutBps = parseResidualBps(d.other_out_bps);
+    if (otherOutBps !== undefined && 'error' in otherOutBps) {
+      errors.push(`nodes[${String(index)}] other_out_bps is not a non-negative number`);
+    }
     nodeIds.add(d.id);
     elements.push({
       group: 'nodes',
@@ -530,6 +645,10 @@ function parseNodes(rawNodes: unknown[], nodeWorstFromPods: ReadonlyMap<string, 
         ...(usageRatio !== undefined ? { usageRatio } : {}),
         ...(hardware !== undefined ? { hardware } : {}),
         ...(perf !== undefined ? { perf } : {}),
+        ...(investigation !== undefined && 'value' in investigation ? { investigation: investigation.value } : {}),
+        ...(clients !== undefined && 'value' in clients ? { clients: clients.value } : {}),
+        ...(otherInBps !== undefined && 'value' in otherInBps ? { otherInBps: otherInBps.value } : {}),
+        ...(otherOutBps !== undefined && 'value' in otherOutBps ? { otherOutBps: otherOutBps.value } : {}),
         ...(nodeHasStatusInfo ? { worstStatus: rankToStatus(nodeWorstRank) } : {}),
         ...(labels !== undefined ? { labels } : {}),
       },

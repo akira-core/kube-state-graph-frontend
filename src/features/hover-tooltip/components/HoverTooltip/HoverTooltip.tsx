@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 
+import { formatDeltaBps } from '../../../../shared/format/measurements';
 import { PROMOTED_LABEL_KEYS, buildNodeAttributes } from '../../../../shared/nodeAttributes/buildNodeAttributes';
 import {
   formatDurationMs,
@@ -104,9 +105,10 @@ function buildMetricRows(metrics: unknown): TooltipRow[] {
   return rows;
 }
 
-// The I/O half of the union, in read-then-write order so each pair reads as a block:
-// ops, then latency, then throughput. Values are Harvest's verbatim per-second ops,
-// average microsecond latencies, and bytes-per-second rates.
+// The non-RED half of the union: the switch-trace rate delta first (a `network-flow` edge
+// carries only that), then the I/O family in read-then-write order so each pair reads as
+// a block: ops, then latency, then throughput. Values are Harvest's verbatim per-second
+// ops, average microsecond latencies, and bytes-per-second rates.
 function buildIoMetricRows(metrics: object): TooltipRow[] {
   const {
     readOps,
@@ -117,8 +119,13 @@ function buildIoMetricRows(metrics: object): TooltipRow[] {
     writeBytesPerSec,
     maxIops,
     maxBytesPerSec,
-  } = metrics as Partial<cytoscape.EdgeIoMetrics>;
+    deltaBps,
+  } = metrics as Partial<cytoscape.EdgeIoMetrics & cytoscape.EdgeFlowMetrics>;
   const rows: TooltipRow[] = [];
+  // A rate DELTA, not a throughput — formatDeltaBps attaches the `+` that says so.
+  if (isFiniteNumber(deltaBps)) {
+    rows.push({ key: 'Δ rate', value: formatDeltaBps(deltaBps) });
+  }
   if (isFiniteNumber(readOps)) {
     rows.push({ key: 'read', value: formatOps(readOps) });
   }

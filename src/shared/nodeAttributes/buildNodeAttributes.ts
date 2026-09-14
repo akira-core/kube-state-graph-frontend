@@ -1,4 +1,4 @@
-import { formatUsage } from '../format/measurements';
+import { formatDeltaBps, formatUsage } from '../format/measurements';
 import { isPlainObject } from '../guards/isPlainObject';
 
 // One promoted attribute row for a node. Shared shape between the floating hover tooltip's
@@ -112,6 +112,22 @@ export function buildNodeAttributes(data: Readonly<Record<string, unknown>>): No
     if (formatted !== undefined) {
       attrs.push({ key: 'usage', value: formatted });
     }
+  }
+  // The switch-trace anchor: which interface the trace started from and the rate delta
+  // seen there, e.g. `Ethernet1/1 +8.5 Gbps in`. The direction is appended only when the
+  // backend stated one — absent means the request's `track_dir` decided, and inventing a
+  // side here would contradict the Sankey.
+  const investigation = data.investigation;
+  if (isPlainObject(investigation) && typeof investigation.iface === 'string' && investigation.iface.length > 0) {
+    const delta = typeof investigation.deltaBps === 'number' ? ` ${formatDeltaBps(investigation.deltaBps)}` : '';
+    const direction = typeof investigation.direction === 'string' ? ` ${investigation.direction}` : '';
+    attrs.push({ key: 'trace start', value: `${investigation.iface}${delta}${direction}` });
+  }
+  // How many endpoints a host node stands for. The list itself is the Sankey leaf card's
+  // job; the tooltip only says there is one, and how big.
+  if (Array.isArray(data.clients) && data.clients.length > 0) {
+    const count = data.clients.length;
+    attrs.push({ key: 'clients', value: `${String(count)} ${count === 1 ? 'client' : 'clients'}` });
   }
   return attrs;
 }

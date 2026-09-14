@@ -284,7 +284,7 @@ exports[`getStylesheet > matches snapshot for default theme 1`] = `
     },
   },
   {
-    "selector": "edge[edgeType='switch-to-switch'], edge[edgeType='node-to-switch']",
+    "selector": "edge[edgeType='switch-to-switch'], edge[edgeType='node-to-switch'], edge[edgeType='network-flow']",
     "style": {
       "curve-style": "taxi",
       "taxi-direction": "vertical",

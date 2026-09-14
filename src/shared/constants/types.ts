@@ -38,7 +38,12 @@ export type NodeKind =
   // Pure grouping box, collapsible like other containers; collapsing swaps
   // `switch` → `network` in the node-kinds legend (deriveLegendKinds). Never
   // carries status/alerts.
-  | 'network';
+  | 'network'
+  // A network endpoint the switch-trace backend (`GET /v1/trace`) resolved to something
+  // other than a K8s node — a bare-metal client, an external port, a management host.
+  // Leaf kind; carries `clients` (see NodeDataDefinition) rather than status/alerts.
+  // `/v1/graph` and `/v1/storage-graph` never emit it.
+  | 'host';
 
 // Full wire contract: every edge type the backend's core graph can carry (D6 — all
 // backend-emitted, no panel synthetics). `pod-to-node` (pod→node) replaced the retired
@@ -59,7 +64,12 @@ export type EdgeType =
   // Ninth edge type, only on `/v1/storage-graph`. Direction is storage → workload;
   // `labels.tier` names the hop (`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod` /
   // `pod-node`). `/v1/graph` never emits it.
-  | 'storage-flow';
+  | 'storage-flow'
+  // Tenth edge type, only on the switch-trace payload (`GET /v1/trace`). One interface
+  // hop of traced traffic between a switch and its neighbour (switch / node / host);
+  // `labels.source_iface` / `labels.target_iface` name the ports and `metrics.delta_bps`
+  // carries the rate delta. Direction follows the traced flow, not the physical link.
+  | 'network-flow';
 
 // Which edge types are actually DRAWN (and listed in the legend) depends on the
 // pod-parent mode — see `drawnEdgeTypesForMode`. Notably `pod-to-node` is expressed

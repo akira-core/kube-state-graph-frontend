@@ -3,6 +3,7 @@ import type cytoscape from 'cytoscape';
 import { APPLICATION_COLOR } from '../../shared/constants/applicationPalette';
 import { CLUSTER_COLOR } from '../../shared/constants/clusterPalette';
 import { NAMESPACE_COLOR } from '../../shared/constants/namespacePalette';
+import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 
 import { normalizeGraph } from './normalize';
 
@@ -1920,5 +1921,242 @@ describe('normalizeGraph — edge RED metrics', () => {
         expect(data.metrics).toEqual({ maxBytesPerSec: 104857600 });
       });
     });
+  });
+});
+
+describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
+  // The trace payload reuses the cytoscape wire shape with four additions: `delta_bps` on
+  // a `network-flow` edge, and `investigation` / `clients` / `other_in_bps` /
+  // `other_out_bps` on nodes. Unlike the decorative RED / I/O metrics, a malformed NODE
+  // field is reported: the trace Sankey conserves flow per hop, so a silently dropped
+  // anchor or residual would change what the picture claims.
+  const withNode = (extra: Record<string, unknown>): Record<string, unknown> => ({
+    elements: {
+      nodes: [{ data: { id: 'sw1', type: 'switch', ...extra } }, { data: { id: 'h1', type: 'host' } }],
+      edges: [],
+    },
+  });
+
+  const nodeData = (raw: unknown, id = 'sw1'): cytoscape.NodeDataDefinition => {
+    const { elements } = normalizeGraph(raw);
+    return elements.find((e) => e.data.id === id)?.data as cytoscape.NodeDataDefinition;
+  };
+
+  const TRACE_KEYS = ['investigation', 'clients', 'otherInBps', 'otherOutBps'] as const;
+
+  it('passes the host kind and the network-flow edge type through untouched', () => {
+    const { elements, errors } = normalizeGraph({
+      elements: {
+        nodes: [{ data: { id: 'sw1', type: 'switch' } }, { data: { id: 'h1', type: 'host' } }],
+        edges: [
+          {
+            data: {
+              id: 'e',
+              source: 'sw1',
+              target: 'h1',
+              type: 'network-flow',
+              labels: { source_iface: 'Ethernet1/1', target_iface: 'eth0' },
+              metrics: { delta_bps: 8.5e9 },
+            },
+          },
+        ],
+      },
+    });
+    expect(errors).toEqual([]);
+    const host = elements.find((e) => e.data.id === 'h1')?.data as cytoscape.NodeDataDefinition;
+    expect(host.kind).toBe('host');
+    // A host without a wire `name` labels itself by id — `name` is optional on this endpoint.
+    expect(host.label).toBe('h1');
+    const edge = elements.find((e) => e.data.id === 'e')?.data as cytoscape.EdgeDataDefinition;
+    expect(edge.edgeType).toBe('network-flow');
+    expect(edge.labels).toEqual({ source_iface: 'Ethernet1/1', target_iface: 'eth0' });
+    expect(edge.metrics).toEqual({ deltaBps: 8.5e9 });
+  });
+
+  describe('edge delta_bps', () => {
+    const withMetrics = (metrics: unknown): Record<string, unknown> => ({
+      elements: {
+        nodes: [{ data: { id: 'a', type: 'switch' } }, { data: { id: 'b', type: 'switch' } }],
+        edges: [{ data: { id: 'e', source: 'a', target: 'b', type: 'network-flow', metrics } }],
+      },
+    });
+    const edgeData = (raw: unknown): cytoscape.EdgeDataDefinition =>
+      normalizeGraph(raw).elements.find((e) => e.data.id === 'e')?.data as cytoscape.EdgeDataDefinition;
+
+    it('keeps a finite non-negative delta, zero included, verbatim', () => {
+      expect(edgeData(withMetrics({ delta_bps: 1500 })).metrics).toEqual({ deltaBps: 1500 });
+      // 0 is a measured "the interface did not move", not an absent reading.
+      expect(edgeData(withMetrics({ delta_bps: 0 })).metrics).toEqual({ deltaBps: 0 });
+    });
+
+    it.each([
+      ['negative', -1],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['non-numeric', '1500'],
+      ['null', null],
+    ])('drops an unusable delta_bps (%s) without sinking the edge or reporting an error', (_label, bad) => {
+      const { elements, errors } = normalizeGraph(withMetrics({ delta_bps: bad }));
+      const edge = elements.find((e) => e.data.id === 'e')?.data as cytoscape.EdgeDataDefinition;
+      expect(edge.id).toBe('e');
+      expect('metrics' in edge).toBe(false);
+      expect(errors).toEqual([]);
+    });
+
+    it('rides alongside the I/O fields in one object', () => {
+      expect(edgeData(withMetrics({ delta_bps: 12, read_ops: 3 })).metrics).toEqual({ deltaBps: 12, readOps: 3 });
+    });
+
+    it('still lets a present rate win: RED is never mixed with a delta', () => {
+      expect(edgeData(withMetrics({ rate: 5, delta_bps: 12 })).metrics).toEqual({ rate: 5 });
+      // A malformed rate still discards everything — the ordering is unchanged.
+      expect('metrics' in edgeData(withMetrics({ rate: 'fast', delta_bps: 12 }))).toBe(false);
+    });
+  });
+
+  describe('investigation', () => {
+    it('projects a full anchor onto the camelCase shape', () => {
+      const data = nodeData(
+        withNode({ investigation: { iface: 'Ethernet1/1', delta_bps: 8.5e9, direction: 'in', note: 'spike' } })
+      );
+      expect(data.investigation).toEqual({ iface: 'Ethernet1/1', deltaBps: 8.5e9, direction: 'in', note: 'spike' });
+    });
+
+    it('omits the optional direction and note rather than defaulting them', () => {
+      const data = nodeData(withNode({ investigation: { iface: 'Ethernet1/1', delta_bps: 1 } }));
+      expect(data.investigation).toEqual({ iface: 'Ethernet1/1', deltaBps: 1 });
+      expect('direction' in (data.investigation ?? {})).toBe(false);
+    });
+
+    it.each([
+      ['non-object', 'Ethernet1/1'],
+      ['missing iface', { delta_bps: 5 }],
+      ['empty iface', { iface: '', delta_bps: 5 }],
+      ['missing delta', { iface: 'Ethernet1/1' }],
+      ['zero delta (nothing to follow)', { iface: 'Ethernet1/1', delta_bps: 0 }],
+      ['negative delta', { iface: 'Ethernet1/1', delta_bps: -5 }],
+      ['NaN delta', { iface: 'Ethernet1/1', delta_bps: Number.NaN }],
+      ['unknown direction', { iface: 'Ethernet1/1', delta_bps: 5, direction: 'sideways' }],
+      ['non-string note', { iface: 'Ethernet1/1', delta_bps: 5, note: 42 }],
+    ])('drops a malformed anchor (%s) and reports it', (_label, investigation) => {
+      const { elements, errors } = normalizeGraph(withNode({ investigation }));
+      const data = elements.find((e) => e.data.id === 'sw1')?.data as cytoscape.NodeDataDefinition;
+      expect('investigation' in data).toBe(false);
+      expect(errors).toEqual(['nodes[0] investigation is malformed']);
+      // The node itself survives — it is still a hop the trace passes through.
+      expect(data.kind).toBe('switch');
+    });
+  });
+
+  describe('clients', () => {
+    it('keeps entries identified by ip or hostname, with an optional owner', () => {
+      const data = nodeData(
+        withNode({
+          clients: [{ ip: '10.0.0.1' }, { hostname: 'db-01', owner: 'ops' }, { ip: '10.0.0.3', hostname: 'web-02' }],
+        })
+      );
+      expect(data.clients).toEqual([
+        { ip: '10.0.0.1' },
+        { hostname: 'db-01', owner: 'ops' },
+        { ip: '10.0.0.3', hostname: 'web-02' },
+      ]);
+    });
+
+    it('silently drops an entry that names the machine by neither ip nor hostname', () => {
+      const { elements, errors } = normalizeGraph(
+        withNode({ clients: [{ owner: 'ops' }, { ip: 42 }, 'db-01', null, { ip: '10.0.0.1' }] })
+      );
+      const data = elements.find((e) => e.data.id === 'sw1')?.data as cytoscape.NodeDataDefinition;
+      expect(data.clients).toEqual([{ ip: '10.0.0.1' }]);
+      expect(errors).toEqual([]);
+    });
+
+    it('omits the field, without an error, when no entry survives or the list is empty', () => {
+      expect('clients' in nodeData(withNode({ clients: [] }))).toBe(false);
+      const { elements, errors } = normalizeGraph(withNode({ clients: [{ owner: 'ops' }] }));
+      expect('clients' in (elements[0]?.data ?? {})).toBe(false);
+      expect(errors).toEqual([]);
+    });
+
+    it.each([
+      ['object', { ip: '10.0.0.1' }],
+      ['string', '10.0.0.1'],
+      ['null', null],
+    ])('drops a non-array clients field (%s) and reports it', (_label, clients) => {
+      const { elements, errors } = normalizeGraph(withNode({ clients }));
+      expect('clients' in (elements[0]?.data ?? {})).toBe(false);
+      expect(errors).toEqual(['nodes[0] clients is not an array']);
+    });
+  });
+
+  describe('other_in_bps / other_out_bps', () => {
+    it('keeps each residual independently, zero included', () => {
+      expect(nodeData(withNode({ other_in_bps: 1500, other_out_bps: 0 }))).toMatchObject({
+        otherInBps: 1500,
+        otherOutBps: 0,
+      });
+      const inOnly = nodeData(withNode({ other_in_bps: 1500 }));
+      expect(inOnly.otherInBps).toBe(1500);
+      expect('otherOutBps' in inOnly).toBe(false);
+    });
+
+    it.each([
+      ['negative', -1],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.NEGATIVE_INFINITY],
+      ['non-numeric', '1500'],
+      ['null', null],
+    ])('drops an unusable residual (%s) and reports which one', (_label, bad) => {
+      const { elements, errors } = normalizeGraph(withNode({ other_in_bps: bad, other_out_bps: 7 }));
+      const data = elements[0]?.data as cytoscape.NodeDataDefinition;
+      expect('otherInBps' in data).toBe(false);
+      expect(data.otherOutBps).toBe(7);
+      expect(errors).toEqual(['nodes[0] other_in_bps is not a non-negative number']);
+
+      const out = normalizeGraph(withNode({ other_out_bps: bad }));
+      expect(out.errors).toEqual(['nodes[0] other_out_bps is not a non-negative number']);
+    });
+  });
+
+  it('reports every malformed trace field on one node, in field order', () => {
+    const { errors } = normalizeGraph(
+      withNode({ investigation: {}, clients: 'x', other_in_bps: -1, other_out_bps: 'y' })
+    );
+    expect(errors).toEqual([
+      'nodes[0] investigation is malformed',
+      'nodes[0] clients is not an array',
+      'nodes[0] other_in_bps is not a non-negative number',
+      'nodes[0] other_out_bps is not a non-negative number',
+    ]);
+  });
+
+  it('produces neither field nor error when the keys are absent', () => {
+    const { elements, errors } = normalizeGraph(withNode({}));
+    expect(errors).toEqual([]);
+    for (const el of elements) {
+      for (const key of TRACE_KEYS) {
+        expect(key in el.data).toBe(false);
+      }
+    }
+  });
+
+  it('leaves the storage fixture exactly as before: no trace field, no delta, no error', () => {
+    // The regression guard for every other endpoint: the fixture carries none of the new
+    // keys, so the additive parsers must be invisible to it — structurally identical
+    // output, and an empty error channel.
+    const { elements, errors } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
+    expect(errors).toEqual([]);
+    expect(elements.length).toBe(
+      SHOWCASE_STORAGE_GRAPH.elements.nodes.length + SHOWCASE_STORAGE_GRAPH.elements.edges.length
+    );
+    for (const el of elements) {
+      for (const key of TRACE_KEYS) {
+        expect(key in el.data).toBe(false);
+      }
+      if (el.group === 'edges') {
+        const { metrics } = el.data as cytoscape.EdgeDataDefinition;
+        expect(metrics !== undefined && 'deltaBps' in metrics).toBe(false);
+      }
+    }
   });
 });
