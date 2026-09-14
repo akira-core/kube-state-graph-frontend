@@ -1,4 +1,4 @@
-import type { EdgeGeom } from './geometry';
+import type { EdgeGeom } from './types';
 
 /**
  * Ownership line: the centre line of a ribbon, stroked rather than filled — a filled band

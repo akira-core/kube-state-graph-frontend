@@ -38,17 +38,3 @@ export function buildGraphRequestUrl(
   };
   return withQuery(graphEndpoint, params);
 }
-
-/**
- * A value that changes exactly when the SELECTION changes, and not when the clock moves.
- *
- * The loader reloads on this rather than on the built URL: a relative window's URL
- * differs on every render, so keying the effect on it would refetch forever.
- */
-export function graphRequestKey(
-  graphEndpoint: string | undefined,
-  range: ViewTimeRange,
-  filters: GraphFilters
-): string {
-  return JSON.stringify([graphEndpoint ?? null, range, filters]);
-}

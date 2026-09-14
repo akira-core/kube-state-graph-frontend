@@ -18,9 +18,9 @@ import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, SEP } from '../model/util';
 
 import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, OWN_T, PAD_SIDE } from './constants';
-import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry, WrapperGeom } from './geometry';
 import { ANCHOR_MIN_H, cardText, hopHeaderH, leafCardH, leafCardW, resIn, resOut, traceFlowOf } from './text';
 import { colCaption, wrapperColCaption } from './tooltips';
+import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry, WrapperGeom } from './types';
 
 /** In-column order: `flow` (larger flow on top, default) or `barycenter` (fewest crossings). */
 export type TraceNodeOrder = 'flow' | 'barycenter';

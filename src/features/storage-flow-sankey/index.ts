@@ -25,3 +25,7 @@ export type {
   StorageFlowTier,
 } from './deriveSankey';
 export type { SankeyPodLayout } from './layoutSankey';
+export { DEFAULT_TOP_PODS, parseSankeyScope, serializeSankeyScope, SANKEY_ROOT_KINDS } from './sankeyUrlScope';
+export type { SankeyUrlScope } from './sankeyUrlScope';
+export { useRootCandidates } from './useRootCandidates';
+export type { SankeyQueryController, SankeyRootKind } from './useSankeyQuery';

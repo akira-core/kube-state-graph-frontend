@@ -1,11 +1,10 @@
-export { buildGraphRequestUrl, graphRequestKey } from './graphRequestUrl';
+export { buildGraphRequestUrl } from './graphRequestUrl';
 export {
   buildStorageGraphRequestUrl,
   EMPTY_STORAGE_GRAPH_QUERY,
   EMPTY_STORAGE_GRAPH_ROOTS,
   hasAnyRoot,
   isValidPodRoot,
-  storageGraphRequestKey,
 } from './storageGraphRequestUrl';
 export type { StorageGraphQuery, StorageGraphRoots } from './storageGraphRequestUrl';
 export { buildTraceRequestUrl, TRACE_DEFAULTS } from './traceRequestUrl';

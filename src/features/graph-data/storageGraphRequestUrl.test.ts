@@ -6,7 +6,6 @@ import {
   buildStorageGraphRequestUrl,
   EMPTY_STORAGE_GRAPH_QUERY,
   isValidPodRoot,
-  storageGraphRequestKey,
   type StorageGraphQuery,
 } from './storageGraphRequestUrl';
 
@@ -113,20 +112,5 @@ describe('buildStorageGraphRequestUrl', () => {
     const later = params(buildStorageGraphRequestUrl('/api/v1/storage-graph', RANGE, query(), NOW_MS + 30_000)!);
     expect(Number(later.get('start'))).toBe(Number(first.get('start')) + 30);
     expect(Number(later.get('end'))).toBe(Number(first.get('end')) + 30);
-  });
-});
-
-describe('storageGraphRequestKey', () => {
-  it('is stable while only the clock moves', () => {
-    expect(storageGraphRequestKey('/api/v1/storage-graph', RANGE, query())).toBe(
-      storageGraphRequestKey('/api/v1/storage-graph', RANGE, query())
-    );
-  });
-
-  it('changes when the selection changes, not when the clock would', () => {
-    const base = storageGraphRequestKey('/api/v1/storage-graph', RANGE, query());
-    expect(storageGraphRequestKey('/api/v1/storage-graph', { kind: 'relative', window: '6h' }, query())).not.toBe(base);
-    expect(storageGraphRequestKey('/api/v1/storage-graph', RANGE, query({ az: 'zone-b' }))).not.toBe(base);
-    expect(storageGraphRequestKey(undefined, RANGE, query())).not.toBe(base);
   });
 });

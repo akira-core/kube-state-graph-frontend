@@ -4,8 +4,8 @@ import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { SankeyCard, SankeyWrapperBox, type SlotLabel } from '../../sankey-canvas';
 import { DEVICE_KINDS, RES_GAP, RES_LEN } from '../layout/constants';
-import type { NodeGeom, Slot, WrapperGeom } from '../layout/geometry';
 import { cardText } from '../layout/text';
+import type { NodeGeom, Slot, WrapperGeom } from '../layout/types';
 import { locatable } from '../model/locatable';
 import type { TraceModelOk, TraceNode } from '../model/types';
 

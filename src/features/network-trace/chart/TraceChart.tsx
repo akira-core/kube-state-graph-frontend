@@ -2,7 +2,7 @@ import type { JSX, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react
 
 import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { SankeyCanvas, type HoverLit, type Viewport, type ZoomPanApi } from '../../sankey-canvas';
-import type { TraceGeometry } from '../layout/geometry';
+import type { TraceGeometry } from '../layout/types';
 import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet } from '../model/util';
 

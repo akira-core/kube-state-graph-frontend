@@ -4,8 +4,8 @@ import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { LABEL_MIN_THICKNESS, ribbonPath } from '../../sankey-canvas';
 import { OWN_T } from '../layout/constants';
-import type { EdgeGeom } from '../layout/geometry';
 import { backwardRibbon, lateralRibbon, ownLine } from '../layout/paths';
+import type { EdgeGeom } from '../layout/types';
 import type { TraceEdge } from '../model/types';
 
 import { BACK_GRADIENT_ID, FLOW_GRADIENT_ID } from './TraceDefs';
