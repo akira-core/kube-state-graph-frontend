@@ -8,6 +8,7 @@ export type { ShellEmptyInputs, ShellEmptyKind } from './emptyState';
 export type { SankeyControlBarProps } from './SankeyControlBar';
 export { SankeyTooltip } from './SankeyTooltip';
 export { StatusLegend } from './StatusLegend';
+export { Swatch } from './Swatch';
 export * from './geometry';
 export { useContainerSize } from './useContainerSize';
 export { UNMEASURED_CONTAINER, useOpeningViewport } from './useOpeningViewport';
@@ -17,7 +18,6 @@ export type { SankeyKeyboardOptions } from './useSankeyKeyboard';
 export { useSankeyTooltip } from './useSankeyTooltip';
 export type { SankeyTooltipApi, Tip } from './useSankeyTooltip';
 export {
-  clamp as clampScale,
   fitViewport,
   MAX_SCALE,
   MIN_SCALE,

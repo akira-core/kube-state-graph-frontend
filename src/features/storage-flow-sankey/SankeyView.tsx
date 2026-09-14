@@ -16,6 +16,7 @@ import {
   useSankeyTooltip,
   useZoomPan,
   shellEmptyKind,
+  Swatch,
   type ShellEmptyKind,
 } from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
@@ -628,17 +629,13 @@ export function SankeyView({
             <span aria-hidden className="h-4 border-l border-medium" />
             {(mode === 'both' || mode === 'read') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-                  <path d="M0 3h22" stroke={tokens.sankey.read} strokeWidth="3" />
-                </svg>
+                <Swatch color={tokens.sankey.read} />
                 read
               </span>
             )}
             {(mode === 'both' || mode === 'write') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-                  <path d="M0 3h22" stroke={tokens.sankey.write} strokeWidth="3" strokeDasharray="4 3" />
-                </svg>
+                <Swatch color={tokens.sankey.write} dashed />
                 write
               </span>
             )}

@@ -7,6 +7,8 @@ import {
   type RefObject,
 } from 'react';
 
+import { clamp } from './geometry';
+
 export interface Viewport {
   scale: number;
   tx: number;
@@ -31,10 +33,6 @@ const BUTTON_STEP_FACTOR = 1.25;
  * seen keeps an un-moved click untouched.
  */
 const DRAG_THRESHOLD_PX = 4;
-
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 /**
  * Zooms `v` by `factor`, keeping the content point under `anchor` (same coordinate space

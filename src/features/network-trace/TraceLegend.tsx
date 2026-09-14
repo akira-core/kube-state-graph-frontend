@@ -1,17 +1,9 @@
 import type { JSX } from 'react';
 
 import type { ThemeTokens } from '../../shared/theme/tokens';
-import { StatusLegend } from '../sankey-canvas';
+import { StatusLegend, Swatch } from '../sankey-canvas';
 
 import type { TraceModelOk } from './model/types';
-
-function Swatch({ color, dashed = false }: Readonly<{ color: string; dashed?: boolean }>): JSX.Element {
-  return (
-    <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-      <path d="M0 3h22" stroke={color} strokeWidth="3" strokeDasharray={dashed ? '4 3' : undefined} />
-    </svg>
-  );
-}
 
 function Row({ children, testId }: Readonly<{ children: React.ReactNode; testId: string }>): JSX.Element {
   return (
