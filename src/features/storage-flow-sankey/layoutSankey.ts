@@ -1,5 +1,26 @@
 import type { NodeStatus } from '../../shared/constants/types';
 import { formatBytes } from '../../shared/format/measurements';
+import {
+  BODY_MIN,
+  BODY_PAD_BOTTOM,
+  CARD_W,
+  clamp,
+  COL_GAP,
+  HEADER_H,
+  LABEL_MIN_THICKNESS,
+  LEAF_W,
+  PAD_BOTTOM,
+  PAD_TOP,
+  PAD_X,
+  placeStack,
+  ribbonPath,
+  stackHeight,
+  thicknessScale,
+  V_GAP,
+  WRAPPER_HEADER_H,
+  WRAPPER_PAD,
+  type ColumnHeader,
+} from '../sankey-canvas';
 
 import {
   formatBytesPerSec,
@@ -14,27 +35,22 @@ import {
   type SankeySvmFrame,
 } from './deriveSankey';
 
-// Intrinsic content-space geometry. These are independent of the container's pixel size —
-// a resize moves only the viewport transform (and only when the user asks it to), it never
-// re-runs this layout (see `storage-flow-sankey` "尺寸與容器 resize").
-export const CARD_W = 208;
-export const LEAF_W = 160;
-export const HEADER_H = 40;
-export const BODY_MIN = 24;
-export const ROW_MIN_H = 22;
-export const ROW_GAP = 8;
-const COL_GAP = 168;
-const V_GAP = 22;
-const PAD_X = 28;
-export const PAD_TOP = 40;
-const PAD_BOTTOM = 24;
-const BODY_PAD_BOTTOM = 10;
-export const MAX_THICKNESS = 72;
-export const MIN_THICKNESS = 3;
-/** Below this thickness a mid-ribbon value label would overlap its own stroke. */
-export const LABEL_MIN_THICKNESS = 11;
-const WRAPPER_PAD = 10;
-const WRAPPER_HEADER_H = 40;
+// The content-space geometry (card widths, slot rows, ribbon thickness range) is the shared
+// `sankey-canvas` set, so a storage card and a network-trace card are the same size. Kept
+// re-exported here for the callers and tests that read them as this layout's numbers.
+export {
+  BODY_MIN,
+  CARD_W,
+  HEADER_H,
+  LABEL_MIN_THICKNESS,
+  LEAF_W,
+  MAX_THICKNESS,
+  MIN_THICKNESS,
+  PAD_TOP,
+  ROW_GAP,
+  ROW_MIN_H,
+} from '../sankey-canvas';
+export type { ColumnHeader } from '../sankey-canvas';
 
 export type SankeyPodLayout = 'flat' | 'node';
 
@@ -131,11 +147,6 @@ export interface LayoutLink {
   derived?: true;
 }
 
-export interface ColumnHeader {
-  x: number;
-  label: string;
-}
-
 export interface SankeyLayout {
   nodes: LayoutNode[];
   links: LayoutLink[];
@@ -143,10 +154,6 @@ export interface SankeyLayout {
   columns: ColumnHeader[];
   width: number;
   height: number;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function paletteColor(palette: readonly string[], index: number): string {
@@ -261,34 +268,6 @@ function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
     return `${node.kind} · ${members}${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
   }
   return node.kind;
-}
-
-function stackHeight(slots: ReadonlyArray<{ thickness: number }>): number {
-  if (slots.length === 0) {
-    return 0;
-  }
-  return slots.reduce((sum, s) => sum + Math.max(s.thickness, ROW_MIN_H), 0) + (slots.length - 1) * ROW_GAP;
-}
-
-function placeStack(slots: ReadonlyArray<{ thickness: number }>, containerTop: number, containerH: number): number[] {
-  const total = stackHeight(slots);
-  let cursor = containerTop + Math.max(0, (containerH - total) / 2);
-  const offsets: number[] = [];
-  for (const slot of slots) {
-    const h = Math.max(slot.thickness, ROW_MIN_H);
-    offsets.push(cursor + h / 2);
-    cursor += h + ROW_GAP;
-  }
-  return offsets;
-}
-
-function ribbonPath(x1: number, y1: number, x2: number, y2: number, thickness: number): string {
-  const mx = (x1 + x2) / 2;
-  const half = thickness / 2;
-  return (
-    `M${x1},${y1 - half} C${mx},${y1 - half} ${mx},${y2 - half} ${x2},${y2 - half} ` +
-    `L${x2},${y2 + half} C${mx},${y2 + half} ${mx},${y1 + half} ${x1},${y1 + half} Z`
-  );
 }
 
 function locatableFor(kind: SankeyKind): boolean {
@@ -511,8 +490,7 @@ export function layoutSankey(
   for (const link of graph.links) {
     maxValue = Math.max(maxValue, link.value);
   }
-  const scale = maxValue > 0 ? MAX_THICKNESS / maxValue : 0;
-  const thickness = (v: number): number => Math.max(MIN_THICKNESS, v * scale);
+  const thickness = thicknessScale(maxValue);
 
   const byTier = new Map<SankeyKind, SankeyNode[]>();
   for (const kind of TIERS) {

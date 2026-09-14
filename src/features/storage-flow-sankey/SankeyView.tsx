@@ -1,20 +1,21 @@
 import type cytoscape from 'cytoscape';
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX,
-  type KeyboardEvent,
-  type MouseEvent,
-} from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
 
-import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { EMPTY_STORAGE_GRAPH_ROOTS, hasAnyRoot, type StorageGraphRoots } from '../graph-data';
+import {
+  SankeyControlBar,
+  SankeyTooltip,
+  StatusLegend,
+  UNMEASURED_CONTAINER,
+  useContainerSize,
+  useOpeningViewport,
+  useSankeyKeyboard,
+  useSankeyTooltip,
+  useZoomPan,
+} from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
 
 import {
@@ -32,7 +33,6 @@ import {
 } from './deriveSankey';
 import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart, type HoverLit } from './SankeyChart';
-import { SankeyControlBar } from './SankeyControlBar';
 import {
   SankeySummary,
   type ApplicationSubtotalRow,
@@ -41,15 +41,6 @@ import {
 } from './SankeySummary';
 import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
 import { cutTopPods } from './topPods';
-import { openingViewport, useZoomPan, type Size } from './useZoomPan';
-
-/**
- * Stands in for the chart box only while it has never been measured. Nothing opens against
- * it — the opening viewport waits for a real measurement — so it is reached solely by the
- * zoom controls in an environment that reports no layout at all, where a zero-sized
- * container would make `fit` a no-op and the controls untestable.
- */
-const UNMEASURED_CONTAINER: Size = { w: 800, h: 480 };
 
 const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
   { value: 'read', label: 'Read' },
@@ -105,12 +96,6 @@ export interface SankeyViewProps {
   /** Page-transient. Omitted = local default `column`, reset on remount. */
   svmDisplay?: SankeySvmDisplay;
   onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
-}
-
-interface Tip {
-  x: number;
-  y: number;
-  text: string[];
 }
 
 function emptyCopy(kind: 1 | 2 | 3 | 4 | 5 | 6, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
@@ -288,51 +273,12 @@ export function SankeyView({
     onSvmDisplayChange?.(next);
   };
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [tip, setTip] = useState<Tip | null>(null);
-  const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const chartHostRef = useRef<HTMLDivElement>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
-  /**
-   * `null` until the chart box has actually been measured, and deliberately not a
-   * plausible-looking placeholder. The opening viewport fits against this and then locks
-   * itself, so a placeholder is not a harmless default — it is the size the diagram gets
-   * fitted to. Seeded at 800x480 it opened every estate at that ratio and never revisited
-   * it: 2096-wide content drew at 38% in a 1600px-wide window instead of 76%, off-centre,
-   * looking exactly like a chart too big for its area. Environments with no layout (jsdom)
-   * measure nothing and stay `null`, which is what `UNMEASURED_CONTAINER` below is for.
-   */
-  const [containerSize, setContainerSize] = useState<Size | null>(null);
-  const openedRef = useRef(false);
-
   // See SankeyView.test.tsx: the ref'd box only renders once the loading / fatal-error
-  // early returns below have passed, so a first-load effect with a null ref must re-run
-  // once the box actually mounts, not just once at first render.
-  useEffect(() => {
-    const el = boxRef.current;
-    if (el === null) {
-      return;
-    }
-    // Measured up front, not only from the observer's callback. The opening viewport is a
-    // separate effect that runs in the same commit as this one, so it would otherwise fit
-    // and lock against whatever the state held before the observer's first delivery.
-    const rect = el.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setContainerSize({ w: rect.width, h: rect.height });
-    }
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry === undefined) {
-        return;
-      }
-      const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) {
-        setContainerSize({ w: width, h: height });
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [status, hasPayload]);
+  // early returns below have passed, so the measurement must re-attach once the box
+  // actually mounts — the key is exactly what decides that.
+  const containerSize = useContainerSize(boxRef, `${status}:${String(hasPayload)}`);
 
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
@@ -388,41 +334,19 @@ export function SankeyView({
     [graph, namespacePalette, podLayout, effectiveSvmDisplay]
   );
 
-  const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize ?? UNMEASURED_CONTAINER);
-  // A fresh `zoom` object comes back every render; pull out just the one stable setter the
-  // opening-viewport effect below needs so its dep array doesn't chase the whole object.
-  const { setViewport } = zoom;
-
-  // One-shot opening viewport: fit-but-never-enlarge, computed the first time real content
-  // is drawn, then never touched again — mode / cluster / refresh / theme / resize and
-  // focus mode all preserve whatever the user set after.
-  //
-  // The box is measured HERE rather than read from state, because the two are not the same
-  // moment. The observer above attaches while the chart is still loading, when the box is
-  // the only thing in the column and stretches to 1502px; the summary tables that shrink it
-  // to 982 arrive with the chart itself. Fitting against the state written by that earlier
-  // measurement parked the diagram low — a 593px gap above it and 80px below — and the lock
-  // then refused the corrected size the observer delivered a moment later. Measuring at the
-  // instant of the fit means the chart being drawn is what gets measured.
-  useEffect(() => {
-    const el = boxRef.current;
-    if (openedRef.current || layout.nodes.length === 0 || el === null) {
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const box = rect.width >= 40 && rect.height >= 40 ? { w: rect.width, h: rect.height } : containerSize;
-    if (box === null || box.w < 40 || box.h < 40) {
-      return;
-    }
-    setViewport(openingViewport({ w: layout.width, h: layout.height }, box));
-    openedRef.current = true;
-  }, [layout, containerSize, setViewport]);
-
-  useEffect(() => {
-    if (zoom.dragging) {
-      setTip(null);
-    }
-  }, [zoom.dragging]);
+  const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
+  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER);
+  useOpeningViewport({
+    boxRef,
+    content,
+    containerSize,
+    hasContent: layout.nodes.length > 0,
+    setViewport: zoom.setViewport,
+  });
+  const tooltip = useSankeyTooltip(boxRef, zoom.dragging);
+  const setTip = tooltip.show;
+  const hideTip = tooltip.hide;
+  const handleKeyDown = useSankeyKeyboard({ zoom, focusMode, onFocusModeChange });
 
   // A refresh may remove the node under the cursor; its mouseleave never fires, so nothing
   // else clears this — the tooltip would describe a gone node and `lit` would fade
@@ -435,9 +359,9 @@ export function SankeyView({
       !graph.svmFrames.some((f) => f.id === hoverId)
     ) {
       setHoverId(null);
-      setTip(null);
+      hideTip();
     }
-  }, [graph, hoverId]);
+  }, [graph, hideTip, hoverId]);
 
   const lit: HoverLit | null = useMemo(() => {
     if (hoverId === null) {
@@ -459,25 +383,6 @@ export function SankeyView({
     }
     return { keys, nodeIds };
   }, [graph, hoverId]);
-
-  useLayoutEffect(() => {
-    if (tip === null) {
-      setTipPos(null);
-      return;
-    }
-    const el = tipRef.current;
-    const box = boxRef.current;
-    if (el === null || box === null) {
-      setTipPos({ left: tip.x + 12, top: tip.y + 12 });
-      return;
-    }
-    const rect = box.getBoundingClientRect();
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const left = Math.max(rect.left + 4, Math.min(tip.x + 12, rect.right - w - 4));
-    const top = Math.max(rect.top + 4, Math.min(tip.y + 12, rect.bottom - h - 4));
-    setTipPos({ left, top });
-  }, [tip]);
 
   const summary = useMemo(() => {
     const inbound = new Map<string, number>();
@@ -607,34 +512,30 @@ export function SankeyView({
           ]
         : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
     if (wrapper !== undefined) {
-      setTip({
-        x: evt.clientX,
-        y: evt.clientY,
-        text: [
-          `node / ${wrapper.label}`,
-          wrapper.podIds.length === 1 ? '1 pod' : `${String(wrapper.podIds.length)} pods`,
-          ...(wrapper.status !== undefined ? [`status ${wrapper.status} (worst of node and member pods)`] : []),
-          ...flowLines.map((line) => `${line} (derived from member pods)`),
-          ...(wrapper.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-        ],
-      });
+      setTip(evt.clientX, evt.clientY, [
+        `node / ${wrapper.label}`,
+        wrapper.podIds.length === 1 ? '1 pod' : `${String(wrapper.podIds.length)} pods`,
+        ...(wrapper.status !== undefined ? [`status ${wrapper.status} (worst of node and member pods)`] : []),
+        ...flowLines.map((line) => `${line} (derived from member pods)`),
+        ...(wrapper.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
+      ]);
       return;
     }
     if (frame !== undefined) {
-      setTip({
-        x: evt.clientX,
-        y: evt.clientY,
-        text: frameTooltip(frame.label, frame.ontapCluster, frame.pvcIds.length, flowLines, frame.noFlow === true),
-      });
+      setTip(
+        evt.clientX,
+        evt.clientY,
+        frameTooltip(frame.label, frame.ontapCluster, frame.pvcIds.length, flowLines, frame.noFlow === true)
+      );
       return;
     }
     if (node?.kind === 'application' || node?.kind === 'namespace') {
-      setTip({ x: evt.clientX, y: evt.clientY, text: derivedCardTooltip(node, flowLines) });
+      setTip(evt.clientX, evt.clientY, derivedCardTooltip(node, flowLines));
       return;
     }
     const claimAggregateLabel =
       node?.claimAggregateId !== undefined ? graph.nodes.find((n) => n.id === node.claimAggregateId)?.label : undefined;
-    setTip({ x: evt.clientX, y: evt.clientY, text: nodeTooltip(node, id, flowLines, claimAggregateLabel) });
+    setTip(evt.clientX, evt.clientY, nodeTooltip(node, id, flowLines, claimAggregateLabel));
   };
 
   const onLinkEnter = (link: LayoutLink, evt: MouseEvent): void => {
@@ -675,49 +576,7 @@ export function SankeyView({
             ? [`latency ${String(link.writeLatencyUs)} µs`]
             : []),
         ];
-    setTip({ x: evt.clientX, y: evt.clientY, text: lines });
-  };
-
-  const handleKeyDown = (evt: KeyboardEvent<HTMLDivElement>): void => {
-    const target = evt.target as HTMLElement;
-    // A plain button (the zoom/focus control bar) has no native keydown behavior for any
-    // of these keys, so it is deliberately not excluded here — unlike an input, select, or
-    // radio, which do, and whose own key handling this must not clobber.
-    if (target.closest('input, select, textarea, [role="radio"]') !== null) {
-      return;
-    }
-    switch (evt.key) {
-      case '+':
-      case '=':
-        evt.preventDefault();
-        zoom.zoomIn();
-        break;
-      case '-':
-        evt.preventDefault();
-        zoom.zoomOut();
-        break;
-      case '0':
-        evt.preventDefault();
-        zoom.fit();
-        break;
-      case '1':
-        evt.preventDefault();
-        zoom.resetOne();
-        break;
-      case 'f':
-      case 'F':
-        evt.preventDefault();
-        onFocusModeChange(!focusMode);
-        break;
-      case 'Escape':
-        if (focusMode) {
-          evt.preventDefault();
-          onFocusModeChange(false);
-        }
-        break;
-      default:
-        break;
-    }
+    setTip(evt.clientX, evt.clientY, lines);
   };
 
   return (
@@ -761,22 +620,7 @@ export function SankeyView({
             </span>
           )}
           <div className="ml-auto flex items-center gap-3">
-            {/* Border colours are the backend's folded `data.status`, the same three bands
-                Graph view borders by. Without this strip a green card and a red one are two
-                unexplained decorations. */}
-            <span className="flex items-center gap-2" data-testid="sankey-status-legend">
-              {Object.entries(STATUS_COLOR).map(([status, color]) => (
-                <span key={status} className="flex items-center gap-1 text-[11px] text-secondary">
-                  <span
-                    aria-hidden
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                    data-testid={`sankey-status-swatch-${status}`}
-                  />
-                  {status}
-                </span>
-              ))}
-            </span>
+            <StatusLegend />
             <span aria-hidden className="h-4 border-l border-medium" />
             {(mode === 'both' || mode === 'read') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
@@ -822,11 +666,11 @@ export function SankeyView({
               onNodeEnter={onNodeEnter}
               onNodeLeave={() => {
                 setHoverId(null);
-                setTip(null);
+                hideTip();
               }}
               onNodeClick={onLocateNode}
               onLinkEnter={onLinkEnter}
-              onLinkLeave={() => setTip(null)}
+              onLinkLeave={hideTip}
               onKeyDown={handleKeyDown}
             >
               <SankeyControlBar
@@ -852,18 +696,7 @@ export function SankeyView({
         />
       )}
 
-      {tip !== null && tipPos !== null && (
-        <div
-          ref={tipRef}
-          className="pointer-events-none fixed z-[1100] max-w-xs rounded-md border border-hairline bg-elevated px-2.5 py-1.5 font-mono text-[11px] leading-relaxed shadow-panel"
-          style={{ left: tipPos.left, top: tipPos.top }}
-          role="tooltip"
-        >
-          {tip.text.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </div>
-      )}
+      <SankeyTooltip tooltip={tooltip} />
     </div>
   );
 }
