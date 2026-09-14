@@ -47,6 +47,30 @@ describe('SHOWCASE_TRACE', () => {
     expect(into('client/sw-tor-1')).toEqual(['dci-uturn/tor-2']);
   });
 
+  it('tiers every switch, and the switch band runs core → bdr / agg → dci-spn → tor → access', () => {
+    const untiered = SHOWCASE_TRACE.elements.nodes
+      .filter((n) => n.data.type === 'switch' && (n.data.labels?.tier ?? '') === '')
+      .map((n) => n.data.id);
+    expect(untiered).toEqual([]);
+
+    const m = deriveTrace(elements, { direction: 'destination' });
+    expect(m.ok ? [] : m.errors).toEqual([]);
+    if (!m.ok) {
+      return;
+    }
+    const colsOf = (tier: string): number[] => [
+      ...new Set(m.nodes.filter((n) => n.role === 'switch' && n.tier === tier).map((n) => n.col)),
+    ];
+    const order = [['core'], ['bdr', 'border', 'agg'], ['dci-spn'], ['tor'], ['access']];
+    const cols = order.map((tiers) => [...new Set(tiers.flatMap(colsOf))]);
+    for (const c of cols) {
+      expect(c).toHaveLength(1);
+    }
+    const flat = cols.map((c) => c[0] ?? -1);
+    expect(flat).toEqual([...flat].sort((a, b) => a - b));
+    expect(new Set(flat).size).toBe(flat.length);
+  });
+
   it('draws every case the samples cover, and every hop that receives traffic balances', () => {
     const m = deriveTrace(elements, { direction: 'destination' });
     expect(m.ok ? [] : m.errors).toEqual([]);
@@ -68,7 +92,7 @@ describe('SHOWCASE_TRACE', () => {
     expect(m.nodes.some((n) => n.role === 'ns')).toBe(true);
     // k8s-source: pods forwarding onward are hop boxes.
     expect(m.nodes.some((n) => n.kind === 'node' && n.role === 'pod')).toBe(true);
-    // pruned / classic / campus: explicit and derived residuals on both sides.
+    // dual-uplink / pruned / campus: explicit and derived residuals on both sides.
     expect(m.nodes.some((n) => n.kind === 'node' && n.otherInBps === null && n.otherIn > n.resEps)).toBe(true);
     expect(m.nodes.some((n) => n.kind === 'node' && n.otherOutBps !== null && n.otherOut > n.resEps)).toBe(true);
     // campus: a leaf reached from two hops.

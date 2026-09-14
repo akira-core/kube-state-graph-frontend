@@ -16,14 +16,20 @@ import type { WireGraph } from '../types/wire';
  *     status, an owner spanning several ports.
  *
  *   Both stitched ToRs receive less than they forward, so they show "other in".
- * - **Islands** drawn beside the backbone: `classic` (non-conserving hop), `dual-uplink`
- *   (parallel links between one pair; two measurements of one key summed), `campus` (every
- *   layer with untraced uplinks and exits; a router leaf reached from two hops), `pruned`
- *   (explicit `other_out_bps` for truncated ports), `dci-tier` (same-tier interconnect
- *   chain) and `k8s-source` (pods → node → ToR, drawn as upstream feeders). A body carries
- *   one trace start, so each island start holds what its sample fed it through the anchor
- *   ribbon as an explicit `other_in_bps` (`other_out_bps` for `k8s-source`, a source trace),
- *   and every hop balances.
+ * - **Islands** drawn beside the backbone, every one running top-down (core → … → ToR →
+ *   servers): `classic` (core → edge), `dual-uplink` (parallel links between one pair; the
+ *   edge takes more than its agg sends, so it shows a derived "other in"), `campus` (untraced
+ *   exits on the agg and the dorm access switch; a router leaf reached from two hops),
+ *   `pruned` (explicit `other_out_bps` for truncated ports), `dci-tier` (same-tier
+ *   interconnect chain) and `k8s-source` (pods → node → ToR, drawn as upstream feeders). A
+ *   body carries one trace start, so each island's top switch holds what its sample fed it
+ *   through the anchor ribbon as an explicit `other_in_bps` (`other_out_bps` for
+ *   `k8s-source`, a source trace), and every hop balances.
+ *
+ * Every switch carries `labels.tier`, so the switch band reads as the hierarchy left to
+ * right: `core` → `bdr` / `border` (dci-tier) / `agg` → `dci-spn` → `tor` → `access` (the
+ * two ToRs stitched under the backbone's ToRs; sharing `tor` with them would turn the ToR →
+ * ToR link into an in-column arc).
  *
  * Not included: `source` (its servers send into the switches, and a trace-stop leaf with an
  * onward edge is invalid in a destination trace) and `storage` (storage-flow edges).
@@ -43,6 +49,9 @@ export const SHOWCASE_TRACE: WireGraph = {
             delta_bps: 24000000000,
             direction: 'in',
             note: 'core 進來 +24 Gbps，部分流量經 dci 繞回 bdr 再下去',
+          },
+          labels: {
+            tier: 'core',
           },
         },
       },
@@ -225,6 +234,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'k8s/sw-tor-k8s',
           type: 'switch',
           name: 'ToR k8s (k8s)',
+          labels: {
+            tier: 'access',
+          },
         },
       },
       {
@@ -301,6 +313,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'client/sw-tor-1',
           type: 'switch',
           name: 'ToR 1 (client)',
+          labels: {
+            tier: 'access',
+          },
         },
       },
       {
@@ -431,7 +446,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'classic/sw-edge-a',
           type: 'switch',
           name: 'Edge A (classic)',
-          other_in_bps: 20000000000,
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -439,6 +456,10 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'classic/sw-core-1',
           type: 'switch',
           name: 'Core 1 (classic)',
+          other_in_bps: 20000000000,
+          labels: {
+            tier: 'core',
+          },
         },
       },
       {
@@ -453,7 +474,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dual-uplink/sw-edge-a',
           type: 'switch',
           name: 'Edge A (dual-uplink)',
-          other_in_bps: 10000000000,
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -461,6 +484,10 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dual-uplink/sw-core-1',
           type: 'switch',
           name: 'Core 1 (dual-uplink)',
+          other_in_bps: 10000000000,
+          labels: {
+            tier: 'core',
+          },
         },
       },
       {
@@ -468,6 +495,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dual-uplink/sw-agg-9',
           type: 'switch',
           name: 'Agg 9',
+          labels: {
+            tier: 'agg',
+          },
         },
       },
       {
@@ -489,7 +519,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'campus/sw-dorm-b3',
           type: 'switch',
           name: '宿網 B3',
-          other_in_bps: 22000000000,
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -497,6 +529,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'campus/sw-agg-dorm',
           type: 'switch',
           name: '宿區匯聚',
+          labels: {
+            tier: 'agg',
+          },
         },
       },
       {
@@ -504,6 +539,10 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'campus/sw-core-n',
           type: 'switch',
           name: '核心 North',
+          other_in_bps: 30000000000,
+          labels: {
+            tier: 'core',
+          },
         },
       },
       {
@@ -511,6 +550,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'campus/fw-campus',
           type: 'switch',
           name: '校園防火牆',
+          labels: {
+            tier: 'agg',
+          },
         },
       },
       {
@@ -518,6 +560,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'campus/sw-dc-spine',
           type: 'switch',
           name: '機房 Spine',
+          labels: {
+            tier: 'dci-spn',
+          },
         },
       },
       {
@@ -539,8 +584,10 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'pruned/sw-tor-14',
           type: 'switch',
           name: 'ToR 14',
-          other_out_bps: 9000000000,
-          other_in_bps: 42000000000,
+          other_out_bps: 3000000000,
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -549,6 +596,10 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'switch',
           name: 'Leaf 3',
           other_out_bps: 3000000000,
+          other_in_bps: 36000000000,
+          labels: {
+            tier: 'agg',
+          },
         },
       },
       {
@@ -585,6 +636,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'switch',
           name: 'Core',
           other_in_bps: 24000000000,
+          labels: {
+            tier: 'core',
+          },
         },
       },
       {
@@ -672,6 +726,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/spn-1',
           type: 'switch',
           name: 'SPN 1 (dci-tier)',
+          labels: {
+            tier: 'dci-spn',
+          },
         },
       },
       {
@@ -679,6 +736,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/spn-2',
           type: 'switch',
           name: 'SPN 2 (dci-tier)',
+          labels: {
+            tier: 'dci-spn',
+          },
         },
       },
       {
@@ -686,6 +746,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/spn-3',
           type: 'switch',
           name: 'SPN 3 (dci-tier)',
+          labels: {
+            tier: 'dci-spn',
+          },
         },
       },
       {
@@ -693,6 +756,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/tor-1',
           type: 'switch',
           name: 'ToR 1 (dci-tier)',
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -700,6 +766,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/tor-2',
           type: 'switch',
           name: 'ToR 2 (dci-tier)',
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -707,6 +776,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/tor-3',
           type: 'switch',
           name: 'ToR 3 (dci-tier)',
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -714,6 +786,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'dci-tier/tor-4',
           type: 'switch',
           name: 'ToR 4 (dci-tier)',
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -750,6 +825,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'switch',
           name: 'ToR k8s (k8s-source)',
           other_out_bps: 18000000000,
+          labels: {
+            tier: 'tor',
+          },
         },
       },
       {
@@ -1531,11 +1609,11 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'classic/e0',
           type: 'network-flow',
-          source: 'classic/sw-edge-a',
-          target: 'classic/sw-core-1',
+          source: 'classic/sw-core-1',
+          target: 'classic/sw-edge-a',
           labels: {
-            source_iface: 'et-0/0/48',
-            target_iface: 'et-1/0/1',
+            source_iface: 'et-1/0/1',
+            target_iface: 'et-0/0/48',
           },
           metrics: {
             delta_bps: 20000000000,
@@ -1546,10 +1624,10 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'classic/e1',
           type: 'network-flow',
-          source: 'classic/sw-core-1',
+          source: 'classic/sw-edge-a',
           target: 'classic/srv-db-07',
           labels: {
-            source_iface: 'et-1/0/9',
+            source_iface: 'xe-0/0/9',
             target_iface: 'eno1',
           },
           metrics: {
@@ -1561,11 +1639,11 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'dual-uplink/e0',
           type: 'network-flow',
-          source: 'dual-uplink/sw-edge-a',
-          target: 'dual-uplink/sw-core-1',
+          source: 'dual-uplink/sw-agg-9',
+          target: 'dual-uplink/sw-edge-a',
           labels: {
-            source_iface: 'et-0/0/48',
-            target_iface: 'et-1/0/1',
+            source_iface: 'et-9/0/48',
+            target_iface: 'et-0/0/48',
           },
           metrics: {
             delta_bps: 6000000000,
@@ -1576,11 +1654,11 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'dual-uplink/e1',
           type: 'network-flow',
-          source: 'dual-uplink/sw-edge-a',
-          target: 'dual-uplink/sw-core-1',
+          source: 'dual-uplink/sw-agg-9',
+          target: 'dual-uplink/sw-edge-a',
           labels: {
-            source_iface: 'et-0/0/49',
-            target_iface: 'et-1/0/2',
+            source_iface: 'et-9/0/49',
+            target_iface: 'et-0/0/49',
           },
           metrics: {
             delta_bps: 4000000000,
@@ -1598,7 +1676,7 @@ export const SHOWCASE_TRACE: WireGraph = {
             target_iface: 'et-9/0/1',
           },
           metrics: {
-            delta_bps: 16000000000,
+            delta_bps: 10000000000,
           },
         },
       },
@@ -1606,10 +1684,10 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'dual-uplink/e3',
           type: 'network-flow',
-          source: 'dual-uplink/sw-agg-9',
+          source: 'dual-uplink/sw-edge-a',
           target: 'dual-uplink/srv-cache-02',
           labels: {
-            source_iface: 'xe-9/0/12',
+            source_iface: 'xe-0/0/12',
             target_iface: 'bond0',
           },
           metrics: {
@@ -1621,10 +1699,10 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'dual-uplink/e4',
           type: 'network-flow',
-          source: 'dual-uplink/sw-agg-9',
+          source: 'dual-uplink/sw-edge-a',
           target: 'dual-uplink/srv-cache-03',
           labels: {
-            source_iface: 'xe-9/0/13',
+            source_iface: 'xe-0/0/13',
             target_iface: 'bond0',
           },
           metrics: {
@@ -1636,14 +1714,14 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'campus/e0',
           type: 'network-flow',
-          source: 'campus/sw-dorm-b3',
-          target: 'campus/sw-agg-dorm',
+          source: 'campus/sw-agg-dorm',
+          target: 'campus/sw-dorm-b3',
           labels: {
-            source_iface: 'et-0/0/50',
-            target_iface: 'et-2/0/3',
+            source_iface: 'et-2/0/3',
+            target_iface: 'et-0/0/50',
           },
           metrics: {
-            delta_bps: 22000000000,
+            delta_bps: 12000000000,
           },
         },
       },
@@ -1651,14 +1729,14 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'campus/e1',
           type: 'network-flow',
-          source: 'campus/sw-agg-dorm',
-          target: 'campus/sw-core-n',
+          source: 'campus/sw-core-n',
+          target: 'campus/sw-agg-dorm',
           labels: {
-            source_iface: 'ae10',
-            target_iface: 'ae1',
+            source_iface: 'ae1',
+            target_iface: 'ae10',
           },
           metrics: {
-            delta_bps: 18000000000,
+            delta_bps: 16000000000,
           },
         },
       },
@@ -1666,10 +1744,10 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'campus/e2',
           type: 'network-flow',
-          source: 'campus/sw-agg-dorm',
+          source: 'campus/sw-core-n',
           target: 'campus/fw-campus',
           labels: {
-            source_iface: 'xe-2/0/7',
+            source_iface: 'xe-0/0/3',
             target_iface: 'xe-0/0/0',
           },
           metrics: {
@@ -1688,7 +1766,7 @@ export const SHOWCASE_TRACE: WireGraph = {
             target_iface: 'Te0/1/0',
           },
           metrics: {
-            delta_bps: 12000000000,
+            delta_bps: 4000000000,
           },
         },
       },
@@ -1741,11 +1819,11 @@ export const SHOWCASE_TRACE: WireGraph = {
         data: {
           id: 'pruned/e0',
           type: 'network-flow',
-          source: 'pruned/sw-tor-14',
-          target: 'pruned/sw-leaf-3',
+          source: 'pruned/sw-leaf-3',
+          target: 'pruned/sw-tor-14',
           labels: {
-            source_iface: 'xe-0/0/1',
-            target_iface: 'et-3/0/1',
+            source_iface: 'et-3/0/1',
+            target_iface: 'xe-0/0/1',
           },
           metrics: {
             delta_bps: 18000000000,

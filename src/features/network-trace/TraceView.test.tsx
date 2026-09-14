@@ -346,7 +346,7 @@ describe('TraceView Min Δ', () => {
 
   it('shows the hidden pill with counts while a threshold is applied, and Clear resets it', () => {
     const first = renderTrace({ minBps: 5e9 });
-    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 83 ribbons / 26 hops (204 Gbps)');
+    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 84 ribbons / 26 hops (208 Gbps)');
     fireEvent.click(screen.getByTestId('trace-min-bps-clear'));
     expect(first.props.onMinBpsChange).toHaveBeenCalledWith(0);
     first.unmount();
