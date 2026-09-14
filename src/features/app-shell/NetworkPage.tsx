@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import { useCallback, useMemo, useState, type JSX } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 
 import { SHOWCASE_TRACE } from '../../shared/fixtures/showcaseTrace';
 import { parseTimeQuery } from '../../shared/time/viewTimeRange';
-import { buildTraceRequestUrl, useGraphLoader } from '../graph-data';
+import { buildTraceRequestUrl } from '../graph-data';
 import { GraphView } from '../graph-view';
 import {
   buildTraceQuery,
@@ -17,9 +17,10 @@ import {
 } from '../network-trace';
 
 import { NotFoundPage } from './NotFoundPage';
-import { IDLE_PAGE_STATUS, phaseOf, useShellFrame } from './ShellFrame';
+import { useShellFrame } from './ShellFrame';
 import { useAppliedScope, useSeedTimeOnMount } from './useAppliedScope';
 import { useDraft } from './useDraft';
+import { useLocateFromNavigation, usePageLoader } from './usePageLoader';
 
 /**
  * The Network category: one page for both of its views. The route's `:view` picks Graph
@@ -29,7 +30,7 @@ import { useDraft } from './useDraft';
  */
 export function NetworkPage(): JSX.Element {
   const { view } = useParams<{ view: string }>();
-  const { config, time, setStatus, focusMode, setFocusMode } = useShellFrame();
+  const { config, time, focusMode, setFocusMode } = useShellFrame();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -38,32 +39,25 @@ export function NetworkPage(): JSX.Element {
   const { draft, setDraft, dirty } = useDraft(applied.query);
   useSeedTimeOnMount(applied, commit, time);
 
-  const trace = useGraphLoader({
-    demoMode: config.demoMode,
-    demoPayload: SHOWCASE_TRACE,
-    refreshIntervalSeconds: config.refreshIntervalSeconds,
-  });
-  const run = trace.run;
-  useEffect(() => {
-    if (!config.demoMode) {
-      return;
-    }
-    run(() => undefined);
-  }, [config.demoMode, run]);
-
   const endpoint = config.demoMode ? undefined : config.endpoints.trace;
   const endpointConfigured = config.demoMode || endpoint !== undefined;
   const built = useMemo(() => buildTraceQuery(draft), [draft]);
+  const leaveFocusMode = useCallback(() => setFocusMode(false), [setFocusMode]);
+  const trace = usePageLoader({
+    demoMode: config.demoMode,
+    demoPayload: SHOWCASE_TRACE,
+    refreshIntervalSeconds: config.refreshIntervalSeconds,
+    reloadDisabled: !config.demoMode && (endpoint === undefined || !built.ok),
+    onTeardown: leaveFocusMode,
+  });
   // The URL's own complaints show until the draft is edited into something valid; a
   // draft that does not build is refused with its messages instead of being sent.
   const problems = useMemo(
     () => (built.ok ? (dirty ? [] : applied.problems) : built.problems),
     [applied.problems, built, dirty]
   );
-  const [armed, setArmed] = useState(config.demoMode);
   const [demoMinBps, setDemoMinBps] = useState(0);
   const [layout, setLayout] = useState<TraceLayout>('flat');
-  const [locateNodeId, setLocateNodeId] = useState<string | null>(null);
 
   // Memoised on the params object: `parseTimeQuery` returns a fresh object per call, and an
   // identity that changed every render would churn every callback below and, through
@@ -78,8 +72,7 @@ export function NetworkPage(): JSX.Element {
     const range = time.range;
     commit({ query: draft, minBps: applied.minBps, problems: [] }, range);
     time.persist(range);
-    setArmed(true);
-    trace.run(() => (endpoint === undefined ? undefined : buildTraceRequestUrl(endpoint, range, built.query)));
+    trace.onQuery(() => (endpoint === undefined ? undefined : buildTraceRequestUrl(endpoint, range, built.query)));
   }, [applied.minBps, built, commit, draft, endpoint, time, trace]);
 
   const onMinBpsChange = useCallback(
@@ -100,34 +93,8 @@ export function NetworkPage(): JSX.Element {
     [setDraft]
   );
 
-  useEffect(() => {
-    setStatus({
-      phase: phaseOf(trace.state),
-      lastLoadedAt: trace.state.lastLoadedAt,
-      refreshing: trace.state.refreshing || (trace.state.status === 'loading' && !trace.state.hasPayload),
-      error: trace.state.cancelled ? undefined : trace.state.error,
-      reload: trace.reload,
-      reloadDisabled: !armed || (!config.demoMode && (endpoint === undefined || !built.ok)),
-    });
-  }, [armed, built.ok, config.demoMode, endpoint, setStatus, trace.reload, trace.state]);
-
-  useEffect(() => {
-    return () => {
-      setStatus(IDLE_PAGE_STATUS);
-      setFocusMode(false);
-    };
-  }, [setFocusMode, setStatus]);
-
-  // Locate from the Sankey lands here with the node id in navigation state; consumed once
-  // and cleared through `commit`, whose replace carries no state (see GraphPage).
-  useEffect(() => {
-    const state = location.state as { locate?: unknown } | null;
-    if (typeof state?.locate !== 'string' || state.locate.length === 0) {
-      return;
-    }
-    setLocateNodeId(state.locate);
-    commit(applied, parseTimeQuery(new URLSearchParams(location.search)) ?? time.range);
-  }, [applied, commit, location.search, location.state, time.range]);
+  // Locate from the Sankey lands here with the node id in navigation state.
+  const { locateNodeId, onLocateConsumed } = useLocateFromNavigation(applied, commit, time.range);
 
   const onLocateNode = useCallback(
     (id: string) => {
@@ -137,7 +104,6 @@ export function NetworkPage(): JSX.Element {
   );
 
   const hostnameOptions = useHostnameCandidates(trace.state.elements);
-  const inFlight = trace.state.status === 'loading' || trace.state.refreshing;
 
   if (view !== 'graph' && view !== 'sankey') {
     return <NotFoundPage />;
@@ -152,7 +118,7 @@ export function NetworkPage(): JSX.Element {
           hostnameOptions={hostnameOptions}
           problems={problems}
           dirty={config.demoMode ? false : dirty}
-          inFlight={inFlight}
+          inFlight={trace.inFlight}
           onQuery={onQuery}
           onCancel={trace.cancel}
           hideQuery={config.demoMode}
@@ -171,7 +137,7 @@ export function NetworkPage(): JSX.Element {
             viewTimeRange={time.resolved}
             onAlertTimeClick={time.setAround}
             locateNodeId={locateNodeId}
-            onLocateConsumed={() => setLocateNodeId(null)}
+            onLocateConsumed={onLocateConsumed}
           />
         ) : (
           <TraceView
@@ -186,7 +152,7 @@ export function NetworkPage(): JSX.Element {
             onFocusModeChange={setFocusMode}
             endpointConfigured={endpointConfigured}
             scopeReady={built.ok && applied.problems.length === 0}
-            trackDir={config.demoMode ? 'destination' : armed ? applied.query.trackDir : undefined}
+            trackDir={config.demoMode ? 'destination' : trace.armed ? applied.query.trackDir : undefined}
             minBps={minBps}
             onMinBpsChange={onMinBpsChange}
             onLocateNode={onLocateNode}

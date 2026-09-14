@@ -8,7 +8,6 @@ import {
   EMPTY_STORAGE_GRAPH_ROOTS,
   hasAnyRoot,
   isValidPodRoot,
-  useGraphLoader,
   type StorageGraphQuery,
   type StorageGraphRoots,
 } from '../graph-data';
@@ -29,9 +28,10 @@ import {
   type SankeySvmDisplay,
 } from '../storage-flow-sankey';
 
-import { IDLE_PAGE_STATUS, phaseOf, useShellFrame } from './ShellFrame';
+import { useShellFrame } from './ShellFrame';
 import { useAppliedScope, useSeedTimeOnMount } from './useAppliedScope';
 import { useDraft } from './useDraft';
+import { usePageLoader } from './usePageLoader';
 
 function liveController(
   draft: StorageGraphQuery,
@@ -90,7 +90,7 @@ function liveController(
 }
 
 export function SankeyPage(): JSX.Element {
-  const { config, time, setStatus, focusMode, setFocusMode } = useShellFrame();
+  const { config, time, focusMode, setFocusMode } = useShellFrame();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const filterOptions = useFilterOptions(config.demoMode ? undefined : config.endpoints.labelValues);
@@ -115,7 +115,6 @@ export function SankeyPage(): JSX.Element {
   const [demoTopPods, setDemoTopPods] = useState(DEFAULT_TOP_PODS);
   const [demoModeValue, setDemoModeValue] = useState<SankeyMode>('both');
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
-  const [armed, setArmed] = useState(config.demoMode);
 
   useEffect(() => {
     if (applied.droppedPods.length > 0) {
@@ -150,18 +149,14 @@ export function SankeyPage(): JSX.Element {
     });
   }, [config.demoMode, setDraft, soleAz, soleEnv]);
 
-  const storage = useGraphLoader({
+  const leaveFocusMode = useCallback(() => setFocusMode(false), [setFocusMode]);
+  const storage = usePageLoader({
     demoMode: config.demoMode,
     demoPayload: SHOWCASE_STORAGE_GRAPH,
     refreshIntervalSeconds: config.refreshIntervalSeconds,
+    reloadDisabled: !config.demoMode && (!azEnvReady || !hasRoot || storageEndpoint === undefined),
+    onTeardown: leaveFocusMode,
   });
-  const run = storage.run;
-  useEffect(() => {
-    if (!config.demoMode) {
-      return;
-    }
-    run(() => undefined);
-  }, [config.demoMode, run]);
 
   // Memoised on the params object (see NetworkPage): a fresh range object every render would
   // churn `onTopPods` / `onModeChange` for nothing.
@@ -184,29 +179,10 @@ export function SankeyPage(): JSX.Element {
       range
     );
     time.persist(range);
-    setArmed(true);
-    storage.run(() =>
+    storage.onQuery(() =>
       storageEndpoint === undefined ? undefined : buildStorageGraphRequestUrl(storageEndpoint, range, controller.query)
     );
   }, [azEnvReady, commit, controller.query, hasRoot, mode, storage, storageEndpoint, time, topPods]);
-
-  useEffect(() => {
-    setStatus({
-      phase: phaseOf(storage.state),
-      lastLoadedAt: storage.state.lastLoadedAt,
-      refreshing: storage.state.refreshing || (storage.state.status === 'loading' && !storage.state.hasPayload),
-      error: storage.state.cancelled ? undefined : storage.state.error,
-      reload: storage.reload,
-      reloadDisabled: !armed || (!config.demoMode && (!azEnvReady || !hasRoot || storageEndpoint === undefined)),
-    });
-  }, [armed, azEnvReady, config.demoMode, hasRoot, setStatus, storage.reload, storage.state, storageEndpoint]);
-
-  useEffect(() => {
-    return () => {
-      setStatus(IDLE_PAGE_STATUS);
-      setFocusMode(false);
-    };
-  }, [setFocusMode, setStatus]);
 
   const onLocateNode = useCallback(
     (id: string) => {
@@ -222,7 +198,6 @@ export function SankeyPage(): JSX.Element {
     drawn: drawnOptions,
   });
 
-  const inFlight = storage.state.status === 'loading' || storage.state.refreshing;
   const onTopPods = useCallback(
     (value: number) => {
       if (config.demoMode) {
@@ -252,7 +227,7 @@ export function SankeyPage(): JSX.Element {
           controller={controller}
           rootOptions={candidates.options}
           dirty={config.demoMode ? false : dirty}
-          inFlight={inFlight}
+          inFlight={storage.inFlight}
           onQuery={onQuery}
           onCancel={storage.cancel}
           topPods={topPods}
