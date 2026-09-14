@@ -97,8 +97,14 @@ describe('tooltip and card text', () => {
     expect(single).toBeDefined();
     if (single !== undefined) {
       expect(cardText(single, m).label).toBe('');
-      expect(cardText(single, m).cornerLabel).toBe('client');
+      expect(cardText(single, m).cornerLabel).toBe('1 client');
       expect(nodeTooltipLines(single, m)).toContain('client 10.42.7.31 · lab-gpu-01 · 網管部 王小明');
+    }
+    // An end device with no clients has no corner: "0 clients" would read as missing data.
+    const host = m.nodeMap.get('srv-legacy-09');
+    expect(host?.clients ?? null).toBeNull();
+    if (host !== undefined) {
+      expect(cardText(host, m).cornerLabel).toBeUndefined();
     }
   });
 

@@ -184,20 +184,21 @@ export function cardText(n: TraceNode, model: TraceModelOk): CardText {
   }
   // A trace-stop leaf. With clients it is a table; the synthetic `switch:iface` id is not
   // a title (the ribbon leads back to it), only a name the wire gave is. The corner counts
-  // the clients whether or not they grew an owner card — the owner band says the rest.
+  // the clients whether or not they grew an owner card — the owner band says the rest; a
+  // stop with no clients (the end device itself) has no corner.
   const table = clientTableLines(n);
   const nc = n.clients?.length ?? 0;
-  const cornerLabel = nc === 0 ? 'trace stop' : nc === 1 ? 'client' : `${String(nc)} clients`;
+  const corner = nc === 0 ? {} : { cornerLabel: `${String(nc)} client${nc === 1 ? '' : 's'}` };
   if (table.length > 0) {
     const ns = n.namespace !== null ? [`ns/${n.namespace}`] : [];
     return {
       label: n.named ? n.label : '',
       subtitle: n.type ?? 'host',
       extraLines: [...ns, ...table, formatDeltaBps(n.bps)],
-      cornerLabel,
+      ...corner,
     };
   }
-  return { label: n.label, subtitle: n.type ?? 'host', extraLines: leafLines(n), cornerLabel };
+  return { label: n.label, subtitle: n.type ?? 'host', extraLines: leafLines(n), ...corner };
 }
 
 /** Header height of a hop box: title + subtitle, then one line per attribute. */

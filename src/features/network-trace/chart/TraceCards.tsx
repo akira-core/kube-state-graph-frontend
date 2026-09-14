@@ -31,9 +31,8 @@ function slotLabels(g: NodeGeom): { left: SlotLabel[]; right: SlotLabel[] } {
 /**
  * Every trace card is the shared `SankeyCard` — the same box, border weights, status
  * colours and text sizes as a storage card — fed different text. What varies per role is
- * only: the dashed "device" border (k8s node / pod / NetApp, and a trace-stop leaf), the
- * accent border on the trace start and its root, and the interface names beside a hop's
- * slots.
+ * only: the dashed "device" border (k8s node / pod / NetApp, and a trace-stop leaf) and
+ * the interface names beside a hop's slots.
  */
 export function TraceCard({
   n,
@@ -51,7 +50,6 @@ export function TraceCard({
     (isHop && DEVICE_KINDS.includes(n.role)) ||
     n.kind === 'anchor' ||
     (n.kind === 'leaf' && (n.role === 'pod' || n.role === 'leaf'));
-  const accent = n.kind === 'anchor' || (isHop && n.isRoot) ? tokens.accent.primary : undefined;
   return (
     <SankeyCard
       id={n.id}
@@ -67,7 +65,6 @@ export function TraceCard({
       dashed={dashed}
       locatable={locatable(n)}
       faded={faded}
-      {...(accent !== undefined ? { accentStroke: accent } : {})}
       extraLines={text.extraLines}
       {...(isHop ? { slotLabels: slotLabels(g) } : {})}
       {...(text.cornerLabel !== undefined ? { cornerLabel: text.cornerLabel } : {})}

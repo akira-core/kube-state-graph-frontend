@@ -38,16 +38,11 @@ export interface SankeyCardProps {
   locatable: boolean;
   faded: boolean;
   namespaceColor?: string;
-  /**
-   * Neutral border colour override — a card that is special without carrying a status
-   * (the trace start, a selected root). A status still wins, as it does on every card.
-   */
-  accentStroke?: string;
   /** Extra body lines under the subtitle, one per CARD_LINE_H. */
   extraLines?: readonly string[];
   /** Interface names beside the ribbon slots on the left / right edge. */
   slotLabels?: { left: readonly SlotLabel[]; right: readonly SlotLabel[] };
-  /** Small role word in the top-right corner (`trace stop`, `port`). */
+  /** Small text in the top-right corner (`3 clients`). */
   cornerLabel?: string;
   testId?: string;
   onEnter: (id: string, evt: MouseEvent) => void;
@@ -70,7 +65,6 @@ export function SankeyCard({
   locatable,
   faded,
   namespaceColor,
-  accentStroke,
   extraLines,
   slotLabels,
   cornerLabel,
@@ -80,7 +74,6 @@ export function SankeyCard({
   onClick,
 }: Readonly<SankeyCardProps>): JSX.Element {
   const statusStroke = status === undefined ? undefined : STATUS_COLOR[status];
-  const neutralStroke = accentStroke ?? tokens.sankey.nodeStroke;
   return (
     <g
       data-testid={testId ?? `sankey-node-${label}`}
@@ -111,7 +104,7 @@ export function SankeyCard({
         height={height}
         rx={9}
         fill={tokens.sankey.nodeFill}
-        stroke={statusStroke === undefined ? neutralStroke : statusStroke}
+        stroke={statusStroke === undefined ? tokens.sankey.nodeStroke : statusStroke}
         strokeWidth={statusStroke === undefined ? NEUTRAL_BORDER_W : STATUS_BORDER_W}
         strokeDasharray={dashed ? '6 4' : undefined}
       />
