@@ -1,4 +1,4 @@
-import { formatBitsPerSec, formatBytes, formatDeltaBps } from '../../../shared/format/measurements';
+import { formatBitsPerSec, formatDeltaBps, formatUsage } from '../../../shared/format/measurements';
 import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, HEADER_H, LEAF_W } from '../../sankey-canvas';
 import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
 import { sum } from '../model/util';
@@ -76,16 +76,12 @@ export function hasUsage(n: TraceNode | TraceWrapper): boolean {
   return n.usage !== null && n.usage.usedBytes !== undefined && n.usage.capacityBytes !== undefined;
 }
 
+/** The shared `formatUsage` wording, so a trace card and a storage card describe usage alike. */
 export function usageText(u: NodeUsage | null): string {
   if (u === null) {
     return '';
   }
-  const used = u.usedBytes;
-  const cap = u.capacityBytes;
-  if (used !== undefined && cap !== undefined) {
-    return `${formatBytes(used)} / ${formatBytes(cap)}${cap > 0 ? ` (${String(Math.round((used / cap) * 100))}%)` : ''}`;
-  }
-  return used !== undefined ? `used ${formatBytes(used)}` : cap !== undefined ? `capacity ${formatBytes(cap)}` : '';
+  return formatUsage(u.usedBytes, u.capacityBytes) ?? '';
 }
 
 /** The subtitle word for a card: the wire kind, or the role of a synthesised card. */

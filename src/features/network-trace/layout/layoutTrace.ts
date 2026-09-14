@@ -518,7 +518,13 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     if (idxs.length < 2) {
       return;
     }
-    const picked = idxs.map((i) => mustGet(new Map(slots.map((s, j) => [j, s])), i, 'slot'));
+    const picked = idxs.map((i) => {
+      const s = slots[i];
+      if (s === undefined) {
+        throw new Error(`network-trace: slot ${String(i)} is missing`);
+      }
+      return s;
+    });
     picked.sort((a, b) => N(farOf(a).id).y - N(farOf(b).id).y);
     idxs.forEach((i, k) => {
       const s = picked[k];
