@@ -3,6 +3,8 @@ export type { ColumnHeader, HoverLit, SankeyCanvasProps } from './SankeyCanvas';
 export { SankeyCard, SankeyWrapperBox } from './SankeyCard';
 export type { SankeyCardProps, SankeyWrapperBoxProps, SlotLabel } from './SankeyCard';
 export { SankeyControlBar } from './SankeyControlBar';
+export { shellEmptyKind } from './emptyState';
+export type { ShellEmptyInputs, ShellEmptyKind } from './emptyState';
 export type { SankeyControlBarProps } from './SankeyControlBar';
 export { SankeyTooltip } from './SankeyTooltip';
 export { StatusLegend } from './StatusLegend';

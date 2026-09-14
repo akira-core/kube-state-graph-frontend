@@ -15,6 +15,8 @@ import {
   useSankeyKeyboard,
   useSankeyTooltip,
   useZoomPan,
+  shellEmptyKind,
+  type ShellEmptyKind,
 } from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
 
@@ -98,46 +100,46 @@ export interface SankeyViewProps {
   onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
 }
 
-function emptyCopy(kind: 1 | 2 | 3 | 4 | 5 | 6, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
-  if (kind === 1) {
-    return {
-      testId: 'sankey-empty-unconfigured',
-      text: 'Storage graph endpoint is not configured. Graph view is unaffected.',
-    };
+type SankeyEmptyKind = ShellEmptyKind | 'mode' | 'response';
+
+function emptyCopy(kind: SankeyEmptyKind, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
+  switch (kind) {
+    case 'unconfigured':
+      return {
+        testId: 'sankey-empty-unconfigured',
+        text: 'Storage graph endpoint is not configured. Graph view is unaffected.',
+      };
+    case 'scope':
+      return {
+        testId: 'sankey-empty-scope',
+        text: 'Select one az, one env and at least one root. No request has been sent yet.',
+      };
+    case 'awaiting':
+      return {
+        testId: 'sankey-empty-awaiting',
+        text: 'Nothing has been requested yet. Press Query to load storage flow for the current scope and time range.',
+      };
+    case 'cancelled':
+      return {
+        testId: 'sankey-empty-cancelled',
+        text: 'The request was cancelled. Press Query to load storage flow.',
+      };
+    case 'response':
+      return {
+        testId: 'sankey-empty-response',
+        text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
+      };
+    default:
+      return {
+        testId: 'sankey-empty-mode',
+        text:
+          mode === 'read'
+            ? 'Read direction has no measurements. Switch to Write or Both.'
+            : mode === 'write'
+              ? 'Write direction has no measurements. Switch to Read or Both.'
+              : 'The current direction has no measurements. Switch to Read, Write, or Both.',
+      };
   }
-  if (kind === 2) {
-    return {
-      testId: 'sankey-empty-scope',
-      text: 'Select one az, one env and at least one root. No request has been sent yet.',
-    };
-  }
-  if (kind === 3) {
-    return {
-      testId: 'sankey-empty-awaiting',
-      text: 'Nothing has been requested yet. Press Query to load storage flow for the current scope and time range.',
-    };
-  }
-  if (kind === 4) {
-    return {
-      testId: 'sankey-empty-cancelled',
-      text: 'The request was cancelled. Press Query to load storage flow.',
-    };
-  }
-  if (kind === 5) {
-    return {
-      testId: 'sankey-empty-response',
-      text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
-    };
-  }
-  return {
-    testId: 'sankey-empty-mode',
-    text:
-      mode === 'read'
-        ? 'Read direction has no measurements. Switch to Write or Both.'
-        : mode === 'write'
-          ? 'Write direction has no measurements. Switch to Read or Both.'
-          : 'The current direction has no measurements. Switch to Read, Write, or Both.',
-  };
 }
 
 /**
@@ -462,29 +464,30 @@ export function SankeyView({
     );
   }
 
-  // Four causes, four sentences. They are not interchangeable: an unfinished selection that
-  // reads as "no storage flow" makes a working pipeline look broken, and vice versa.
-  const emptyKind: 1 | 2 | 3 | 4 | 5 | 6 | null = (() => {
-    if (!demoMode && !endpointConfigured) {
-      return 1;
-    }
-    if (!demoMode && !scopeComplete) {
-      return 2;
-    }
-    if (!demoMode && status === 'idle' && !hasPayload && !cancelled) {
-      return 3;
-    }
-    if (!demoMode && cancelled && !hasPayload) {
-      return 4;
+  // Six causes, six sentences. They are not interchangeable: an unfinished selection that
+  // reads as "no storage flow" makes a working pipeline look broken, and vice versa. The
+  // four shell-level causes are decided by `shellEmptyKind`, shared with the trace view.
+  const emptyKind: SankeyEmptyKind | null = (() => {
+    const shell = shellEmptyKind({
+      demoMode,
+      endpointConfigured,
+      scopeReady: scopeComplete,
+      status,
+      hasPayload,
+      cancelled,
+    });
+    if (shell !== null) {
+      return shell;
     }
     if (graph.links.length === 0 && graph.hasStorageFlowEdges && !graph.hasCurrentDirectionMeasurement) {
-      return 6;
+      return 'mode';
     }
     if (graph.nodes.length === 0 && !(podLayout === 'node' && graph.k8sNodes.length > 0)) {
-      return 5;
+      return 'response';
     }
     return null;
   })();
+  const empty = emptyKind === null ? null : emptyCopy(emptyKind, demoMode, mode);
   const chartReady = emptyKind === null;
 
   const onNodeEnter = (id: string, evt: MouseEvent): void => {
@@ -646,12 +649,12 @@ export function SankeyView({
       {/* The chart keeps a floor. Six tiers make the summary tall enough to take the whole
           column otherwise, and a zero-height chart host renders its nodes outside the SVG. */}
       <div className="relative flex min-h-[220px] flex-1 flex-col" ref={boxRef}>
-        {emptyKind !== null && (
+        {empty !== null && (
           <div
             className="flex flex-1 items-center justify-center p-6 text-center text-sm text-secondary"
-            data-testid={emptyCopy(emptyKind, demoMode, mode).testId}
+            data-testid={empty.testId}
           >
-            {emptyCopy(emptyKind, demoMode, mode).text}
+            {empty.text}
           </div>
         )}
         {chartReady && (

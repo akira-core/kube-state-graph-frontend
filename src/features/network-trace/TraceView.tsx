@@ -14,6 +14,8 @@ import {
   useSankeyTooltip,
   useZoomPan,
   type HoverLit,
+  shellEmptyKind,
+  type ShellEmptyKind,
 } from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
 
@@ -65,7 +67,7 @@ export interface TraceViewProps {
   onLayoutChange?: (next: TraceLayout) => void;
 }
 
-type EmptyKind = 'unconfigured' | 'scope' | 'awaiting' | 'cancelled' | 'model-error' | 'filtered';
+type EmptyKind = ShellEmptyKind | 'model-error' | 'filtered';
 
 function emptyCopy(kind: EmptyKind, demoMode: boolean): { testId: string; text: string } {
   switch (kind) {
@@ -209,17 +211,9 @@ export function TraceView({
   }
 
   const emptyKind: EmptyKind | null = (() => {
-    if (!demoMode && !endpointConfigured) {
-      return 'unconfigured';
-    }
-    if (!demoMode && !scopeReady && !hasPayload) {
-      return 'scope';
-    }
-    if (!demoMode && status === 'idle' && !hasPayload && !cancelled) {
-      return 'awaiting';
-    }
-    if (!demoMode && cancelled && !hasPayload) {
-      return 'cancelled';
+    const shell = shellEmptyKind({ demoMode, endpointConfigured, scopeReady, status, hasPayload, cancelled });
+    if (shell !== null) {
+      return shell;
     }
     if (!model.ok) {
       return 'model-error';
@@ -229,6 +223,7 @@ export function TraceView({
     }
     return null;
   })();
+  const empty = emptyKind === null ? null : emptyCopy(emptyKind, demoMode);
   const chartReady = emptyKind === null && model.ok && geo !== null;
 
   const onNodeEnter = (id: string, evt: MouseEvent): void => {
@@ -333,12 +328,12 @@ export function TraceView({
       )}
 
       <div className="relative flex min-h-[220px] flex-1 flex-col" ref={boxRef}>
-        {emptyKind !== null && (
+        {empty !== null && (
           <div
             className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-secondary"
-            data-testid={emptyCopy(emptyKind, demoMode).testId}
+            data-testid={empty.testId}
           >
-            <span>{emptyCopy(emptyKind, demoMode).text}</span>
+            <span>{empty.text}</span>
             {emptyKind === 'model-error' && !model.ok && (
               <ul className="max-w-2xl space-y-1 text-left text-[12px] text-primary" data-testid="trace-model-errors">
                 {model.errors.map((e) => (

@@ -143,6 +143,23 @@ describe('SankeyView', () => {
     expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
   });
 
+  it('keeps the drawn chart when the draft is edited into an incomplete scope (explicit-query: drafts never alter drawn data)', () => {
+    const { rerender } = renderSankeyWithProps(baseProps({ demoMode: false, hasRoot: true }));
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+
+    // The operator unchecks the last root pill. The APPLIED selection (what was drawn) has
+    // not changed; only the draft has, and the Query button says "Changes not applied".
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps({ demoMode: false, hasRoot: false })} />
+        </div>
+      </ThemeProvider>
+    );
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-empty-scope')).not.toBeInTheDocument();
+  });
+
   it('shows an unconfigured empty state without drawing', () => {
     renderSankey({ demoMode: false, endpointConfigured: false, azEnvReady: false, hasPayload: false, status: 'idle' });
     expect(screen.getByTestId('sankey-empty-unconfigured')).toHaveTextContent('not configured');
