@@ -125,6 +125,8 @@ Both views share one scope; `/network` redirects to `/network/graph` keeping the
 
 The first five are sent to `endpoints.trace` on Query, defaults spelled out, with the view time range as `from_ts` / `to_ts` in epoch milliseconds. `min_bps` is a view value like `top_pods`: changing it redraws and writes the URL without a request. `Layout` (`Flat` / `Node`) and `Order` (`Flow` / `Barycenter`) on the Sankey are page-transient, as on the storage Sankey.
 
+The Network Sankey is three **bands**, left to right under a `destination` trace (mirrored under `source`, so packets always flow left → right): the **switch** band (`Trace start`, `Hop 1`, `Hop 2`, … — laid out by longest path, with `labels.tier` locking same-tier switches into one column), the **k8s** band with fixed columns `k8s node` → `pod` → `application` → `namespace` (a column no card needs is dropped), and the **owner** band. Every non-k8s trace stop — a host, a router, a neighbourless port with its clients table — sits in the k8s band's last column **below** the k8s cards, so that column reads `namespace / client` (or `client` when nothing on the chart is Kubernetes). Inside every column the cards are ordered by the amount on the traced side (inbound under `destination`, outbound under `source`), largest on top, with the k8s cards and the client cards sorted as two separate stacks; pods and applications of one namespace stay together.
+
 ## Linting & testing
 
 ```sh

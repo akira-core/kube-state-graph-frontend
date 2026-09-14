@@ -201,7 +201,8 @@ describe('TraceView chart', () => {
     expect(screen.getAllByTestId('trace-residual-out').length).toBeGreaterThan(0);
     const headers = screen.getAllByTestId('sankey-column-header').map((el) => el.textContent);
     expect(headers.some((h) => h?.startsWith('Hop 1') === true)).toBe(true);
-    expect(headers).toContain('Trace stop · namespace');
+    expect(headers.some((h) => h?.startsWith('namespace') === true)).toBe(true);
+    expect(headers).toContain('owner');
   });
 
   it('lists a legend row only for the marks actually on the chart', () => {
@@ -424,8 +425,11 @@ describe('TraceView summary and warnings', () => {
     openSummary();
     const warnings = screen.getByTestId('trace-warnings');
     expect(warnings).toHaveTextContent('drawn as backflow');
+    // The showcase's `k8s-source` island feeds its ToR from the k8s band: two band-boundary
+    // backflows, each with its own warning.
+    expect(warnings).toHaveTextContent('across the band boundary');
     expect(warnings).toHaveTextContent('Node "x": skipped, no id');
-    expect(within(warnings).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(warnings).getAllByRole('listitem')).toHaveLength(4);
   });
 
   it('opens folded and draws the hop balance table only once expanded', () => {

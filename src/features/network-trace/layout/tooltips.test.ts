@@ -88,7 +88,7 @@ describe('tooltip and card text', () => {
     expect(table).toHaveLength(1 + (shared.clients?.length ?? 0));
     const text = cardText(shared, m);
     expect(text.label).toBe('未管理小 switch');
-    expect(text.cornerLabel).toBe('port');
+    expect(text.cornerLabel).toBe('3 clients');
     expect(text.extraLines[text.extraLines.length - 1]).toMatch(/^\+/);
     const tip = nodeTooltipLines(shared, m);
     expect(tip.filter((l) => l.startsWith('client '))).toHaveLength(shared.clients?.length ?? 0);
@@ -97,7 +97,7 @@ describe('tooltip and card text', () => {
     expect(single).toBeDefined();
     if (single !== undefined) {
       expect(cardText(single, m).label).toBe('');
-      expect(cardText(single, m).cornerLabel).toBe('port');
+      expect(cardText(single, m).cornerLabel).toBe('client');
       expect(nodeTooltipLines(single, m)).toContain('client 10.42.7.31 · lab-gpu-01 · 網管部 王小明');
     }
   });

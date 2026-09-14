@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { normalizeGraph } from '../../graph-data';
+import { bandOf, isClientPartition } from '../model/bands';
 import { deriveTrace } from '../model/deriveTrace';
 import type { TraceModelOk, TraceNode } from '../model/types';
 import { sum } from '../model/util';
 import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples';
 
 import { layoutTrace, type TraceNodeOrder } from './layoutTrace';
-import { flowOf } from './text';
+import { traceFlowOf } from './text';
 
 function model(sample: TraceSample, opts: { minBps?: number; layout?: 'flat' | 'node' } = {}): TraceModelOk {
   const m = deriveTrace(normalizeGraph(sample.wire).elements, { direction: sample.direction, ...opts });
@@ -108,55 +109,66 @@ describe('layoutTrace geometry', () => {
 });
 
 describe('in-column order (flow)', () => {
-  it('flowOf is max(sum in, sum out) without residuals', () => {
+  it('traceFlowOf is the traced side only: in for destination, out for source, no residuals', () => {
     const m = model(traceSample('classic'));
     const b = m.nodeMap.get('sw-edge-a');
     expect(b).toBeDefined();
     if (b === undefined) {
       return;
     }
-    expect(flowOf(b)).toBe(Math.max(b.tracedIn, b.tracedOut));
+    expect(traceFlowOf(b, 'destination')).toBe(b.tracedIn);
+    expect(traceFlowOf(b, 'source')).toBe(b.tracedOut);
     expect(b.otherIn).toBeGreaterThan(0);
-    expect(flowOf(b)).toBeLessThan(b.tracedIn + b.otherIn + b.tracedOut);
+    expect(traceFlowOf(b, 'destination')).toBeLessThan(b.tracedIn + b.otherIn);
     const om = model(traceSample('client'));
     const owner = om.nodes.find((n) => n.role === 'owner');
     if (owner !== undefined) {
-      expect(flowOf(owner)).toBe(Math.max(sum(owner.inEdges), sum(owner.outEdges)));
+      expect(traceFlowOf(owner, 'destination')).toBe(sum(owner.inEdges));
     }
+    const sm = model(traceSample('k8s-source'));
+    const ns = sm.nodes.find((n) => n.role === 'ns');
+    if (ns !== undefined) {
+      expect(traceFlowOf(ns, 'source')).toBe(sum(ns.outEdges));
+      expect(traceFlowOf(ns, 'source')).toBeGreaterThan(0);
+    }
+    expect(traceFlowOf(m.nodes.find((n) => n.kind === 'anchor') ?? b, 'destination')).toBe(0);
   });
 
-  it('an ungrouped column is monotone non-increasing in flow', () => {
+  it('each ungrouped partition is monotone non-increasing in traced flow', () => {
     let checked = 0;
     for (const { name, model: m } of CORPUS) {
       for (const col of colsOf(m, 'flow')) {
-        const grouped = col.some(
-          (n) =>
-            (n.kind === 'leaf' && n.role === 'pod' && n.namespace !== null) ||
-            n.inEdges.some((e) => e.lateral) ||
-            n.outEdges.some((e) => e.lateral)
-        );
-        if (grouped || col.length < 2) {
-          continue;
-        }
-        const f = col.map(flowOf);
-        for (let i = 1; i < f.length; i += 1) {
-          expect(f[i] ?? 0, `${name}: ${col[i - 1]?.label ?? ''} → ${col[i]?.label ?? ''}`).toBeLessThanOrEqual(
-            (f[i - 1] ?? 0) + 1e-9
+        const parts = [col.filter((n) => !isClientPartition(n)), col.filter(isClientPartition)];
+        for (const part of parts) {
+          const grouped = part.some(
+            (n) =>
+              (n.kind === 'leaf' && (n.role === 'pod' || n.role === 'app') && n.namespace !== null) ||
+              n.inEdges.some((e) => e.lateral) ||
+              n.outEdges.some((e) => e.lateral)
           );
+          if (grouped || part.length < 2) {
+            continue;
+          }
+          const f = part.map((n) => traceFlowOf(n, m.direction));
+          for (let i = 1; i < f.length; i += 1) {
+            expect(f[i] ?? 0, `${name}: ${part[i - 1]?.label ?? ''} → ${part[i]?.label ?? ''}`).toBeLessThanOrEqual(
+              (f[i - 1] ?? 0) + 1e-9
+            );
+          }
+          checked += 1;
         }
-        checked += 1;
       }
     }
     expect(checked).toBeGreaterThan(10);
   });
 
-  it('leaf pods of one namespace stay adjacent', () => {
+  it('leaf pods and applications of one namespace stay adjacent', () => {
     let checked = 0;
     for (const { name, model: m } of CORPUS) {
       for (const col of colsOf(m, 'flow')) {
         const seen = new Map<string, number>();
         col.forEach((n, i) => {
-          if (n.kind !== 'leaf' || n.role !== 'pod' || n.namespace === null) {
+          if (n.kind !== 'leaf' || (n.role !== 'pod' && n.role !== 'app') || n.namespace === null) {
             return;
           }
           const at = seen.get(n.namespace);
@@ -171,6 +183,47 @@ describe('in-column order (flow)', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it('k8s cards sit above the client partition, each partition on one shared top line', () => {
+    let checkedCols = 0;
+    let checkedBoth = 0;
+    for (const { name, model: m } of CORPUS) {
+      const geo = layoutTrace(m);
+      const upperTops: number[] = [];
+      const lowerTops: number[] = [];
+      geo.cols.forEach((col) => {
+        const upper = col.filter((n) => bandOf(n) === 'k8s');
+        const lower = col.filter(isClientPartition);
+        if (upper.length === 0 && lower.length === 0) {
+          return;
+        }
+        checkedCols += 1;
+        const ys = (list: TraceNode[]): number[] => list.map((n) => geo.nodes.get(n.id)?.y ?? Number.NaN);
+        const bottoms = (list: TraceNode[]): number[] =>
+          list.map((n) => (geo.nodes.get(n.id)?.y ?? Number.NaN) + (geo.nodes.get(n.id)?.h ?? 0));
+        if (upper.length > 0) {
+          upperTops.push(Math.min(...ys(upper)));
+        }
+        if (lower.length > 0) {
+          lowerTops.push(Math.min(...ys(lower)));
+        }
+        if (upper.length > 0 && lower.length > 0) {
+          checkedBoth += 1;
+          expect(Math.max(...bottoms(upper)), `${name}: client partition overlaps k8s`).toBeLessThan(
+            Math.min(...ys(lower))
+          );
+        }
+      });
+      for (const t of upperTops) {
+        expect(t, `${name}: k8s tops differ`).toBeCloseTo(upperTops[0] ?? t, 6);
+      }
+      for (const t of lowerTops) {
+        expect(t, `${name}: client tops differ`).toBeCloseTo(lowerTops[0] ?? t, 6);
+      }
+    }
+    expect(checkedCols).toBeGreaterThan(10);
+    expect(checkedBoth).toBeGreaterThan(0);
   });
 
   it('dci-tier keeps the DCI between its producers and its consumers', () => {
@@ -260,11 +313,12 @@ describe('column captions', () => {
     const labels = layoutTrace(model(traceSample('classic'))).columns.map((c) => c.label);
     expect(labels[0]).toBe('Trace start (in)');
     expect(labels[1]).toBe('Hop 1');
-    expect(labels[labels.length - 1]).toBe('Trace stop');
+    expect(labels[labels.length - 1]).toBe('client');
     const src = layoutTrace(model(traceSample('k8s-source'))).columns.map((c) => c.label);
-    expect(src[0]).toBe('Trace stop · namespace');
-    expect(src[src.length - 1]).toBe('Trace start (out)');
+    expect(src).toEqual(['namespace', 'pod', 'k8s node', 'Hop 3', 'Trace start (out)']);
     const client = layoutTrace(model(traceSample('client'))).columns.map((c) => c.label);
-    expect(client[client.length - 1]).toBe('Trace stop · owner');
+    expect(client).toEqual(['Trace start (in)', 'Hop 1', 'client', 'owner']);
+    const k8s = layoutTrace(model(traceSample('k8s'))).columns.map((c) => c.label);
+    expect(k8s).toEqual(['Trace start (in)', 'Hop 1', 'k8s node', 'pod', 'namespace / client']);
   });
 });

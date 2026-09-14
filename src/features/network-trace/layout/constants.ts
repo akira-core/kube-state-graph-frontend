@@ -35,3 +35,8 @@ export const CLIENT_COLS: readonly ClientCol[] = [
 export const CLIENT_CELL_W = 6.1;
 export const CLIENT_COL_GAP = 2;
 export const CLIENT_PAD = 10;
+
+/** Extra vertical room between the k8s partition and the client partition of a k8s-band column. */
+export const BAND_GAP = 56;
+/** Extra horizontal room where one band ends and the next begins (on top of COL_GAP). */
+export const BAND_COL_GAP = 48;

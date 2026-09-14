@@ -6,6 +6,7 @@ import { normalizeGraph } from '../../graph-data';
 import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples';
 
 import { hopBalanceRows, namespaceAggs } from './aggregates';
+import { bandOf, isClientPartition, k8sSubcol } from './bands';
 import { deriveTrace, resolveTraceDirection } from './deriveTrace';
 import { hoverPath } from './hoverPath';
 import type { TraceModelOk, TraceNode } from './types';
@@ -317,6 +318,90 @@ describe('pods, applications and namespaces', () => {
       expect(card.inEdges).toHaveLength(0);
     }
     expect(model.nodes.find((n) => n.kind === 'anchor')?.col).toBe(model.maxCol);
+  });
+});
+
+describe('bands: switch | k8s node → pod → application → namespace / client | owner', () => {
+  // `|| 0` folds a -0 from the source-trace sign flip back to +0 for `toBe`.
+  const colOf = (m: TraceModelOk, pick: (n: TraceNode) => boolean): number[] =>
+    [...new Set(m.nodes.filter(pick).map((n) => n.col || 0))].sort((a, b) => a - b);
+
+  it.each(TRACE_SAMPLES.map((s) => [s.key, s] as const))('%s: every band takes its own columns', (_k, sample) => {
+    const m = derive(sample);
+    const sign = m.direction === 'destination' ? 1 : -1;
+    const sw = colOf(m, (n) => bandOf(n) === 'switch').map((c) => c * sign || 0);
+    const chain = ['node', 'pod', 'app', 'ns'].map((s) =>
+      colOf(m, (n) => k8sSubcol(n) === s).map((c) => c * sign || 0)
+    );
+    const client = colOf(m, isClientPartition).map((c) => c * sign || 0);
+    const owner = colOf(m, (n) => bandOf(n) === 'owner').map((c) => c * sign || 0);
+    // Each k8s sub-column is one column, strictly after every switch column and in chain order.
+    let prev = Math.max(...sw, Number.NEGATIVE_INFINITY);
+    for (const cols of chain) {
+      expect(cols.length).toBeLessThanOrEqual(1);
+      const c = cols[0];
+      if (c !== undefined) {
+        expect(c).toBeGreaterThan(prev);
+        prev = c;
+      }
+    }
+    // Clients share the last k8s column (or stand alone right after the switches).
+    expect(client.length).toBeLessThanOrEqual(1);
+    const lastK8s = chain.flat().pop();
+    const c0 = client[0];
+    if (c0 !== undefined) {
+      expect(c0).toBe(lastK8s ?? Math.max(...sw) + 1);
+      prev = Math.max(prev, c0);
+    }
+    expect(owner.length).toBeLessThanOrEqual(1);
+    const o0 = owner[0];
+    if (o0 !== undefined) {
+      expect(o0).toBe(prev + 1);
+    }
+    // Columns are dense from 0.
+    const all = colOf(m, () => true);
+    expect(all[0]).toBe(0);
+    expect(all[all.length - 1]).toBe(all.length - 1);
+  });
+
+  it('k8s: the host port sits in the namespace column, the k8s nodes keep their own', () => {
+    const m = derive(traceSample('k8s'));
+    const ns = m.nodes.filter((n) => n.role === 'ns');
+    expect(ns.length).toBeGreaterThan(0);
+    expect(node(m, 'srv-log-01').col).toBe(ns[0]?.col);
+    expect(node(m, 'node-w-11').col).toBe(node(m, 'sw-tor-k8s').col + 1);
+    expect(node(m, 'ingest-7d9c').col).toBe(node(m, 'node-w-11').col + 1);
+    expect(m.warnings.some((w) => w.includes('band boundary'))).toBe(false);
+  });
+
+  it('a k8s node feeding a switch back runs against the bands: backflow with a warning', () => {
+    const wire = {
+      elements: {
+        nodes: [
+          N({
+            id: 'sw1',
+            type: 'switch',
+            name: 'SW 1',
+            investigation: { iface: 'xe-0/0/1', delta_bps: 3e9, direction: 'in' },
+          }),
+          N({ id: 'sw2', type: 'switch', name: 'SW 2' }),
+          N({ id: 'k1', type: 'node', name: 'k1' }),
+        ],
+        edges: [
+          E({ id: 'e1', type: 'network-flow', source: 'sw1', target: 'k1', metrics: { delta_bps: 3e9 } }),
+          E({ id: 'e2', type: 'network-flow', source: 'k1', target: 'sw2', metrics: { delta_bps: 1e9 } }),
+        ],
+      },
+    };
+    const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
+    expect(m.ok).toBe(true);
+    if (!m.ok) {
+      return;
+    }
+    const back = m.edges.find((e) => e.fromId === 'k1' && e.toId === 'sw2');
+    expect(back?.backward).toBe(true);
+    expect(node(m, 'sw2').col).toBeLessThan(node(m, 'k1').col);
+    expect(m.warnings.some((w) => w.includes('band boundary') && w.includes('k1 → SW 2'))).toBe(true);
   });
 });
 

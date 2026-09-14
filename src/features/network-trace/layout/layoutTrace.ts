@@ -13,12 +13,13 @@ import {
   WRAPPER_PAD,
   type ColumnHeader,
 } from '../../sankey-canvas';
+import { bandOf, isClientPartition, type TraceBand } from '../model/bands';
 import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, SEP } from '../model/util';
 
-import { ANCHOR_W, OWN_T, PAD_SIDE } from './constants';
+import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, OWN_T, PAD_SIDE } from './constants';
 import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry, WrapperGeom } from './geometry';
-import { ANCHOR_MIN_H, cardText, flowOf, hopHeaderH, leafCardH, leafCardW, resIn, resOut } from './text';
+import { ANCHOR_MIN_H, cardText, hopHeaderH, leafCardH, leafCardW, resIn, resOut, traceFlowOf } from './text';
 import { colCaption, wrapperColCaption } from './tooltips';
 
 /** In-column order: `flow` (larger flow on top, default) or `barycenter` (fewest crossings). */
@@ -38,29 +39,36 @@ interface SortKeys {
 }
 type KeyOf = (n: TraceNode) => SortKeys;
 
-// Barycenter: align to the upstream centre. Pod leaves group by namespace on the group's
-// mean preference so a namespace stays contiguous; ties break on first appearance.
+/** Pod and application cards group by namespace so a namespace stays contiguous in its column. */
+function nsGroupKey(n: TraceNode): string | null {
+  return n.kind === 'leaf' && (n.role === 'pod' || n.role === 'app') && n.namespace !== null ? n.namespace : null;
+}
+
+// Barycenter: align to the upstream centre. Pod / application leaves group by namespace on
+// the group's mean preference so a namespace stays contiguous; ties break on first appearance.
 function sortColBarycenter(col: TraceNode[], K: KeyOf): void {
   const nsAgg = new Map<string, { s: number; c: number; idx: number }>();
   let nsSeq = 0;
   for (const n of col) {
-    if (n.kind !== 'leaf' || n.role !== 'pod' || n.namespace === null) {
+    const ns = nsGroupKey(n);
+    if (ns === null) {
       continue;
     }
-    let a = nsAgg.get(n.namespace);
+    let a = nsAgg.get(ns);
     if (a === undefined) {
       nsSeq += 1;
       a = { s: 0, c: 0, idx: nsSeq };
-      nsAgg.set(n.namespace, a);
+      nsAgg.set(ns, a);
     }
     a.s += K(n).pref;
     a.c += 1;
   }
   for (const n of col) {
-    if (n.kind !== 'leaf' || n.role !== 'pod' || n.namespace === null) {
+    const ns = nsGroupKey(n);
+    if (ns === null) {
       continue;
     }
-    const a = mustGet(nsAgg, n.namespace, 'namespace');
+    const a = mustGet(nsAgg, ns, 'namespace');
     K(n).nsPref = a.s / a.c;
     K(n).nsIdx = a.idx;
   }
@@ -80,13 +88,14 @@ interface FlowKeys {
   flow: number;
 }
 
-// Flow: larger on top. The first two keys are GROUP-level so a namespace's pods and a
-// same-column lateral chain stay contiguous; inside a chain producers sit above consumers
-// (depth); ties fall back to the barycenter preference, then subOrder, then appearance.
+// Flow: larger traced amount on top. The first two keys are GROUP-level so a namespace's
+// pods / applications and a same-column lateral chain stay contiguous; inside a chain
+// producers sit above consumers (depth); ties fall back to the barycenter preference, then
+// subOrder, then appearance.
 function sortColByFlow(col: TraceNode[], model: TraceModelOk, K: KeyOf): void {
   const F = new Map<string, FlowKeys>();
   for (const n of col) {
-    const f = flowOf(n);
+    const f = traceFlowOf(n, model.direction);
     F.set(n.id, { gFlow: f, gIdx: 0, depth: 0, flow: f });
   }
   const lat = (n: TraceNode): TraceEdge[] =>
@@ -130,8 +139,9 @@ function sortColByFlow(col: TraceNode[], model: TraceModelOk, K: KeyOf): void {
   const NS = `ns${SEP}`;
   const LAT = `lat${SEP}`;
   const gk = (n: TraceNode): string | null => {
-    if (n.kind === 'leaf' && n.role === 'pod' && n.namespace !== null) {
-      return NS + n.namespace;
+    const ns = nsGroupKey(n);
+    if (ns !== null) {
+      return NS + ns;
     }
     const c = chain.get(n.id);
     return c !== undefined ? LAT + c : null;
@@ -183,7 +193,9 @@ function sortColByFlow(col: TraceNode[], model: TraceModelOk, K: KeyOf): void {
 
 /**
  * Pure layout: model in, geometry out, the model untouched. Slot stacks, residual slots,
- * column x, in-column order, frames, lateral bulges and backflow lanes.
+ * column x (with a wider gap between bands), in-column order (the k8s band partitioned
+ * k8s-above / clients-below, every part by traced flow), frames, lateral bulges and
+ * backflow lanes.
  */
 export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}): TraceGeometry {
   const order = opts.order ?? DEFAULT_TRACE_ORDER;
@@ -280,7 +292,10 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     cols[n.col] = list;
   }
   const wFlow = new Map<string, number>(
-    model.wrappers.map((w) => [w.id, w.podIds.reduce((t, id) => t + flowOf(mustGet(model.nodeMap, id, 'pod')), 0)])
+    model.wrappers.map((w) => [
+      w.id,
+      w.podIds.reduce((t, id) => t + traceFlowOf(mustGet(model.nodeMap, id, 'pod'), model.direction), 0),
+    ])
   );
   const wrappers: WrapperGeom[] = [...model.wrappers]
     .sort(
@@ -299,11 +314,24 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     podCol = cols.length;
     cols[podCol] = [];
   }
+  // The band a column belongs to: its first card's (the client partition shares the k8s
+  // band's last column); a frames-only column is the pod column, so k8s.
+  const colBand = (ci: number): TraceBand => {
+    const first = (cols[ci] ?? [])[0];
+    if (first === undefined) {
+      return 'k8s';
+    }
+    const b = bandOf(first);
+    return b === 'client' ? 'k8s' : b;
+  };
   let x = PAD_SIDE;
   const colX: number[] = [];
   const colW: number[] = [];
   for (let c = 0; c < cols.length; c += 1) {
     const list = cols[c] ?? [];
+    if (c > 0 && colBand(c) !== colBand(c - 1)) {
+      x += BAND_COL_GAP;
+    }
     let w = list.reduce((m, n) => Math.max(m, N(n.id).w), CARD_W);
     if (c === podCol && wrappers.length > 0) {
       const iw = list.reduce((m, n) => (n.k8sNode !== null ? Math.max(m, N(n.id).w) : m), 0);
@@ -318,10 +346,67 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   }
   const totalW = x - COL_GAP + PAD_SIDE;
 
+  // Stack a list of cards from y0 (frames first in the pod column), appending them to `out`
+  // in drawing order; returns the y below the last card plus one gap.
+  const stack = (list: readonly TraceNode[], y0: number, ci: number, out: TraceNode[]): number => {
+    let y = y0;
+    if (ci === podCol && wrappers.length > 0) {
+      const byW = new Map<string, TraceNode[]>();
+      const loose: TraceNode[] = [];
+      for (const n of list) {
+        if (n.k8sNode !== null) {
+          const l = byW.get(n.k8sNode) ?? [];
+          l.push(n);
+          byW.set(n.k8sNode, l);
+        } else {
+          loose.push(n);
+        }
+      }
+      for (const wg of wrappers) {
+        const pods = byW.get(wg.wrapper.id) ?? [];
+        wg.x = colX[ci] ?? PAD_SIDE;
+        wg.w = colW[ci] ?? CARD_W;
+        wg.y = y;
+        let yy = y + WRAPPER_HEADER_H;
+        for (const n of pods) {
+          N(n.id).y = yy;
+          yy += N(n.id).h + V_GAP;
+          out.push(n);
+        }
+        wg.h = pods.length > 0 ? yy - V_GAP + WRAPPER_PAD - y : WRAPPER_HEADER_H + WRAPPER_PAD;
+        y += wg.h + V_GAP;
+      }
+      for (const n of loose) {
+        N(n.id).y = y;
+        y += N(n.id).h + V_GAP;
+        out.push(n);
+      }
+      return y;
+    }
+    for (const n of list) {
+      N(n.id).y = y;
+      y += N(n.id).h + V_GAP;
+      out.push(n);
+    }
+    return y;
+  };
+
+  // The k8s band's two partitions share one top line each across all of its columns: the
+  // k8s cards start together and the client cards start below the tallest k8s partition.
+  let maxK8sH = 0;
+  for (let ci = 0; ci < cols.length; ci += 1) {
+    if (colBand(ci) === 'k8s') {
+      const upper = (cols[ci] ?? []).filter((n) => !isClientPartition(n));
+      maxK8sH = Math.max(maxK8sH, stack(upper, 0, ci, []) - V_GAP);
+    }
+  }
+
   // Column y: order by upstream centre, then align the column to its upstream barycentre.
+  // The k8s band is pinned instead: its top is the top of the switch column it follows.
   const keys = new Map<string, SortKeys>();
   const K: KeyOf = (n) => mustGet(keys, n.id, 'sort key');
   const cyOf = new Map<string, number>();
+  let lastSwitchTop = 0;
   for (let ci = 0; ci < cols.length; ci += 1) {
     const col = cols[ci] ?? [];
     col.forEach((n, i) => {
@@ -348,53 +433,29 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
         K(n).pref = lateral.reduce((s, e) => s + K(mustGet(model.nodeMap, e.fromId, 'node')).pref, 0) / lateral.length;
       }
     }
-    if (order === 'barycenter') {
-      sortColBarycenter(col, K);
-    } else {
-      sortColByFlow(col, model, K);
-    }
-    let y = 0;
-    if (ci === podCol && wrappers.length > 0) {
-      const byW = new Map<string, TraceNode[]>();
-      const loose: TraceNode[] = [];
-      for (const n of col) {
-        if (n.k8sNode !== null) {
-          const list = byW.get(n.k8sNode) ?? [];
-          list.push(n);
-          byW.set(n.k8sNode, list);
-        } else {
-          loose.push(n);
-        }
-      }
-      col.length = 0;
-      for (const wg of wrappers) {
-        const pods = byW.get(wg.wrapper.id) ?? [];
-        wg.x = colX[ci] ?? PAD_SIDE;
-        wg.w = colW[ci] ?? CARD_W;
-        wg.y = y;
-        let yy = y + WRAPPER_HEADER_H;
-        for (const n of pods) {
-          N(n.id).y = yy;
-          yy += N(n.id).h + V_GAP;
-          col.push(n);
-        }
-        wg.h = pods.length > 0 ? yy - V_GAP + WRAPPER_PAD - y : WRAPPER_HEADER_H + WRAPPER_PAD;
-        y += wg.h + V_GAP;
-      }
-      for (const n of loose) {
-        N(n.id).y = y;
-        y += N(n.id).h + V_GAP;
-        col.push(n);
-      }
-    } else {
-      for (const n of col) {
-        N(n.id).y = y;
-        y += N(n.id).h + V_GAP;
+    // Partition first — k8s cards above, non-k8s trace stops below — then order each part.
+    const upper = col.filter((n) => !isClientPartition(n));
+    const lower = col.filter(isClientPartition);
+    for (const part of [upper, lower]) {
+      if (order === 'barycenter') {
+        sortColBarycenter(part, K);
+      } else {
+        sortColByFlow(part, model, K);
       }
     }
-    const blockH = Math.max(0, y - V_GAP);
+    const band = colBand(ci);
+    const top = band === 'k8s' ? lastSwitchTop : 0;
+    col.length = 0;
+    let y = stack(upper, top, ci, col);
+    if (lower.length > 0) {
+      if (band === 'k8s') {
+        y = top + maxK8sH + (maxK8sH > 0 ? BAND_GAP : 0);
+      }
+      y = stack(lower, y, ci, col);
+    }
+    const blockH = Math.max(0, y - V_GAP - top);
     const prefAvg = col.reduce((s, n) => s + K(n).pref, 0) / (col.length || 1);
-    const shift = col.length > 0 && ci > 0 ? prefAvg - blockH / 2 : 0;
+    const shift = band !== 'k8s' && col.length > 0 && ci > 0 ? prefAvg - blockH / 2 : 0;
     for (const n of col) {
       const g = N(n.id);
       g.y += shift;
@@ -404,6 +465,9 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
       for (const wg of wrappers) {
         wg.y += shift;
       }
+    }
+    if (band === 'switch' && col.length > 0) {
+      lastSwitchTop = Math.min(...col.map((n) => N(n.id).y));
     }
   }
 
@@ -431,9 +495,9 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   }
   let totalH = maxY + dy + PAD_BOTTOM;
 
-  // Namespace grouping (and owner cards) reorder a column away from the order a hop's
-  // ports were declared in; re-sort those slots by the far end's y so ribbons do not cross.
-  // Only the picked slots move; the rest (residuals included) stay put.
+  // The band partitions, namespace grouping and owner cards reorder a column away from the
+  // order a hop's ports were declared in; re-sort those slots by the far end's y so ribbons
+  // do not cross. Only the picked slots move; the rest (residuals included) stay put.
   const farOf = (sl: Slot): TraceNode => {
     const e = sl.edge;
     if (e === undefined) {
@@ -463,6 +527,12 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
       }
     });
   };
+  for (const n of nodes) {
+    const nb = bandOf(n);
+    for (const slots of [N(n.id).leftSlots, N(n.id).rightSlots]) {
+      reorderSlots(slots, (f) => bandOf(f) !== nb);
+    }
+  }
   for (const n of nodes) {
     if (n.kind !== 'node' && n.role !== 'ns' && n.role !== 'app') {
       continue;
@@ -565,7 +635,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     if (col.length > 0) {
       columns.push({ x: cx, label: colCaption(col, model.direction) });
     } else if (ci === podCol && wrappers.length > 0) {
-      columns.push({ x: cx, label: wrapperColCaption(ci) });
+      columns.push({ x: cx, label: wrapperColCaption() });
     }
   });
 

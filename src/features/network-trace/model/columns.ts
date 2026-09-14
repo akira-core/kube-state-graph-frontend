@@ -1,17 +1,88 @@
 import { formatBitsPerSec } from '../../../shared/format/measurements';
 
+import { bandOf, isClientPartition, K8S_SUBCOLS, k8sSubcol } from './bands';
 import type { BuildCtx } from './ctx';
+import type { TraceEdge, TraceNode } from './types';
 import { mustGet, SEP } from './util';
 
 /**
- * Step 5: columns by longest path, packet direction left → right. Nodes sharing a `tier`
- * act as one super-node: the group takes one column and edges inside it do not take part
- * in the ordering, so a same-tier interconnect (bdr ↔ dci) never splits a tier into two
- * columns. Untiered nodes are groups of one, so with no tiers this IS plain longest path.
+ * Step 5: columns. The drawing is three bands (see `bands.ts`): the switch band is laid out
+ * by longest path with tier locking (5a–5d, on the switch subgraph only); the k8s band is a
+ * fixed chain of sub-columns and the owner band one column after it (5h). Under a
+ * destination trace the bands run start → k8s → owner left to right; under a source trace
+ * the k8s and owner bands take negative columns so packets still flow left → right and the
+ * start hop keeps the far right (`normalizeColumns` pulls the minimum back to 0).
  */
 export function assignColumns(ctx: BuildCtx): void {
-  const { nodes, edges, warnings } = ctx;
+  const { nodes, edges, direction } = ctx;
   const ids = [...ctx.order];
+  const nodeOf = (id: string): TraceNode => mustGet(nodes, id, 'node');
+  const switchIds = ids.filter((id) => bandOf(nodeOf(id)) === 'switch');
+  const switchSet = new Set(switchIds);
+  const switchEdges = edges.filter((e) => switchSet.has(e.fromId) && switchSet.has(e.toId));
+  layerSwitchBand(ctx, switchIds, switchEdges);
+
+  // 5h. The k8s band: only the sub-columns that hold a card take a column; the client
+  // partition shares the last of them (or stands alone when nothing is k8s). Owners follow.
+  const present = new Set<string>();
+  let hasClient = false;
+  for (const id of ids) {
+    const n = nodeOf(id);
+    const s = k8sSubcol(n);
+    if (s !== null) {
+      present.add(s);
+    }
+    hasClient = hasClient || isClientPartition(n);
+  }
+  const subs: string[] = K8S_SUBCOLS.filter((s) => present.has(s));
+  const nSub = Math.max(subs.length, hasClient ? 1 : 0);
+  let maxSwitchCol = -1;
+  for (const id of switchIds) {
+    maxSwitchCol = Math.max(maxSwitchCol, nodeOf(id).col);
+  }
+  for (const id of ids) {
+    const n = nodeOf(id);
+    const band = bandOf(n);
+    if (band === 'switch') {
+      continue;
+    }
+    let idx: number;
+    if (band === 'owner') {
+      idx = nSub;
+    } else if (band === 'client') {
+      idx = nSub - 1;
+    } else {
+      idx = subs.indexOf(k8sSubcol(n) ?? 'node');
+    }
+    n.col = direction === 'destination' ? maxSwitchCol + 1 + idx : -(idx + 1);
+  }
+
+  // 5e. Still-reversed edges (decreasing column) are backflow; 5f. same-column edges are
+  // lateral interconnects, drawn as right-side arcs. An edge crossing a band boundary the
+  // wrong way never took part in the vote, so it gets its warning here.
+  for (const e of edges) {
+    const from = nodeOf(e.fromId);
+    const to = nodeOf(e.toId);
+    e.backward = from.col > to.col;
+    e.lateral = from.col === to.col;
+    if (e.backward && bandOf(from) !== bandOf(to)) {
+      ctx.warnings.push(
+        `${from.label} → ${to.label} runs back toward the trace start across the band boundary (${formatBitsPerSec(e.bps)}); drawn as backflow.`
+      );
+    }
+  }
+
+  assignTierSubOrder(ctx, ids);
+}
+
+/**
+ * 5a–5d on one subgraph: nodes sharing a `tier` act as one super-node — the group takes
+ * one column and edges inside it do not take part in the ordering, so a same-tier
+ * interconnect (bdr ↔ dci) never splits a tier into two columns. Untiered nodes are
+ * groups of one, so with no tiers this IS plain longest path.
+ */
+function layerSwitchBand(ctx: BuildCtx, ids: readonly string[], edges: readonly TraceEdge[]): void {
+  const { nodes, warnings } = ctx;
   const groupOf = new Map<string, string>();
   const groupIds: string[] = [];
   for (const id of ids) {
@@ -178,19 +249,15 @@ export function assignColumns(ctx: BuildCtx): void {
   for (const id of ids) {
     mustGet(nodes, id, 'node').col = mustGet(gcol, gOf(id), 'group');
   }
+}
 
-  // 5e. Still-reversed edges (decreasing column) are backflow; 5f. same-column edges are
-  // lateral interconnects, drawn as right-side arcs.
-  for (const e of edges) {
-    const from = mustGet(nodes, e.fromId, 'node');
-    const to = mustGet(nodes, e.toId, 'node');
-    e.backward = from.col > to.col;
-    e.lateral = from.col === to.col;
-  }
-
-  // 5g. Topological sub-order inside a tier group — for layout only: a node fed only from
-  // its own column has no cross-column parent to align to, and the layout uses subOrder
-  // to keep producers above consumers so arcs do not cross.
+/**
+ * 5g. Topological sub-order inside a tier group — for layout only: a node fed only from
+ * its own column has no cross-column parent to align to, and the layout uses subOrder
+ * to keep producers above consumers so arcs do not cross.
+ */
+function assignTierSubOrder(ctx: BuildCtx, ids: readonly string[]): void {
+  const { nodes, edges } = ctx;
   for (const id of ids) {
     mustGet(nodes, id, 'node').subOrder = 0;
   }

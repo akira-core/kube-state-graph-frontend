@@ -197,12 +197,12 @@ For every leaf with `clients`, the model SHALL derive an **owner column** after 
 | Clients of more than one owner, or any client without an owner | **ownership line**: dashed, unmetered, no value label | splitting one port reading among owners would be an estimate |
 | No client has an owner                                         | none                                                  | nothing to aggregate                                         |
 
-An owner card is a `SankeyCard` with the owner string as title; its first line is the **metered total** (metered ribbons only), suffixed `(partial ports)` when any of its ports is mixed, or reading `metered at port` when none of its ports is metered — it MUST never print a `0`; its second line is `N clients · M ports`. A leaf that gained an owner layer changes its role text from `trace stop` to `port`. The owner layer sits after the leaves and MUST NOT enter any hop's balance. Owner cards are not locatable.
+An owner card is a `SankeyCard` with the owner string as title; its first line is the **metered total** (metered ribbons only), suffixed `(partial ports)` when any of its ports is mixed, or reading `metered at port` when none of its ports is metered — it MUST never print a `0`; its second line is `N clients · M ports`. A leaf that gained an owner layer keeps its client-count role text (`client` / `N clients`); the owner band beside it says the rest. The owner layer is the owner band after the k8s band and MUST NOT enter any hop's balance. Owner cards are not locatable.
 
 #### Scenario: A single-owner port meters its owner
 
 - **WHEN** port `A` (`+4 Gbps`) has two clients both owned by `Network Ops`
-- **THEN** a metered ribbon of `+4 Gbps` runs from `A` to the `Network Ops` card, whose first line reads `+4 Gbps` and second `2 clients · 1 port`; `A`'s role text reads `port`
+- **THEN** a metered ribbon of `+4 Gbps` runs from `A` to the `Network Ops` card, whose first line reads `+4 Gbps` and second `2 clients · 1 port`; `A`'s role text reads `2 clients`
 
 #### Scenario: A mixed port draws ownership lines only
 
@@ -212,7 +212,7 @@ An owner card is a `SankeyCard` with the owner string as title; its first line i
 #### Scenario: No known owner, no owner layer
 
 - **WHEN** a port's clients all lack `owner`
-- **THEN** no owner card is created for it, its role text stays `trace stop`, and the column caption of the owner column (if other ports created one) is unaffected
+- **THEN** no owner card is created for it, its role text stays its client count, and the owner band (if other ports created one) is unaffected
 
 ### Requirement: Derived pod, application and namespace cards
 
@@ -235,11 +235,23 @@ A **leaf pod** is a `pod` kind with no onward flow edge (under `destination`: no
 - **WHEN** pod `envoy-0` receives `+3 Gbps` and forwards `+3 Gbps` to `pod/app-1`
 - **THEN** `envoy-0` is an ordinary hop box with no derived link and no residual, and only `app-1`'s namespace is a terminus card
 
-### Requirement: Columns, tier locking, cycle breaking, backward and lateral ribbons
+### Requirement: Bands, columns, tier locking, cycle breaking, backward and lateral ribbons
 
-Column assignment is the longest path from the start hop: every drawn edge forces its downstream node at least one column after its upstream node. Nodes sharing a `labels.tier` value MUST be locked into one column (treated as one super node for the longest path; edges inside a tier do not participate); `netapp-node`, `netapp-aggr`, `netapp-svm` and `pvc` MUST take their kind as tier when the label is absent, while `switch`, `node` and `pod` MUST NOT. When two groups carry flow in both directions, the direction with the smaller total is marked **backward**, excluded from ordering, and warned; a cycle over three or more groups is broken by dropping the smallest-flow direction on it from ordering, with a warning; a topology that still cannot be ordered warns that a cycle is suspected. Backward ribbons are drawn with the `sankey.traceBackward` gradient; edges between two nodes of one column are **lateral** ribbons drawn as an arc on the column's right side with an arrowhead at the downstream end; both use the shared thickness scale and pass through conservation as ordinary traced amounts.
+The drawing is three **bands** in trace order — the **switch** band (the anchor and every switch hop), the **k8s** band (the fixed chain `k8s node` → `pod` → `application` → `namespace`, each a column only when some card needs it) and the **owner** band (one column). Under a `destination` trace the bands run left → right from the start; under a `source` trace the k8s and owner bands sit to the LEFT of the switch band so packets still flow left → right and the start hop keeps the far right. Every non-k8s trace stop (a `host`, a `router`, a neighbourless port, any leaf kind) is placed in the k8s band's **last** column as its lower partition, below every k8s card of that column (the "client partition"); when nothing on the chart is Kubernetes that column holds the clients alone. The two partitions of the k8s band share one top line each across its columns: the k8s cards start together, and the client cards start together below the tallest k8s partition.
 
-Column captions read `hop N · <kind>` when a column holds one non-switch kind, `hop N` otherwise, `hop N · pod` / `hop N · application` / `hop N · port` for those columns, and `trace stop · namespace` / `trace stop · owner` for the terminus columns; without an anchor the first column is `hop 0`. The vertical order inside a column is `Flow` by default (see "Layout and order switches").
+Inside the switch band, column assignment is the longest path from the start hop: every drawn edge between two switch-band nodes forces its downstream node at least one column after its upstream node. Nodes sharing a `labels.tier` value MUST be locked into one column (treated as one super node for the longest path; edges inside a tier do not participate); `netapp-node`, `netapp-aggr`, `netapp-svm` and `pvc` MUST take their kind as tier when the label is absent, while `switch`, `node` and `pod` MUST NOT. When two groups carry flow in both directions, the direction with the smaller total is marked **backward**, excluded from ordering, and warned; a cycle over three or more groups is broken by dropping the smallest-flow direction on it from ordering, with a warning; a topology that still cannot be ordered warns that a cycle is suspected. An edge that runs from the k8s band back into the switch band takes no part in the ordering, is backward, and is warned as crossing the band boundary. Backward ribbons are drawn with the `sankey.traceBackward` gradient; edges between two nodes of one column are **lateral** ribbons drawn as an arc on the column's right side with an arrowhead at the downstream end; both use the shared thickness scale and pass through conservation as ordinary traced amounts.
+
+Column captions read `Trace start (in)` / `Trace start (out)` for the anchor column and `Hop N` (`Hop N · <kind>` when the column holds one non-switch hop kind) in the switch band; `k8s node`, `pod` (`node / pod` under the `Node` layout), `application` and `namespace` in the k8s band, the last of them suffixed ` / client` when the client partition is present, and plain `client` when the column holds no k8s card; and `owner` for the owner band. Without an anchor the first switch column is `Hop 0`. The vertical order inside a column is `Flow` by default (see "Layout and order switches").
+
+#### Scenario: Three bands under a destination trace
+
+- **WHEN** the start ToR feeds two k8s nodes whose pods carry namespaces, and also a host port with clients owned by `Network Ops`
+- **THEN** the columns read `Trace start (in)`, `Hop 1`, `k8s node`, `pod`, `namespace / client`, `owner`; the host port sits in the `namespace / client` column below every namespace card; and the `Network Ops` card is the only card of the last column
+
+#### Scenario: Three bands under a source trace
+
+- **WHEN** the same body is walked as a `source` trace
+- **THEN** the columns read `namespace`, `pod`, `k8s node`, `Hop 1`, `Trace start (out)`, with the ribbons still running left → right
 
 #### Scenario: A tier stays in one column
 
@@ -257,7 +269,7 @@ The control bar SHALL provide `Layout` (`Flat` default | `Node`) and `Order` (`F
 
 Under `Node`, every Kubernetes `node` that is touched only by placement edges becomes a `SankeyWrapperBox` in the pod column around the pods its placement edges name; wrappers are ordered by node label ascending (`localeCompare`), unscheduled pods sit below every wrapper, and a wrapper's border takes the worst status of the node and its member pods. A wrapper is not a graph node: it has no edges, no column of its own and no residuals; ribbons attach to the pod cards. Its title row is locatable for the node id.
 
-Under `Flow`, a node's rank is `max(sum of inbound ribbons, sum of outbound ribbons)` **excluding residuals**, descending; leaf pods of one namespace stay adjacent (groups ordered by group total), wrappers partition the pod column first, a lateral chain stays adjacent with the producer above, and equal ranks fall back to the upstream barycenter. `Barycenter` orders purely by the upstream barycenter.
+Under `Flow`, a node's rank is the amount on its **traced side** — the sum of its inbound ribbons under a `destination` trace, of its outbound ribbons under a `source` trace — **excluding residuals**, descending; leaf pods and application cards of one namespace stay adjacent (groups ordered by group total), wrappers partition the pod column first, a lateral chain stays adjacent with the producer above, and equal ranks fall back to the upstream barycenter. `Barycenter` orders purely by the upstream barycenter. Both orders apply to the k8s partition and the client partition of a column separately: the client cards are always below the k8s cards.
 
 #### Scenario: Node layout wraps pods
 

@@ -1,4 +1,5 @@
 import { formatBitsPerSec, formatBytes, formatDeltaBps } from '../../../shared/format/measurements';
+import { bandOf, isClientPartition, k8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
 import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
 import { mustGet, sum } from '../model/util';
@@ -167,10 +168,16 @@ export function residualTooltipLines(n: TraceNode, side: 'in' | 'out'): string[]
 }
 
 /** The caption of a column holding only frames (every pod hidden but the root's). */
-export function wrapperColCaption(ci: number): string {
-  return `Hop ${String(ci)} · node / pod`;
+export function wrapperColCaption(): string {
+  return 'node / pod';
 }
 
+/**
+ * Column captions by band: the switch band counts hops (`Trace start`, `Hop 1`, …); the
+ * k8s band names its sub-column (`k8s node`, `pod`, `application`, `namespace`), with
+ * ` / client` appended when the lower partition holds trace stops and plain `client` when
+ * nothing in the column is k8s; the owner band is `owner`.
+ */
 export function colCaption(col: readonly TraceNode[], direction: TraceDirection): string {
   const first = col[0];
   if (first === undefined) {
@@ -182,31 +189,30 @@ export function colCaption(col: readonly TraceNode[], direction: TraceDirection)
   if (kinds.has('anchor') && col.length === 1) {
     return direction === 'destination' ? 'Trace start (in)' : 'Trace start (out)';
   }
-  if (kinds.has('node')) {
+  const band = bandOf(first);
+  if (band === 'switch') {
     const role = first.role;
     const same = role !== 'switch' && col.every((n) => n.kind === 'node' && n.role === role);
     return `Hop ${String(first.col)}${same ? ` · ${KIND_LABEL[role] ?? role}` : ''}`;
   }
-  if (col.every((n) => n.role === 'owner')) {
-    return 'Trace stop · owner';
+  if (band === 'owner') {
+    return 'owner';
   }
-  if (col.every((n) => n.kind === 'leaf' && n.role === 'leaf' && n.ownerLinked)) {
-    return `Hop ${String(first.col)} · port`;
+  const k8s = col.find((n) => !isClientPartition(n));
+  const hasClient = col.some(isClientPartition);
+  if (k8s === undefined) {
+    return 'client';
   }
-  if (col.every((n) => n.role === 'ns')) {
-    return 'Trace stop · namespace';
-  }
-  if (col.some((n) => n.k8sNode !== null)) {
-    return `Hop ${String(first.col)} · node / pod`;
-  }
-  if (col.every((n) => n.kind === 'leaf' && n.role === 'pod')) {
-    return `Hop ${String(first.col)} · pod`;
-  }
-  if (col.every((n) => n.kind === 'leaf' && n.role === 'app')) {
-    return `Hop ${String(first.col)} · application`;
-  }
-  if (col.some((n) => n.kind === 'leaf' && (n.role === 'pod' || n.role === 'app'))) {
-    return `Hop ${String(first.col)}`;
-  }
-  return 'Trace stop';
+  const sub = k8sSubcol(k8s);
+  const word =
+    sub === 'node'
+      ? 'k8s node'
+      : sub === 'pod'
+        ? col.some((n) => n.k8sNode !== null)
+          ? 'node / pod'
+          : 'pod'
+        : sub === 'app'
+          ? 'application'
+          : 'namespace';
+  return hasClient ? `${word} / client` : word;
 }

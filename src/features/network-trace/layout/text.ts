@@ -1,6 +1,6 @@
 import { formatBitsPerSec, formatBytes, formatDeltaBps } from '../../../shared/format/measurements';
 import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, HEADER_H, LEAF_W } from '../../sankey-canvas';
-import type { NodeUsage, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
+import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
 import { sum } from '../model/util';
 
 import { CLIENT_CELL_W, CLIENT_COL_GAP, CLIENT_COLS, CLIENT_PAD, type ClientCol } from './constants';
@@ -187,10 +187,11 @@ export function cardText(n: TraceNode, model: TraceModelOk): CardText {
     };
   }
   // A trace-stop leaf. With clients it is a table; the synthetic `switch:iface` id is not
-  // a title (the ribbon leads back to it), only a name the wire gave is.
+  // a title (the ribbon leads back to it), only a name the wire gave is. The corner counts
+  // the clients whether or not they grew an owner card — the owner band says the rest.
   const table = clientTableLines(n);
   const nc = n.clients?.length ?? 0;
-  const cornerLabel = n.ownerLinked ? 'port' : nc === 0 ? 'trace stop' : nc === 1 ? 'client' : `${String(nc)} clients`;
+  const cornerLabel = nc === 0 ? 'trace stop' : nc === 1 ? 'client' : `${String(nc)} clients`;
   if (table.length > 0) {
     const ns = n.namespace !== null ? [`ns/${n.namespace}`] : [];
     return {
@@ -224,12 +225,14 @@ export function resOut(n: TraceNode): number {
 }
 
 /**
- * A node's flow for in-column ordering: max(sum in, sum out). Residuals are excluded —
- * the unaccounted amount must not decide who sits on top. O(edges): never call inside a
- * comparator; precompute into a Map.
+ * A node's flow for in-column ordering: the amount on the traced side — what arrives from
+ * the start under a destination trace (sum in), what leaves toward it under a source trace
+ * (sum out). Residuals are excluded: the unaccounted amount must not decide who sits on
+ * top. The anchor has no edge on its traced side and reads 0; it is alone in its column.
+ * O(edges): never call inside a comparator; precompute into a Map.
  */
-export function flowOf(n: TraceNode): number {
-  return Math.max(sum(n.inEdges), sum(n.outEdges));
+export function traceFlowOf(n: TraceNode, direction: TraceDirection): number {
+  return sum(direction === 'destination' ? n.inEdges : n.outEdges);
 }
 
 export { formatBitsPerSec };
