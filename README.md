@@ -29,7 +29,7 @@ npm run fixture:build   # writes public/demo/graph.json, storage-graph.json and 
 npm run fixture:check   # fails if any file drifted
 ```
 
-The trace fixture is one `destination` trace from switch `sw/dist-a` (its start switch investigates an `in` interface), so it draws under `track_dir=destination` only; asked to walk it as a `source` trace, the Network Sankey reports that the body cannot be drawn.
+The trace fixture merges the network samples of the sankey-panel repo into one `destination` trace: the `dci-uturn` backbone (`dci-uturn/core-1` is the start; its ToRs feed the `k8s` and `client` samples) plus `classic`, `dual-uplink`, `campus`, `pruned`, `dci-tier` and `k8s-source` drawn beside it. Ids carry the sample key as a prefix. It draws under `track_dir=destination` only; asked to walk it as a `source` trace, the Network Sankey reports that the body cannot be drawn.
 
 The JSON files are generated. Do not hand-edit them.
 

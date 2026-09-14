@@ -24,17 +24,47 @@ function withoutInvestigation(): cytoscape.ElementDefinition[] {
   });
 }
 
-/** A refreshed payload the backend answered without `pod/mongo-0` at all. */
-function withoutMongo0(): cytoscape.ElementDefinition[] {
-  const isMongo0 = (id: string | undefined): boolean => id === 'pod/mongo-0';
+/** A refreshed payload the backend answered without `k8s/kafka-2` at all. */
+function withoutKafka2(): cytoscape.ElementDefinition[] {
+  const isKafka2 = (id: string | undefined): boolean => id === 'k8s/kafka-2';
   return elements.filter((el) => {
     if (el.group === 'nodes') {
-      return !isMongo0((el.data as cytoscape.NodeDataDefinition).id);
+      return !isKafka2((el.data as cytoscape.NodeDataDefinition).id);
     }
     const d = el.data as cytoscape.EdgeDataDefinition;
-    return !isMongo0(d.source) && !isMongo0(d.target);
+    return !isKafka2(d.source) && !isKafka2(d.target);
   });
 }
+
+/**
+ * Pods placed on k8s nodes by `pod-node` edges — the `Node` layout's frames. None of the
+ * merged samples carries placement edges, so the frames get a body of their own.
+ */
+const placedPods = normalizeGraph({
+  elements: {
+    nodes: [
+      {
+        data: {
+          id: 'sw-1',
+          name: 'SW 1',
+          type: 'switch',
+          investigation: { iface: 'xe-0/0/1', delta_bps: 3e9, direction: 'in' },
+        },
+      },
+      { data: { id: 'worker-0', name: 'worker-0', type: 'node' } },
+      { data: { id: 'worker-1', name: 'worker-1', type: 'node', status: 'warning' } },
+      { data: { id: 'ns1', name: 'ns1', type: 'namespace' } },
+      { data: { id: 'p-a', name: 'p-a', type: 'pod', parent: 'ns1' } },
+      { data: { id: 'p-b', name: 'p-b', type: 'pod', parent: 'ns1' } },
+    ],
+    edges: [
+      { data: { id: 'e1', type: 'network-flow', source: 'sw-1', target: 'p-a', metrics: { delta_bps: 1e9 } } },
+      { data: { id: 'e2', type: 'network-flow', source: 'sw-1', target: 'p-b', metrics: { delta_bps: 2e9 } } },
+      { data: { id: 'e3', type: 'network-flow', source: 'p-a', target: 'worker-0', labels: { tier: 'pod-node' } } },
+      { data: { id: 'e4', type: 'network-flow', source: 'p-b', target: 'worker-1', labels: { tier: 'pod-node' } } },
+    ],
+  },
+}).elements;
 
 /** Two switches; the start reports the delta on its inbound side. */
 const twoSwitches = normalizeGraph({
@@ -156,7 +186,7 @@ describe('TraceView empty states', () => {
     renderTrace({ minBps: 1e15 });
     expect(screen.queryByTestId('trace-empty-filtered')).not.toBeInTheDocument();
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
-    expect(screen.getByTestId('trace-node-et-0/0/48')).toHaveAttribute('data-kind', 'anchor');
+    expect(screen.getByTestId('trace-node-et-0/0/0')).toHaveAttribute('data-kind', 'anchor');
   });
 });
 
@@ -165,12 +195,13 @@ describe('TraceView chart', () => {
     renderTrace();
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
     expect(screen.getAllByTestId('trace-band').length).toBeGreaterThan(0);
-    expect(screen.getByTestId('trace-node-dist-a')).toHaveAttribute('data-kind', 'switch');
-    expect(screen.getByTestId('trace-node-spine-b')).toHaveAttribute('data-status', 'warning');
+    expect(screen.getByTestId('trace-node-Core 1')).toHaveAttribute('data-kind', 'switch');
+    expect(screen.getAllByTestId(/^trace-node-/).some((el) => el.getAttribute('data-status') === 'warning')).toBe(true);
+    expect(screen.getAllByTestId('trace-residual-in').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('trace-residual-out').length).toBeGreaterThan(0);
     const headers = screen.getAllByTestId('sankey-column-header').map((el) => el.textContent);
-    expect(headers).toContain('Trace start (in)');
     expect(headers.some((h) => h?.startsWith('Hop 1') === true)).toBe(true);
+    expect(headers).toContain('Trace stop · namespace');
   });
 
   it('lists a legend row only for the marks actually on the chart', () => {
@@ -191,7 +222,7 @@ describe('TraceView chart', () => {
   });
 
   it('draws k8s node frames under the Node layout and remounts back to Flat', () => {
-    const { unmount } = renderTrace();
+    const { unmount } = renderTrace({ elements: placedPods });
     expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
     expect(screen.queryByTestId('trace-wrapper-worker-0')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
@@ -199,7 +230,7 @@ describe('TraceView chart', () => {
     expect(screen.getByTestId('trace-wrapper-worker-1')).toHaveAttribute('data-status', 'warning');
     expect(screen.getByTestId('trace-wrapper-title-worker-0')).toHaveAttribute('data-locatable', 'true');
     unmount();
-    renderTrace();
+    renderTrace({ elements: placedPods });
     expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
     expect(screen.queryByTestId('trace-wrapper-worker-0')).not.toBeInTheDocument();
   });
@@ -268,13 +299,12 @@ describe('TraceView Min Δ', () => {
 
   it('shows the hidden pill with counts while a threshold is applied, and Clear resets it', () => {
     const first = renderTrace({ minBps: 5e9 });
-    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 6 ribbons (20 Gbps)');
-    expect(screen.getByTestId('trace-filtered-pill')).not.toHaveTextContent('hop');
+    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 83 ribbons / 26 hops (204 Gbps)');
     fireEvent.click(screen.getByTestId('trace-min-bps-clear'));
     expect(first.props.onMinBpsChange).toHaveBeenCalledWith(0);
     first.unmount();
     const second = renderTrace({ minBps: 1e15 });
-    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 10 ribbons / 3 hops');
+    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 120 ribbons / 56 hops');
     second.unmount();
     renderTrace({ minBps: 0 });
     expect(screen.queryByTestId('trace-filtered-pill')).not.toBeInTheDocument();
@@ -318,29 +348,30 @@ describe('TraceView keyboard', () => {
 describe('TraceView hover and locate', () => {
   it('shows a node tooltip on hover and fades the cards off the hovered path', () => {
     renderTrace();
-    const mongo0 = screen.getByTestId('trace-node-mongo-0');
-    fireEvent.mouseEnter(mongo0);
+    const kafka2 = screen.getByTestId('trace-node-kafka-2');
+    fireEvent.mouseEnter(kafka2);
     const tip = screen.getByRole('tooltip');
-    expect(tip).toHaveTextContent('pod / mongo-0');
-    expect(tip).toHaveTextContent('namespace prod');
-    expect(tip).toHaveTextContent('id pod/mongo-0');
-    expect(mongo0.style.opacity).toBe('1');
-    // Upstream of the pod: its spine and the start.
-    expect(screen.getByTestId('trace-node-spine-a').style.opacity).toBe('1');
-    expect(screen.getByTestId('trace-node-dist-a').style.opacity).toBe('1');
+    expect(tip).toHaveTextContent('pod / kafka-2');
+    expect(tip).toHaveTextContent('namespace stream');
+    expect(tip).toHaveTextContent('id k8s/kafka-2');
+    expect(kafka2.style.opacity).toBe('1');
+    // Upstream of the pod: its k8s node, the stitched ToR and the start.
+    expect(screen.getByTestId('trace-node-node-w-11').style.opacity).toBe('1');
+    expect(screen.getByTestId('trace-node-ToR k8s (k8s)').style.opacity).toBe('1');
+    expect(screen.getByTestId('trace-node-Core 1').style.opacity).toBe('1');
     // Another branch entirely.
-    expect(screen.getByTestId('trace-node-Storage team').style.opacity).toBe('0.3');
-    expect(screen.getByTestId('trace-node-mongo-1').style.opacity).toBe('0.3');
-    fireEvent.mouseLeave(mongo0);
+    expect(screen.getByTestId('trace-node-網管部 王小明').style.opacity).toBe('0.3');
+    expect(screen.getByTestId('trace-node-ingest-4f11').style.opacity).toBe('0.3');
+    fireEvent.mouseLeave(kafka2);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
-    expect(screen.getByTestId('trace-node-Storage team').style.opacity).toBe('1');
+    expect(screen.getByTestId('trace-node-網管部 王小明').style.opacity).toBe('1');
   });
 
   it('names the residual and its hop on hover', () => {
     renderTrace();
     fireEvent.mouseEnter(screen.getAllByTestId('trace-residual-out')[0]!);
     const tip = screen.getByRole('tooltip');
-    expect(tip).toHaveTextContent('dist-a · other out +5 Gbps');
+    expect(tip).toHaveTextContent('node-w-11 · other out +2.5 Gbps');
     expect(tip).toHaveTextContent('traced in');
   });
 
@@ -354,27 +385,27 @@ describe('TraceView hover and locate', () => {
 
   it('locates a hop or a pod on click but not a synthesised owner / namespace card', () => {
     const { props } = renderTrace();
-    fireEvent.click(screen.getByTestId('trace-node-spine-a'));
-    expect(props.onLocateNode).toHaveBeenCalledWith('sw/spine-a');
-    fireEvent.click(screen.getByTestId('trace-node-mongo-0'));
-    expect(props.onLocateNode).toHaveBeenCalledWith('pod/mongo-0');
+    fireEvent.click(screen.getByTestId('trace-node-Core 1'));
+    expect(props.onLocateNode).toHaveBeenCalledWith('dci-uturn/core-1');
+    fireEvent.click(screen.getByTestId('trace-node-kafka-2'));
+    expect(props.onLocateNode).toHaveBeenCalledWith('k8s/kafka-2');
     (props.onLocateNode as ReturnType<typeof vi.fn>).mockClear();
-    expect(screen.getByTestId('trace-node-Storage team')).toHaveAttribute('data-locatable', 'false');
-    expect(screen.getByTestId('trace-node-prod')).toHaveAttribute('data-locatable', 'false');
-    fireEvent.click(screen.getByTestId('trace-node-Storage team'));
-    fireEvent.click(screen.getByTestId('trace-node-prod'));
-    fireEvent.click(screen.getByTestId('trace-node-et-0/0/48'));
+    expect(screen.getByTestId('trace-node-網管部 王小明')).toHaveAttribute('data-locatable', 'false');
+    expect(screen.getByTestId('trace-node-stream')).toHaveAttribute('data-locatable', 'false');
+    fireEvent.click(screen.getByTestId('trace-node-網管部 王小明'));
+    fireEvent.click(screen.getByTestId('trace-node-stream'));
+    fireEvent.click(screen.getByTestId('trace-node-et-0/0/0'));
     expect(props.onLocateNode).not.toHaveBeenCalled();
   });
 
   it('clears the tooltip when a refresh removes the hovered node', () => {
     const { rerender } = renderTrace();
-    fireEvent.mouseEnter(screen.getByTestId('trace-node-mongo-0'));
+    fireEvent.mouseEnter(screen.getByTestId('trace-node-kafka-2'));
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
-    rerender(wrap(baseProps({ elements: withoutMongo0() })));
-    expect(screen.queryByTestId('trace-node-mongo-0')).not.toBeInTheDocument();
+    rerender(wrap(baseProps({ elements: withoutKafka2() })));
+    expect(screen.queryByTestId('trace-node-kafka-2')).not.toBeInTheDocument();
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
-    expect(screen.getByTestId('trace-node-Storage team').style.opacity).toBe('1');
+    expect(screen.getByTestId('trace-node-網管部 王小明').style.opacity).toBe('1');
   });
 });
 
@@ -401,10 +432,10 @@ describe('TraceView summary and warnings', () => {
     renderTrace();
     const toggle = screen.getByTestId('trace-summary-toggle');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(toggle).toHaveTextContent('4 hops · 1 namespaces');
+    expect(toggle).toHaveTextContent('57 hops · 3 namespaces');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     openSummary();
-    expect(screen.getByTestId('trace-hop-table')).toHaveTextContent('dist-a');
-    expect(screen.getByTestId('trace-namespace-table')).toHaveTextContent('prod');
+    expect(screen.getByTestId('trace-hop-table')).toHaveTextContent('Core 1');
+    expect(screen.getByTestId('trace-namespace-table')).toHaveTextContent('telemetry');
   });
 });

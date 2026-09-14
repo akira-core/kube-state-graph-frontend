@@ -857,7 +857,7 @@ describe('AppShell network category', () => {
     await waitFor(() => {
       expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('trace-node-dist-a')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
     expect(screen.queryByTestId('graph-view')).not.toBeInTheDocument();
     expect(traceCalls(fetchMock)).toHaveLength(1);
 
@@ -884,7 +884,7 @@ describe('AppShell network category', () => {
     await waitFor(() => {
       expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('trace-node-dist-a')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
     expect(screen.getByTestId('trace-legend-back')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Query' })).not.toBeInTheDocument();
     expect(screen.getByTestId('trace-controls')).toBeInTheDocument();

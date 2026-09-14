@@ -34,7 +34,13 @@ describe('switchHostnames', () => {
 
   it('offers every switch of the fixture and none of its pods or nodes', () => {
     const names = switchHostnames(normalizeGraph(SHOWCASE_TRACE).elements);
-    expect(names).toEqual(['core', 'dist-a', 'spine-a', 'spine-b', 'sw/core', 'sw/dist-a', 'sw/spine-a', 'sw/spine-b']);
+    // Name and id of every switch, sorted and unique; no k8s node or pod.
+    expect(names).toContain('Core 1');
+    expect(names).toContain('dci-uturn/core-1');
+    expect(names).toContain('client/sw-tor-1');
+    expect(names).not.toContain('k8s/node-w-11');
+    expect(names).not.toContain('k8s/kafka-2');
+    expect(names).toEqual([...new Set(names)].sort((a, b) => a.localeCompare(b)));
   });
 });
 

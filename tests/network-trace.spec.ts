@@ -155,10 +155,17 @@ test('demo mode draws the trace fixture on both Network views without a Query co
   await expect(page.getByRole('button', { name: 'Query' })).toHaveCount(0);
   await expect(page.getByTestId('trace-legend-back')).toBeVisible();
   await expect(page.getByTestId('trace-legend-own')).toBeVisible();
-  await expect(page.getByTestId('trace-node-dist-a')).toBeVisible();
+  await expect(page.getByTestId('trace-legend-lateral')).toBeVisible();
+  // The merged sankey-panel samples: the dci-uturn start, and the stitched k8s / client ToRs.
+  await expect(page.getByTestId('trace-node-Core 1')).toBeVisible();
+  await expect(page.getByTestId('trace-node-ToR k8s (k8s)')).toBeVisible();
+  await expect(page.getByTestId('trace-node-kafka-2')).toBeVisible();
+  await expect(page.getByTestId('trace-node-網管部 王小明')).toBeVisible();
 
+  // No sample places pods on k8s nodes, so the Node layout draws no frame and the chart stays.
   await page.getByTestId('trace-layout').getByText('Node', { exact: true }).click();
-  await expect(page.getByTestId('trace-wrapper-title-worker-0')).toBeVisible();
+  await expect(page.getByTestId('sankey-svg')).toBeVisible();
+  await expect(page.locator('[data-testid^="trace-wrapper-"]')).toHaveCount(0);
 
   await page.getByTestId('nav-view').getByRole('link', { name: 'Graph' }).click();
   await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
