@@ -9,6 +9,8 @@
  * differently.
  */
 export type GraphOutcome =
+  | { kind: 'awaiting'; message: string }
+  | { kind: 'cancelled'; message: string }
   | { kind: 'loading' }
   | { kind: 'failed'; message: string }
   | { kind: 'empty'; message: string }
@@ -18,6 +20,7 @@ export type GraphOutcome =
 export interface GraphOutcomeInput {
   status: 'idle' | 'loading' | 'ready' | 'error';
   hasPayload: boolean;
+  cancelled?: boolean;
   /** The load error, if any. Already carries the URL and status from the loader. */
   firstError: string | undefined;
   elementCount: number;
@@ -28,14 +31,25 @@ export interface GraphOutcomeInput {
 export const EMPTY_RESPONSE_MESSAGE =
   'The request succeeded and the backend returned no elements. Widen the time range, or switch Projection to Full inventory.';
 
+export const AWAITING_QUERY_MESSAGE =
+  'Nothing has been requested yet. Press Query to load the graph for the current filters and time range.';
+
+export const CANCELLED_QUERY_MESSAGE = 'The request was cancelled. Press Query to load the graph.';
+
 export function describeGraphOutcome({
   status,
   hasPayload,
+  cancelled = false,
   firstError,
   elementCount,
   visibleNodeCount,
   allTogglableKindsHidden,
 }: GraphOutcomeInput): GraphOutcome {
+  if (status === 'idle' && !hasPayload) {
+    return cancelled
+      ? { kind: 'cancelled', message: CANCELLED_QUERY_MESSAGE }
+      : { kind: 'awaiting', message: AWAITING_QUERY_MESSAGE };
+  }
   if (status === 'loading' && !hasPayload) {
     return { kind: 'loading' };
   }

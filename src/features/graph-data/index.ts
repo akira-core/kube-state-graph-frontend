@@ -3,6 +3,7 @@ export {
   buildStorageGraphRequestUrl,
   EMPTY_STORAGE_GRAPH_QUERY,
   EMPTY_STORAGE_GRAPH_ROOTS,
+  hasAnyRoot,
   isValidPodRoot,
   storageGraphRequestKey,
 } from './storageGraphRequestUrl';

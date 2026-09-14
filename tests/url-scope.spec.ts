@@ -42,13 +42,30 @@ async function stubLiveConfig(page: Page): Promise<string[]> {
   return graphUrls;
 }
 
-test('graph deep link populates the dropdown and the request', async ({ page }) => {
+test('graph deep link populates the dropdown and the request after Query', async ({ page }) => {
   const graphUrls = await stubLiveConfig(page);
   await page.goto('/graph?namespace=shop&from=now-1h&to=now');
-  await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('filter-namespace')).toContainText('shop');
+  expect(graphUrls).toHaveLength(0);
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => graphUrls.some((url) => url.includes('namespace=shop'))).toBe(true);
   await expect.poll(() => graphUrls.some((url) => url.includes('start='))).toBe(true);
+});
+
+test('A selected window sticks', async ({ page }) => {
+  const graphUrls = await stubLiveConfig(page);
+  await page.goto('/graph?from=now-24h&to=now');
+  await expect(page.getByTestId('filter-bar')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('combobox', { name: 'View time range' }).selectOption('1h');
+  await page.waitForTimeout(2000);
+  await expect(page.getByRole('combobox', { name: 'View time range' })).toHaveValue('1h');
+  await expect(page).toHaveURL(/from=now-24h/);
+  expect(graphUrls).toHaveLength(0);
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect.poll(() => graphUrls.length).toBe(1);
+  await expect(page).toHaveURL(/from=now-1h/);
+  expect(graphUrls[0]).toMatch(/start=/);
 });
 
 test('Sankey locate then Back restores the Sankey scope', async ({ page }) => {
@@ -56,8 +73,13 @@ test('Sankey locate then Back restores the Sankey scope', async ({ page }) => {
   await page.goto('/sankey?az=local-a&env=demo&aggr=aggr1');
   await expect(page.getByTestId('sankey-view')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('sankey-az')).toContainText('local-a');
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(page.getByTestId('sankey-node-aggr1')).toBeVisible();
   await page.getByTestId('sankey-node-aggr1').click();
-  await expect(page).toHaveURL(/\/graph/);
+  // Back only once the Graph page's mount writes have landed: a replace arriving after the
+  // Back would overwrite the restored Sankey entry. Those writes seed from/to, which a
+  // locate arrival must keep.
+  await expect(page).toHaveURL(/\/graph\?.*from=.*to=/);
   await page.goBack();
   await expect(page).toHaveURL(/\/sankey\?.*az=local-a.*env=demo.*aggr=aggr1/);
   await expect(page.getByTestId('sankey-az')).toContainText('local-a');

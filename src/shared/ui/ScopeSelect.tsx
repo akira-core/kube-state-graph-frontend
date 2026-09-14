@@ -30,6 +30,13 @@ export interface ScopeSelectProps {
    * claim every root at once, which is the opposite of what an empty pending value means.
    */
   emptyLabel?: string;
+  /**
+   * Multi-select only. When false, the list has no `All` row — there is no "everything"
+   * to select (the Sankey's pending root values). Default true.
+   */
+  allRow?: boolean;
+  /** Shown in the popover when the option list is empty, under the search input. */
+  emptyHint?: string;
   testId?: string;
 }
 
@@ -90,6 +97,8 @@ export function ScopeSelect({
   allowCustom,
   optionLabel,
   emptyLabel = 'All',
+  allRow = true,
+  emptyHint,
   testId,
 }: Readonly<ScopeSelectProps>): JSX.Element {
   const listId = useId();
@@ -115,7 +124,7 @@ export function ScopeSelect({
     // nothing for it to empty, so it would be a permanently checked row above an empty
     // list — the popover is the search box and the custom-value row, and no more.
     // A custom value, once added, puts it back: `allOptions` unions in the selection.
-    if (mode === 'multi' && allOptions.length > 0) {
+    if (mode === 'multi' && allRow && allOptions.length > 0) {
       next.push({ kind: 'all', id: `${listId}-all` });
     }
     for (const item of filtered) {
@@ -130,7 +139,7 @@ export function ScopeSelect({
       next.push({ kind: 'custom', id: `${listId}-custom`, text: trimmedQuery });
     }
     return next;
-  }, [allOptions.length, filtered, listId, mode, optionSet, showCustom, trimmedQuery]);
+  }, [allOptions.length, allRow, filtered, listId, mode, optionSet, showCustom, trimmedQuery]);
 
   const activeItem = items[Math.min(active, Math.max(0, items.length - 1))];
   const nothingSelected = selected.length === 0;
@@ -410,6 +419,11 @@ export function ScopeSelect({
                   </li>
                 );
               })}
+              {emptyHint !== undefined && emptyHint !== '' && allOptions.length === 0 && (
+                <li className="px-1.5 py-2 text-xs text-muted" data-testid={`${testId ?? 'scope'}-empty-hint`}>
+                  {emptyHint}
+                </li>
+              )}
               {noOptionsMessage && filtered.length === 0 && !showCustom && (
                 <li className="px-1.5 py-2 text-xs text-muted">No options available</li>
               )}

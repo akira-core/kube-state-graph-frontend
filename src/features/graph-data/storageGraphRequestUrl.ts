@@ -33,6 +33,12 @@ export const EMPTY_STORAGE_GRAPH_QUERY: StorageGraphQuery = {
   roots: EMPTY_STORAGE_GRAPH_ROOTS,
 };
 
+const ROOT_KINDS: ReadonlyArray<keyof StorageGraphRoots> = ['ontap_cluster', 'node', 'aggr', 'svm', 'pod'];
+
+export function hasAnyRoot(roots: StorageGraphRoots): boolean {
+  return ROOT_KINDS.some((kind) => roots[kind].length > 0);
+}
+
 /**
  * A pod root the backend will accept: exactly one `/`, both sides non-empty.
  *
@@ -58,6 +64,9 @@ export function buildStorageGraphRequestUrl(
   nowMs: number = Date.now()
 ): string | undefined {
   if (query.az === undefined || query.az === '' || query.env === undefined || query.env === '') {
+    return undefined;
+  }
+  if (!hasAnyRoot(query.roots)) {
     return undefined;
   }
   const { fromUnixSeconds, toUnixSeconds } = resolveViewTimeRange(range, nowMs);

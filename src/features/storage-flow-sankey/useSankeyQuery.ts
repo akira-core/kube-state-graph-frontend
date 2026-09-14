@@ -25,6 +25,7 @@ export interface SankeyQueryController {
   setCluster: (values: string[]) => void;
   setNamespace: (values: string[]) => void;
   addRoot: (kind: SankeyRootKind, value: string) => boolean;
+  addRoots: (kind: SankeyRootKind, values: readonly string[]) => boolean;
   removeRoot: (kind: SankeyRootKind, value: string) => void;
   clearRoots: () => void;
 }
@@ -61,24 +62,29 @@ export function useSankeyQuery(options: SankeyIdentityOptions): SankeyQueryContr
     setEnv((current) => pickSingleton(current, options.env));
   }, [options.env]);
 
-  const addRoot = useCallback((kind: SankeyRootKind, value: string): boolean => {
-    const trimmed = value.trim();
+  const addRoots = useCallback((kind: SankeyRootKind, values: readonly string[]): boolean => {
+    const trimmed = values.map((value) => value.trim()).filter((value) => value.length > 0);
     if (trimmed.length === 0) {
       return false;
     }
-    if (kind === 'pod' && !isValidPodRoot(trimmed)) {
+    if (kind === 'pod' && trimmed.some((value) => !isValidPodRoot(value))) {
       setPodError('Pod root must be <namespace>/<pod>');
       return false;
     }
     setPodError(undefined);
     setRoots((prev) => {
-      if (prev[kind].includes(trimmed)) {
-        return prev;
+      const next = [...prev[kind]];
+      for (const value of trimmed) {
+        if (!next.includes(value)) {
+          next.push(value);
+        }
       }
-      return { ...prev, [kind]: [...prev[kind], trimmed] };
+      return { ...prev, [kind]: next };
     });
     return true;
   }, []);
+
+  const addRoot = useCallback((kind: SankeyRootKind, value: string): boolean => addRoots(kind, [value]), [addRoots]);
 
   const removeRoot = useCallback((kind: SankeyRootKind, value: string) => {
     setRoots((prev) => ({ ...prev, [kind]: prev[kind].filter((item) => item !== value) }));
@@ -103,6 +109,7 @@ export function useSankeyQuery(options: SankeyIdentityOptions): SankeyQueryContr
     setCluster,
     setNamespace,
     addRoot,
+    addRoots,
     removeRoot,
     clearRoots,
   };

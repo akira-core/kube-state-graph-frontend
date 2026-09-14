@@ -6,7 +6,6 @@ export {
   formatBytesPerSec,
   hoverPathLinks,
   hoverPathForWrapper,
-  kubernetesNodeRoots,
   rootValueOptions,
   EMPTY_SANKEY_ROOT_OPTIONS,
   SANKEY_KIND_ORDER,

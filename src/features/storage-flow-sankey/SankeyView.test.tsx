@@ -113,9 +113,116 @@ describe('SankeyView', () => {
   });
 
   it('shows a distinct az/env prompt that is not the empty-response copy', () => {
-    renderSankey({ azEnvReady: false, hasPayload: false, status: 'idle' });
+    renderSankey({ azEnvReady: false, hasPayload: false, status: 'idle', demoMode: false });
     expect(screen.getByTestId('sankey-empty-scope')).toHaveTextContent('No request has been sent');
+    expect(screen.getByTestId('sankey-empty-scope')).toHaveTextContent('root');
     expect(screen.queryByTestId('sankey-empty-response')).not.toBeInTheDocument();
+  });
+
+  it('draws 10 pod cards on a body larger than K and names the cut', () => {
+    const large: cytoscape.ElementDefinition[] = [];
+    large.push({ group: 'nodes', data: { id: 'nn/0', label: 'nn-0', kind: 'netapp-node' } });
+    large.push({ group: 'nodes', data: { id: 'ag/0', label: 'ag-0', kind: 'netapp-aggr' } });
+    large.push({ group: 'nodes', data: { id: 'sv/0', label: 'sv-0', kind: 'netapp-svm' } });
+    large.push({
+      group: 'edges',
+      data: {
+        id: 'na',
+        source: 'nn/0',
+        target: 'ag/0',
+        edgeType: 'storage-flow',
+        labels: { tier: 'node-aggr' },
+        metrics: { readBytesPerSec: 1, writeBytesPerSec: 1 },
+      },
+    });
+    large.push({
+      group: 'edges',
+      data: {
+        id: 'as',
+        source: 'ag/0',
+        target: 'sv/0',
+        edgeType: 'storage-flow',
+        labels: { tier: 'aggr-svm' },
+        metrics: { readBytesPerSec: 1, writeBytesPerSec: 1 },
+      },
+    });
+    for (let i = 0; i < 15; i += 1) {
+      large.push({ group: 'nodes', data: { id: `pvc/${String(i)}`, label: `pvc-${String(i)}`, kind: 'pvc' } });
+      large.push({
+        group: 'nodes',
+        data: { id: `pod/${String(i)}`, label: `pod-${String(i)}`, kind: 'pod', namespace: 'ns' },
+      });
+      large.push({
+        group: 'edges',
+        data: {
+          id: `sp-${String(i)}`,
+          source: 'sv/0',
+          target: `pvc/${String(i)}`,
+          edgeType: 'storage-flow',
+          labels: { tier: 'svm-pvc' },
+          metrics: { readBytesPerSec: 100 - i, writeBytesPerSec: 1 },
+        },
+      });
+      large.push({
+        group: 'edges',
+        data: {
+          id: `pp-${String(i)}`,
+          source: `pvc/${String(i)}`,
+          target: `pod/${String(i)}`,
+          edgeType: 'storage-flow',
+          labels: { tier: 'pvc-pod' },
+          metrics: { readBytesPerSec: 100 - i, writeBytesPerSec: 1 },
+        },
+      });
+    }
+    renderSankey({ elements: large, topPods: 10, hasRoot: true, demoMode: true });
+    expect(screen.getAllByTestId(/^sankey-node-/).filter((el) => el.getAttribute('data-kind') === 'pod')).toHaveLength(
+      10
+    );
+    expect(screen.getByTestId('sankey-top-pods-label')).toHaveTextContent('Top 10 pods');
+    expect(screen.getByTestId('sankey-summary')).toHaveTextContent('10 of 15 pods');
+  });
+
+  it('does not cut when a pod root is present, and drops wrappers with no kept pods', () => {
+    const { unmount } = renderSankey({
+      topPods: 1,
+      roots: { ...EMPTY_STORAGE_GRAPH_ROOTS, pod: ['shop/mongo-0'] },
+      hasRoot: true,
+      demoMode: true,
+    });
+    expect(
+      screen.getAllByTestId(/^sankey-node-/).filter((el) => el.getAttribute('data-kind') === 'pod').length
+    ).toBeGreaterThan(1);
+    expect(screen.queryByTestId('sankey-top-pods-label')).not.toBeInTheDocument();
+    unmount();
+    renderSankey({ topPods: 1, hasRoot: true, demoMode: true });
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    expect(screen.getAllByTestId(/^sankey-wrapper-[^t]/).length).toBe(1);
+  });
+
+  it('shows awaiting Query when the draft is complete but nothing has been committed', () => {
+    renderSankey({
+      demoMode: false,
+      azEnvReady: true,
+      hasRoot: true,
+      hasPayload: false,
+      status: 'idle',
+      elements: [],
+    });
+    expect(screen.getByTestId('sankey-empty-awaiting')).toHaveTextContent('Query');
+  });
+
+  it('shows cancelled when the only request was cancelled', () => {
+    renderSankey({
+      demoMode: false,
+      azEnvReady: true,
+      hasRoot: true,
+      hasPayload: false,
+      status: 'idle',
+      cancelled: true,
+      elements: [],
+    });
+    expect(screen.getByTestId('sankey-empty-cancelled')).toHaveTextContent('cancelled');
   });
 
   it('shows a distinct empty-response copy, extra in demo mode', () => {
@@ -291,6 +398,13 @@ describe('SankeyView', () => {
     openSummary();
     expect(screen.getAllByTestId('sankey-summary-status-warning').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('sankey-summary-status-critical').length).toBeGreaterThan(0);
+    const rows = screen.getAllByRole('row');
+    const derived = rows.filter((row) => row.textContent?.includes('mongodb') || row.textContent?.includes('prod'));
+    for (const row of derived) {
+      if (row.textContent?.includes('application') || row.textContent?.includes('namespace')) {
+        expect(row.textContent).toContain('n/a');
+      }
+    }
   });
 
   it('shows the node flow summary table and hides it once the graph is empty', () => {
@@ -600,11 +714,23 @@ describe('SankeyView', () => {
     expect(props.onLocateNode).toHaveBeenCalledWith('pod/mongo-0');
   });
 
+  it('keeps a derived card’s border neutral and omits status from its tooltip', () => {
+    renderSankey();
+    const app = screen.getByTestId('sankey-node-mongodb');
+    expect(app).not.toHaveAttribute('data-status');
+    fireEvent.mouseEnter(app);
+    expect(screen.getByRole('tooltip')).not.toHaveTextContent('status');
+    fireEvent.mouseLeave(app);
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    expect(screen.getByTestId('sankey-wrapper-worker-1')).toHaveAttribute('data-status', 'warning');
+  });
+
   it('marks derived cards and links as derived from member pods', () => {
     renderSankey();
     fireEvent.mouseEnter(screen.getByTestId('sankey-node-mongodb'));
     expect(screen.getByRole('tooltip')).toHaveTextContent('application');
     expect(screen.getByRole('tooltip')).toHaveTextContent('derived from member pods');
+    expect(screen.getByRole('tooltip')).not.toHaveTextContent('status');
     fireEvent.mouseLeave(screen.getByTestId('sankey-node-mongodb'));
     const derivedLink = screen.getAllByTestId('sankey-link-read').find((el) => {
       fireEvent.mouseEnter(el);

@@ -53,17 +53,19 @@ Example `dev/config.local.json`:
 
 Requests to `/api/…` are forwarded to `KSG_DEV_PROXY_TARGET` with the `/api` prefix stripped.
 
+The Vite dev proxy does not front `/metrics-api/`. Label-name rebinding (`KSG_AZ_LABEL` / `KSG_ENV_LABEL`) is container-only: set those on the front-door image to the same values as the backend's `--az-label` / `--env-label`. The SPA always requests logical `az` / `env`.
+
 ## Architecture
 
 - `src/features/*` — feature folders (barrel imports only across features)
 - `src/shared/*` — tokens, wire types, fixtures, pure helpers
 - Runtime config is fetched from `<base>/config.json` on every full page load
-- Graph loads `endpoints.graph`; Sankey loads `endpoints.storageGraph` (lazy, after az/env are chosen). Both share the same normalize boundary.
-- `/graph` and `/sankey` are independent pages. Switching unmounts the previous page (switch = reset). The URL query is the snapshot: share it, refresh it, or press Back to restore scope and time range. View state (selection, collapse, viewport, search) is not in the URL and dies with the page.
+- Graph loads `endpoints.graph`; Sankey loads `endpoints.storageGraph`. Both wait for **Query**. Both share the same normalize boundary.
+- `/graph` and `/sankey` are independent pages. Switching unmounts the previous page (switch = reset). The URL query is the **applied** scope, written when Query commits. Share it, refresh it, or press Back to restore controls — then press Query to draw. View state (selection, collapse, viewport, search) is not in the URL and dies with the page.
 
 ## URL parameters
 
-In-page changes replace the current history entry. Nav links go to the bare path (`/graph`, `/sankey`). Demo mode ignores scope parameters but still writes `from` / `to`. Unknown parameters are ignored and stripped on the next write.
+The URL is the applied scope. Filter / scope / time-range edits change a **draft** and write nothing; **Query** commits the draft in one replace (scope plus `from` / `to`). Immediate view values (`mode`, `top_pods`) also write with replace. Nav links go to the bare path (`/graph`, `/sankey`). Demo mode ignores scope parameters but still writes `from` / `to`. Unknown parameters are ignored and stripped on the next write.
 
 ### Both pages
 
@@ -80,18 +82,21 @@ In-page changes replace the current history entry. Nav links go to the bare path
 
 ### `/sankey`
 
-| Parameter                                     | Meaning                                          | Default                                 |
-| --------------------------------------------- | ------------------------------------------------ | --------------------------------------- |
-| `az`, `env`                                   | Required single values                           | omitted (no request until both are set) |
-| `ontap_cluster`, `node`, `aggr`, `svm`, `pod` | Roots; `pod` must be `<namespace>/<pod>`         | omitted (whole estate)                  |
-| `cluster`, `namespace`                        | Optional narrowing                               | omitted                                 |
-| `mode`                                        | `read` or `write`. Default `both` is not written | omitted (`both`)                        |
+| Parameter                                     | Meaning                                                         | Default                                            |
+| --------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
+| `az`, `env`                                   | Required single values                                          | omitted (Query unavailable until both plus a root) |
+| `ontap_cluster`, `node`, `aggr`, `svm`, `pod` | Roots; at least one required; `pod` must be `<namespace>/<pod>` | omitted (Query unavailable)                        |
+| `cluster`, `namespace`                        | Optional narrowing                                              | omitted                                            |
+| `mode`                                        | `read` or `write`. Default `both` is not written                | omitted (`both`)                                   |
+| `top_pods`                                    | Client-side Top pods cut. Integer ≥ 1. Not sent to the backend  | omitted (`10`; omitted with a `pod` root)          |
 
 The Sankey draws seven columns, storage → workload: NetApp node, aggregate, SVM, PVC, Pod, Application, Namespace. The last two are **derived** — walked up each pod's `data.parent` chain and summed per direction from that pod's drawn `pvc-pod` weights. Derived values are marked "derived from member pods" in tooltips and tables; they never rewrite a backend-tier weight. A `Layout` control (`Flat` / `Node`) wraps pods in their Kubernetes node under `Node`. That choice is page-transient: it is not a URL parameter, is not persisted, and returns to `Flat` on remount.
 
-The root value dropdown offers the names the **currently drawn body** carries for the selected kind — nothing enumerates aggregate / SVM / ONTAP-cluster names, and `endpoints.labelValues` reaches only the store holding `kube_pod_info`, which carries none of them. With no root applied that body is the whole estate, so the list starts complete; applying a root narrows the response and therefore the list, which is why a typed value is still accepted. Clear the root to get the full list back.
+A root is **required**. The root value dropdown is a multi-select: `node` names come from `endpoints.labelValues`, `pod` names as `<namespace>/<pod>` from the selected namespace narrowing, and storage-side kinds (`ontap_cluster` / `aggr` / `svm`) are typed until a query has drawn them. The drawn body still contributes once a query has run. A typed value is always accepted.
 
-Card borders carry `data.status` — the backend's own fold over alert severity, NetApp `health` and Kubernetes readiness — in the same three colours the Graph view borders by, named in the toolbar. Nothing here derives or re-folds it, and a node the backend judges none for (an SVM, say) keeps the neutral border rather than a green one: an absent verdict is not a healthy one. A card that hides others — `application`, `namespace`, and the `Node` layout's wrapper — borders by the worst status among its members, like a collapsed container in the Graph view.
+**Top pods** (default 10) keeps the K highest-inflow pods and anything on a path to them. It is client-side, not sent to the backend, unavailable while any `pod` root is present, and written as `top_pods` only when it differs from 10.
+
+Card borders carry `data.status` — the backend's own fold over alert severity, NetApp `health` and Kubernetes readiness — in the same three colours the Graph view borders by, named in the toolbar. Nothing here derives or re-folds it, and a node the backend judges none for (an SVM, say) keeps the neutral border rather than a green one: an absent verdict is not a healthy one. Derived `application` / `namespace` cards keep the **neutral** border. The `Node` layout's wrapper still borders by the worst status among the node and the pods it draws.
 
 The numeric summary below the chart is **folded on arrival** and its header strip names the row counts; seven tiers of tables otherwise take about half the column from the diagram. Opening it is page-transient like `Layout`, and does not move the zoom / pan viewport — press `0` (Fit) after expanding if you want the chart refitted to what is left.
 
@@ -151,4 +156,6 @@ framing / referrer headers from `docker/security-headers.conf`.
 - **CORS errors with an absolute backend URL** — use `KSG_DEV_PROXY_TARGET` (or the container proxy) and root-relative endpoints, or allow the frontend origin on the backend.
 - **Full-screen configuration error** — `config.json` is missing, not JSON, or failed validation (for example `endpoints.graph` is required when `demoMode` is false). The screen names the path and the first problem; it never silently falls back to demo data.
 - **Sankey says the storage graph endpoint is not configured** — `endpoints.storageGraph` is missing or empty. Graph view is unaffected. Set a URL (for example `/api/v1/storage-graph` or `/demo/storage-graph.json`) and reload.
-- **Sankey asks for one az and one env** — `/v1/storage-graph` requires a single `az` and a single `env`. The controls are independent of the Graph filter bar. If `endpoints.labelValues` is unset they still accept a typed custom value; if it is set but points at the graph API, every dropdown comes up empty — label values need a Prometheus-compatible upstream (`KSG_METRICS_PROXY_TARGET`, see `deploy/README.md`).
+- **Sankey asks for one az, one env and a root** — `/v1/storage-graph` requires a single `az`, a single `env` and at least one root. Query is unavailable until all three are present. The controls are independent of the Graph filter bar. If `endpoints.labelValues` is unset they still accept a typed custom value; if it is set but points at the graph API, every dropdown comes up empty — label values need a Prometheus-compatible upstream (`KSG_METRICS_PROXY_TARGET`, see `deploy/README.md`).
+- **Nothing draws after opening a link** — press **Query**. A deep link, a refresh and a route switch prefill the draft and wait.
+- **az / env empty with renamed labels** — set `KSG_AZ_LABEL` / `KSG_ENV_LABEL` on the front door to the same values as the backend's `--az-label` / `--env-label`. The app still requests logical `az` / `env`.

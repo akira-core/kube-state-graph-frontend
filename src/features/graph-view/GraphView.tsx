@@ -62,6 +62,7 @@ export interface GraphViewProps {
   errors: string[];
   error: string | undefined;
   hasPayload: boolean;
+  cancelled?: boolean;
   status: 'idle' | 'loading' | 'ready' | 'error';
   viewTimeRange: ResolvedTimeRange;
   onAlertTimeClick: (timeSec: number) => void;
@@ -75,6 +76,7 @@ export function GraphView({
   errors,
   error,
   hasPayload,
+  cancelled = false,
   status,
   viewTimeRange,
   onAlertTimeClick,
@@ -485,6 +487,7 @@ export function GraphView({
   const outcome = describeGraphOutcome({
     status,
     hasPayload,
+    cancelled,
     firstError,
     elementCount: elements.length,
     visibleNodeCount: visibleNodeIds.size,
@@ -492,6 +495,18 @@ export function GraphView({
   });
   const emptyMessage = outcome.kind === 'empty' || outcome.kind === 'filtered' ? outcome.message : null;
 
+  if (outcome.kind === 'awaiting' || outcome.kind === 'cancelled') {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div
+          data-testid={outcome.kind === 'awaiting' ? 'graph-awaiting-query' : 'graph-cancelled'}
+          className="max-w-md rounded-lg border border-hairline bg-surface px-5 py-4 text-center text-[13px] leading-relaxed text-secondary shadow-panel"
+        >
+          {outcome.message}
+        </div>
+      </div>
+    );
+  }
   if (outcome.kind === 'loading') {
     return <LoadingOverlay />;
   }

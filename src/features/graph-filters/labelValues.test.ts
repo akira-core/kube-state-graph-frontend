@@ -18,6 +18,16 @@ describe('labelValuesUrl', () => {
       'https://vm.example/prometheus/api/v1/label/namespace/values?match%5B%5D=kube_pod_info'
     );
   });
+
+  it('encodes a namespace selector, including a quote-carrying name', () => {
+    expect(labelValuesUrl('/metrics-api', 'pod', 'kube_pod_info{namespace="shop"}')).toBe(
+      '/metrics-api/api/v1/label/pod/values?match%5B%5D=' + encodeURIComponent('kube_pod_info{namespace="shop"}')
+    );
+    const quoted = 'kube_pod_info{namespace="foo\\"bar"}';
+    expect(labelValuesUrl('/metrics-api', 'pod', quoted)).toBe(
+      '/metrics-api/api/v1/label/pod/values?match%5B%5D=' + encodeURIComponent(quoted)
+    );
+  });
 });
 
 describe('parseLabelValues', () => {

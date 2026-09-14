@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { VIEW_TIME_STORAGE_KEY } from '../../shared/time/viewTimeRange';
 
@@ -39,17 +39,24 @@ describe('useViewTimeRange', () => {
     window.localStorage.removeItem(VIEW_TIME_STORAGE_KEY);
   });
 
-  it('defaults to 24h and persists a relative choice', () => {
+  it('defaults to 24h and persist writes local storage without touching history', () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     const { result } = renderHook(() => useViewTimeRange(), { wrapper });
     expect(result.current.range).toEqual({ kind: 'relative', window: '24h' });
     act(() => {
       result.current.setRelative('6h');
     });
     expect(result.current.range).toEqual({ kind: 'relative', window: '6h' });
+    expect(window.localStorage.getItem(VIEW_TIME_STORAGE_KEY)).toBeNull();
+    act(() => {
+      result.current.persist(result.current.range);
+    });
     expect(JSON.parse(window.localStorage.getItem(VIEW_TIME_STORAGE_KEY) ?? '{}')).toEqual({
       kind: 'relative',
       window: '6h',
     });
+    expect(replaceState).not.toHaveBeenCalled();
+    replaceState.mockRestore();
   });
 
   it('resolves a relative window against now rather than freezing the selection instant', () => {
@@ -84,12 +91,16 @@ describe('useViewTimeRange', () => {
     });
   });
 
-  it('prefers a valid URL window over local storage', () => {
+  it('seedDraft updates the control value and never writes the URL', () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     window.localStorage.setItem(VIEW_TIME_STORAGE_KEY, JSON.stringify({ kind: 'relative', window: '6h' }));
-    const urlWrapper = ({ children }: { children: ReactNode }): ReactNode => (
-      <MemoryRouter initialEntries={['/graph?from=now-1h&to=now']}>{children}</MemoryRouter>
-    );
-    const { result } = renderHook(() => useViewTimeRange(), { wrapper: urlWrapper });
+    const { result } = renderHook(() => useViewTimeRange(), { wrapper });
+    expect(result.current.range).toEqual({ kind: 'relative', window: '6h' });
+    act(() => {
+      result.current.seedDraft({ kind: 'relative', window: '1h' });
+    });
     expect(result.current.range).toEqual({ kind: 'relative', window: '1h' });
+    expect(replaceState).not.toHaveBeenCalled();
+    replaceState.mockRestore();
   });
 });

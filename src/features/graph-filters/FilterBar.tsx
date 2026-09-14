@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import type { GraphFilters, IdentityDimension } from '../../shared/types/graphFilters';
 import { Button } from '../../shared/ui/Button';
 import { FilterIcon } from '../../shared/ui/icons';
+import { QueryButton } from '../../shared/ui/QueryButton';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
 import { eyebrowClass } from '../../shared/ui/Section';
 
@@ -14,6 +15,10 @@ export interface FilterBarProps {
   onValues: (dimension: IdentityDimension, values: string[]) => void;
   onPrune: (prune: boolean) => void;
   onClear: () => void;
+  dirty: boolean;
+  inFlight: boolean;
+  onQuery: () => void;
+  onCancel: () => void;
 }
 
 const DIMENSION_LABEL: Record<IdentityDimension, string> = {
@@ -38,7 +43,17 @@ function pruneLabel(value: string): string {
  * positions rather than a narrowing — hence its `allowCustom={false}`. Applied values
  * live on the trigger as pills, so the chip row is gone.
  */
-export function FilterBar({ filters, options, onValues, onPrune, onClear }: Readonly<FilterBarProps>): JSX.Element {
+export function FilterBar({
+  filters,
+  options,
+  onValues,
+  onPrune,
+  onClear,
+  dirty,
+  inFlight,
+  onQuery,
+  onCancel,
+}: Readonly<FilterBarProps>): JSX.Element {
   const nothingNarrowed = LIST_DIMENSIONS.every((dimension) => filters[dimension].length === 0) && filters.prune;
   return (
     <div
@@ -97,6 +112,8 @@ export function FilterBar({ filters, options, onValues, onPrune, onClear }: Read
             {options.problems.length} filter source(s) unavailable
           </span>
         )}
+
+        <QueryButton dirty={dirty} inFlight={inFlight} disabled={false} onQuery={onQuery} onCancel={onCancel} />
       </div>
     </div>
   );

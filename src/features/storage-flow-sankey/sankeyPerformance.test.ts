@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { deriveSankey } from './deriveSankey';
 import { layoutSankey } from './layoutSankey';
+import { cutTopPods } from './topPods';
 
 function el(
   group: 'nodes' | 'edges',
@@ -14,7 +15,7 @@ function el(
  * Synthetic storage-graph at the spec's performance bound: 5 / 25 / 10 / 500 / 1000 / 100 / 20
  * columns, every pod with a `pod-node` edge and a full parent chain.
  */
-function syntheticBody(): Array<{ group: 'nodes' | 'edges'; data: Record<string, unknown> }> {
+export function syntheticBody(): Array<{ group: 'nodes' | 'edges'; data: Record<string, unknown> }> {
   const out: Array<{ group: 'nodes' | 'edges'; data: Record<string, unknown> }> = [];
   out.push(el('nodes', { id: 'cluster/c', label: 'c', kind: 'cluster' }));
   for (let n = 0; n < 20; n += 1) {
@@ -105,10 +106,11 @@ function syntheticBody(): Array<{ group: 'nodes' | 'edges'; data: Record<string,
 }
 
 describe('Sankey performance bound', () => {
-  it('first Flat draw of the synthetic body is within 1000 ms at seven-column counts, Node switch within 500 ms', () => {
+  it('first Flat draw of the synthetic body is within 1000 ms at seven-column counts with Top pods 1000, Node switch within 500 ms', () => {
     const elements = syntheticBody();
     const t0 = performance.now();
-    const graph = deriveSankey(elements, 'both');
+    const cut = cutTopPods(elements, 'both', 1000);
+    const graph = deriveSankey(cut.elements, 'both');
     const flat = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
     const first = performance.now() - t0;
     expect(first).toBeLessThanOrEqual(1000);
@@ -127,5 +129,18 @@ describe('Sankey performance bound', () => {
     const grouped = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'node');
     expect(performance.now() - t1).toBeLessThanOrEqual(500);
     expect(grouped.wrappers).toHaveLength(50);
+  }, 15_000);
+
+  it('the default cut is cheap and the first draw of the cut body is within 300 ms', () => {
+    const elements = syntheticBody();
+    const tCut = performance.now();
+    const cut = cutTopPods(elements, 'both', 10);
+    expect(performance.now() - tCut).toBeLessThanOrEqual(100);
+    expect(cut.shown).toBe(10);
+    const t0 = performance.now();
+    const graph = deriveSankey(cut.elements, 'both');
+    layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
+    expect(performance.now() - t0).toBeLessThanOrEqual(300);
+    expect(graph.nodes.filter((n) => n.kind === 'pod')).toHaveLength(10);
   }, 15_000);
 });
