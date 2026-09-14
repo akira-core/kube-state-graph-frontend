@@ -143,7 +143,10 @@ export function TraceView({
   const [hoverId, setHoverId] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const chartHostRef = useRef<HTMLDivElement>(null);
-  const containerSize = useContainerSize(boxRef, `${status}:${String(hasPayload)}`);
+  // The ref'd box and chart host only render once the loading / empty early-returns below
+  // have passed, so both measurement and the wheel listener re-attach on this key.
+  const remountKey = `${status}:${String(hasPayload)}`;
+  const containerSize = useContainerSize(boxRef, remountKey);
 
   const direction = useMemo(() => directionFor(elements, trackDir), [elements, trackDir]);
   const model = useMemo(
@@ -152,7 +155,7 @@ export function TraceView({
   );
   const geo = useMemo(() => (model.ok ? layoutTrace(model, { order }) : null), [model, order]);
   const content = useMemo(() => ({ w: geo?.width ?? 0, h: geo?.height ?? 0 }), [geo]);
-  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER);
+  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER, remountKey);
   useOpeningViewport({
     boxRef,
     content,
@@ -161,15 +164,17 @@ export function TraceView({
     setViewport: zoom.setViewport,
   });
   const tooltip = useSankeyTooltip(boxRef, zoom.dragging);
+  // `tooltip` is a fresh object every render; `hide` is the stable callback inside it.
+  const hideTip = tooltip.hide;
   const handleKeyDown = useSankeyKeyboard({ zoom, focusMode, onFocusModeChange });
 
   // A refresh may remove the hovered card; its mouseleave never fires.
   useEffect(() => {
     if (hoverId !== null && model.ok && !model.nodeMap.has(hoverId) && !model.wrappers.some((w) => w.id === hoverId)) {
       setHoverId(null);
-      tooltip.hide();
+      hideTip();
     }
-  }, [hoverId, model, tooltip]);
+  }, [hideTip, hoverId, model]);
 
   const lit: HoverLit | null = useMemo(() => {
     if (hoverId === null || !model.ok) {

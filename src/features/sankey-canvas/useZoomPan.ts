@@ -99,8 +99,19 @@ export interface ZoomPanApi {
  * switch, a data refresh, a resize) never resets the viewport by itself — only an
  * explicit `setViewport` call (the caller's one-shot opening computation) or a control
  * action does that, per the "resize / mode / refresh preserve the viewport" requirement.
+ *
+ * `remountKey` re-attaches the wheel listener, for the same reason `useContainerSize`
+ * takes one: the host the ref points at only renders once the view's loading / empty
+ * early-returns have passed, so an effect keyed on the ref object alone runs once against
+ * `null` and never again — and wheel zoom is dead for the whole session. Pass whatever
+ * decides whether the host is in the tree (both views use `status:hasPayload`).
  */
-export function useZoomPan(wheelHostRef: RefObject<HTMLElement>, content: Size, container: Size): ZoomPanApi {
+export function useZoomPan(
+  wheelHostRef: RefObject<HTMLElement>,
+  content: Size,
+  container: Size,
+  remountKey: string
+): ZoomPanApi {
   const [viewport, setViewportState] = useState<Viewport>({ scale: 1, tx: 0, ty: 0 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<{ x: number; y: number; tx: number; ty: number; captured: boolean } | null>(null);
@@ -123,7 +134,7 @@ export function useZoomPan(wheelHostRef: RefObject<HTMLElement>, content: Size, 
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [wheelHostRef]);
+  }, [wheelHostRef, remountKey]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
     // No capture and no `dragging` yet — see DRAG_THRESHOLD_PX. Only the start point and

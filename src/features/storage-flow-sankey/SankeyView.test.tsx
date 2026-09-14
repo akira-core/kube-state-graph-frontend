@@ -121,6 +121,28 @@ describe('SankeyView', () => {
     expect(screen.getAllByTestId('sankey-link-write').length).toBeGreaterThan(0);
   });
 
+  it('wheel-zooms a chart that mounted after the loading gate — the live page never renders the host first', () => {
+    // Live mode: the first commit is `loading` with no payload, so the chart host (and the
+    // ref the wheel listener attaches to) does not exist yet. The listener must attach once
+    // the host actually mounts, not only if it happened to be there on the first render.
+    const { rerender } = renderSankeyWithProps(
+      baseProps({ demoMode: false, hasRoot: true, status: 'loading', hasPayload: false, elements: [] })
+    );
+    expect(screen.queryByTestId('sankey-chart-host')).not.toBeInTheDocument();
+
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps({ demoMode: false, hasRoot: true })} />
+        </div>
+      </ThemeProvider>
+    );
+    const host = screen.getByTestId('sankey-chart-host');
+    const before = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
+  });
+
   it('shows an unconfigured empty state without drawing', () => {
     renderSankey({ demoMode: false, endpointConfigured: false, azEnvReady: false, hasPayload: false, status: 'idle' });
     expect(screen.getByTestId('sankey-empty-unconfigured')).toHaveTextContent('not configured');

@@ -139,6 +139,21 @@ function openSummary(): void {
 /** Empty-state props for the live (non-demo) page before anything was drawn. */
 const LIVE_EMPTY: Overrides = { demoMode: false, hasPayload: false, status: 'idle', elements: [] };
 
+describe('TraceView chart host lifecycle', () => {
+  it('wheel-zooms a chart that mounted after the loading gate', () => {
+    // Same shape as the storage Sankey: live mode first commits `loading` with no host in
+    // the tree, and the wheel listener has to attach when the host arrives.
+    const { rerender } = renderTrace({ demoMode: false, status: 'loading', hasPayload: false, elements: [] });
+    expect(screen.queryByTestId('sankey-chart-host')).not.toBeInTheDocument();
+
+    rerender(wrap(baseProps({ demoMode: false })));
+    const host = screen.getByTestId('sankey-chart-host');
+    const before = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
+  });
+});
+
 describe('TraceView empty states', () => {
   it('shows unconfigured when there is no trace endpoint, without drawing', () => {
     renderTrace({ ...LIVE_EMPTY, endpointConfigured: false, scopeReady: false });

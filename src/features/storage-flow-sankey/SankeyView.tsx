@@ -278,7 +278,8 @@ export function SankeyView({
   // See SankeyView.test.tsx: the ref'd box only renders once the loading / fatal-error
   // early returns below have passed, so the measurement must re-attach once the box
   // actually mounts — the key is exactly what decides that.
-  const containerSize = useContainerSize(boxRef, `${status}:${String(hasPayload)}`);
+  const remountKey = `${status}:${String(hasPayload)}`;
+  const containerSize = useContainerSize(boxRef, remountKey);
 
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
@@ -335,7 +336,7 @@ export function SankeyView({
   );
 
   const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
-  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER);
+  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER, remountKey);
   useOpeningViewport({
     boxRef,
     content,
