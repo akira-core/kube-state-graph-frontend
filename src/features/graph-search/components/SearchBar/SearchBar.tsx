@@ -24,14 +24,19 @@ const ROOT_CLASS = 'pointer-events-auto absolute left-auto top-2 z-[1001] flex w
 const INPUT_WRAP_CLASS =
   'flex h-9 items-center gap-2 rounded-md border border-hairline bg-overlay px-2.5 text-secondary shadow-panel backdrop-blur-sm transition-colors duration-100 focus-within:border-hairline-strong';
 
+const NO_LABELS: ReadonlyMap<string, string> = new Map();
+
 export function SearchBar({
   query,
   onQueryChange,
   results,
   fitNodeIds,
-  labelById,
+  labelById = NO_LABELS,
   onLocate,
   onFitToIds,
+  testIdPrefix = 'graph-search',
+  placeholder = 'Search nodes…',
+  ariaLabel = 'Search nodes',
 }: Readonly<SearchBarProps>): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -186,7 +191,7 @@ export function SearchBar({
   const showList = query.trim().length > 0 && listOpen;
 
   return (
-    <div className={`${ROOT_CLASS} right-2`} data-testid="graph-search-bar">
+    <div className={`${ROOT_CLASS} right-2`} data-testid={`${testIdPrefix}-bar`}>
       <div className={INPUT_WRAP_CLASS}>
         <SearchIcon size={16} />
         <input
@@ -196,9 +201,9 @@ export function SearchBar({
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          placeholder="Search nodes…"
-          aria-label="Search nodes"
-          data-testid="graph-search-input"
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          data-testid={`${testIdPrefix}-input`}
           className="w-full border-0 bg-transparent text-[13px] text-primary outline-none placeholder:text-muted"
         />
       </div>

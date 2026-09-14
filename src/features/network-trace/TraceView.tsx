@@ -1,19 +1,22 @@
 import type cytoscape from 'cytoscape';
-import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
 
 import { formatBitsPerSec } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import {
   SankeyControlBar,
+  SankeySearchOverlay,
   SankeyTooltip,
   UNMEASURED_CONTAINER,
   useContainerSize,
   useOpeningViewport,
   useSankeyKeyboard,
+  useSankeySearch,
   useSankeyTooltip,
   useZoomPan,
   type HoverLit,
+  type Rect,
   shellEmptyKind,
   type ShellEmptyKind,
 } from '../sankey-canvas';
@@ -24,9 +27,10 @@ import { layoutTrace, type TraceNodeOrder } from './layout/layoutTrace';
 import { bandTooltipLines, nodeTooltipLines, residualTooltipLines } from './layout/tooltips';
 import { hopBalanceRows, namespaceAggs } from './model/aggregates';
 import { deriveTrace, directionFor } from './model/deriveTrace';
-import { hoverPath } from './model/hoverPath';
+import { hoverPath, hoverPathMany } from './model/hoverPath';
 import type { TraceDirection, TraceEdge, TraceLayout, TraceNode } from './model/types';
 import { TraceLegend } from './TraceLegend';
+import { traceCardRects, traceSearchRecords } from './traceSearch';
 import { TraceSummary } from './TraceSummary';
 import { cleanMinBps } from './traceUrlScope';
 
@@ -183,13 +187,34 @@ export function TraceView({
     }
   }, [hideTip, hoverId, model]);
 
-  const lit: HoverLit | null = useMemo(() => {
+  const hoverLit: HoverLit | null = useMemo(() => {
     if (hoverId === null || !model.ok) {
       return null;
     }
     const path = hoverPath(model, hoverId);
     return { keys: path.edgeIds, nodeIds: path.nodeIds };
   }, [hoverId, model]);
+  const searchRecords = useMemo(() => (model.ok && geo !== null ? traceSearchRecords(model, geo) : []), [geo, model]);
+  const cardRects = useMemo(() => (geo !== null ? traceCardRects(geo) : new Map<string, Rect>()), [geo]);
+  const searchPathLit = useCallback(
+    (ids: ReadonlySet<string>): HoverLit => {
+      if (!model.ok) {
+        return { keys: new Set(), nodeIds: new Set() };
+      }
+      const path = hoverPathMany(model, ids);
+      return { keys: path.edgeIds, nodeIds: path.nodeIds };
+    },
+    [model]
+  );
+  const search = useSankeySearch({
+    records: searchRecords,
+    rects: cardRects,
+    pathLit: searchPathLit,
+    fitToRect: zoom.fitToRect,
+  });
+  // Hovering a card while a search is lit shows that card's path alone; leaving it hands
+  // the chart back to the search.
+  const lit = hoverLit ?? search.lit;
 
   const summary = useMemo(
     () => (model.ok ? { hops: hopBalanceRows(model), namespaces: namespaceAggs(model) } : { hops: [], namespaces: [] }),
@@ -371,6 +396,7 @@ export function TraceView({
               onResidualLeave={tooltip.hide}
               onKeyDown={handleKeyDown}
             >
+              <SankeySearchOverlay search={search} />
               <SankeyControlBar
                 percent={zoom.percent}
                 focusMode={focusMode}

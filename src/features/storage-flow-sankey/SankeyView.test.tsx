@@ -1139,3 +1139,125 @@ describe('SankeyView', () => {
     });
   });
 });
+
+describe('SankeyView card search', () => {
+  const type = (query: string): void => {
+    fireEvent.change(screen.getByTestId('sankey-search-input'), { target: { value: query } });
+  };
+  const opacityOf = (testId: string): string => screen.getByTestId(testId).style.opacity;
+
+  it('lights every hit card’s whole path, like hovering it, and fades the rest', () => {
+    renderSankey();
+    type('aggr1');
+    expect(opacityOf('sankey-node-aggr1')).toBe('1');
+    // aggr1's claim runs down to data-mongo-0 → mongo-0 → mongodb → prod.
+    expect(opacityOf('sankey-node-ontap-prod-01')).toBe('1');
+    expect(opacityOf('sankey-node-data-mongo-0')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-0')).toBe('1');
+    expect(opacityOf('sankey-node-aggr2')).toBe('0.3');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('0.3');
+    expect(screen.getAllByTestId(/^sankey-link-/).some((el) => el.getAttribute('fill-opacity') === '0.14')).toBe(true);
+
+    // Every hit contributes its path: both aggregates light both claims.
+    type('aggr');
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('1');
+
+    type('');
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(screen.getAllByTestId(/^sankey-link-/).every((el) => el.getAttribute('fill-opacity') !== '0.14')).toBe(true);
+  });
+
+  it('fades everything for a query with no hits', () => {
+    renderSankey();
+    type('no-such-card');
+    expect(screen.getByTestId('search-no-results')).toBeInTheDocument();
+    expect(opacityOf('sankey-node-aggr1')).toBe('0.3');
+    expect(opacityOf('sankey-node-mongo-0')).toBe('0.3');
+  });
+
+  it('matches wrappers under the Node layout and lights their member pods', () => {
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    type('worker-0');
+    expect(opacityOf('sankey-node-mongo-0')).toBe('1');
+    expect(opacityOf('sankey-node-orphan-0')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('0.3');
+  });
+
+  it('lets a hover take over while searching and hands back on leave', () => {
+    renderSankey();
+    type('aggr1');
+    const aggr2 = screen.getByTestId('sankey-node-aggr2');
+    fireEvent.mouseEnter(aggr2);
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(opacityOf('sankey-node-aggr1')).toBe('0.3');
+    fireEvent.mouseLeave(aggr2);
+    expect(opacityOf('sankey-node-aggr1')).toBe('1');
+    expect(opacityOf('sankey-node-aggr2')).toBe('0.3');
+  });
+
+  it('frames a located result in the chart, ends the search and never leaves for Graph view', () => {
+    const { props } = renderSankey();
+    const svg = screen.getByTestId('sankey-svg');
+    type('ontap-prod-02');
+    fireEvent.click(screen.getByTestId('search-result-netapp/ontap-prod/ontap-prod-02'));
+    // A single card is framed at its own size, never enlarged.
+    expect(scaleOf(svg)).toBe(1);
+    expect(screen.getByTestId('sankey-search-input')).toHaveValue('');
+    expect(opacityOf('sankey-node-aggr1')).toBe('1');
+    expect(props.onLocateNode).not.toHaveBeenCalled();
+  });
+
+  it('fits the chart to every hit once typing pauses', () => {
+    vi.useFakeTimers();
+    try {
+      renderSankey();
+      const svg = screen.getByTestId('sankey-svg');
+      fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '0' });
+      const fitted = svg.querySelector('g')?.getAttribute('transform');
+      type('mongo');
+      expect(svg.querySelector('g')?.getAttribute('transform')).toBe(fitted);
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(svg.querySelector('g')?.getAttribute('transform')).not.toBe(fitted);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps chart shortcuts, wheel zoom and drag pan out of the search box', () => {
+    const onFocusModeChange = vi.fn();
+    renderSankey({ onFocusModeChange });
+    const input = screen.getByTestId('sankey-search-input');
+    const readout = (): string | null => screen.getByTestId('sankey-zoom-controls').textContent;
+    const before = readout();
+    fireEvent.keyDown(input, { key: 'f' });
+    fireEvent.keyDown(input, { key: '+' });
+    fireEvent.wheel(screen.getByTestId('sankey-search-bar'), { deltaY: -600, clientX: 700, clientY: 20 });
+    expect(onFocusModeChange).not.toHaveBeenCalled();
+    expect(readout()).toBe(before);
+
+    const svg = screen.getByTestId('sankey-svg');
+    const transform = svg.querySelector('g')?.getAttribute('transform');
+    fireEvent.pointerDown(input, { pointerId: 1, clientX: 700, clientY: 20 });
+    fireEvent.pointerMove(input, { pointerId: 1, clientX: 600, clientY: 120 });
+    expect(svg.querySelector('g')?.getAttribute('transform')).toBe(transform);
+  });
+
+  it('keeps the query across a refresh and drops hits the new body has no card for', () => {
+    const { rerender } = renderSankeyWithProps(baseProps());
+    type('aggr');
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps({ elements: withoutAggr1() })} />
+        </div>
+      </ThemeProvider>
+    );
+    expect(screen.getByTestId('sankey-search-input')).toHaveValue('aggr');
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('1');
+  });
+});

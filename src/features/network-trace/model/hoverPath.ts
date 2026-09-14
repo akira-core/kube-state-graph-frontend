@@ -11,16 +11,29 @@ export interface HoverPath {
  * member pods' paths (plus itself). An empty wrapper has no path.
  */
 export function hoverPath(model: TraceModelOk, id: string): HoverPath {
-  const wrapper = model.wrappers.find((w) => w.id === id);
-  const starts = wrapper !== undefined ? wrapper.podIds : [id];
+  return hoverPathMany(model, [id]);
+}
+
+/**
+ * The union of `hoverPath` over every id — what a search lights for all its hits at once.
+ * A walk step depends only on the node it is at, so every start shares one visited set per
+ * direction: the union is exact and costs one pass however many ids there are.
+ */
+export function hoverPathMany(model: TraceModelOk, ids: Iterable<string>): HoverPath {
+  const wrappersById = new Map(model.wrappers.map((w) => [w.id, w]));
   const edgeIds = new Set<string>();
   const nodeIds = new Set<string>();
-  if (wrapper !== undefined) {
-    nodeIds.add(id);
-  }
-  const walk = (start: string, key: 'inEdges' | 'outEdges', next: (e: TraceEdge) => string): void => {
+  const walk = (
+    start: string,
+    key: 'inEdges' | 'outEdges',
+    next: (e: TraceEdge) => string,
+    seen: Set<string>
+  ): void => {
+    if (seen.has(start)) {
+      return;
+    }
+    seen.add(start);
     const stack = [start];
-    const seen = new Set<string>([start]);
     while (stack.length > 0) {
       const cur = stack.pop();
       if (cur === undefined) {
@@ -41,9 +54,17 @@ export function hoverPath(model: TraceModelOk, id: string): HoverPath {
       }
     }
   };
-  for (const s of starts) {
-    walk(s, 'inEdges', (e) => e.fromId);
-    walk(s, 'outEdges', (e) => e.toId);
+  const seenUp = new Set<string>();
+  const seenDown = new Set<string>();
+  for (const id of ids) {
+    const wrapper = wrappersById.get(id);
+    if (wrapper !== undefined) {
+      nodeIds.add(id);
+    }
+    for (const s of wrapper !== undefined ? wrapper.podIds : [id]) {
+      walk(s, 'inEdges', (e) => e.fromId, seenUp);
+      walk(s, 'outEdges', (e) => e.toId, seenDown);
+    }
   }
   return { edgeIds, nodeIds };
 }

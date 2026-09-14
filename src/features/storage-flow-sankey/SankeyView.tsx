@@ -1,5 +1,5 @@
 import type cytoscape from 'cytoscape';
-import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
 
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
@@ -7,12 +7,14 @@ import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { EMPTY_STORAGE_GRAPH_ROOTS, hasAnyRoot, type StorageGraphRoots } from '../graph-data';
 import {
   SankeyControlBar,
+  SankeySearchOverlay,
   SankeyTooltip,
   StatusLegend,
   UNMEASURED_CONTAINER,
   useContainerSize,
   useOpeningViewport,
   useSankeyKeyboard,
+  useSankeySearch,
   useSankeyTooltip,
   useZoomPan,
   nodeTooltipRows,
@@ -27,17 +29,15 @@ import {
   DERIVED_TIER_LABEL,
   deriveSankey,
   formatBytesPerSec,
-  hoverPathForFrame,
-  hoverPathForWrapper,
-  hoverPathLinks,
   isDerivedTier,
   resolveClaimAggregates,
   type SankeyMode,
   type SankeyNode,
   type SankeySvmDisplay,
 } from './deriveSankey';
-import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
+import { layoutSankey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart, type HoverLit } from './SankeyChart';
+import { sankeyCardRects, sankeyPathLit, sankeySearchRecords } from './sankeySearch';
 import {
   SankeySummary,
   type ApplicationSubtotalRow,
@@ -364,26 +364,22 @@ export function SankeyView({
     }
   }, [graph, hideTip, hoverId]);
 
-  const lit: HoverLit | null = useMemo(() => {
-    if (hoverId === null) {
-      return null;
-    }
-    const wrapper = graph.k8sNodes.find((n) => n.id === hoverId);
-    const frame = graph.svmFrames.find((f) => f.id === hoverId);
-    const pathLinks =
-      wrapper !== undefined
-        ? hoverPathForWrapper(graph, wrapper)
-        : frame !== undefined
-          ? hoverPathForFrame(graph, frame)
-          : hoverPathLinks(graph, hoverId);
-    const keys = new Set(pathLinks.map((l) => linkKey(l.source, l.target, l.direction, l.tier)));
-    const nodeIds = new Set<string>([hoverId]);
-    for (const l of pathLinks) {
-      nodeIds.add(l.source);
-      nodeIds.add(l.target);
-    }
-    return { keys, nodeIds };
-  }, [graph, hoverId]);
+  const hoverLit: HoverLit | null = useMemo(
+    () => (hoverId === null ? null : sankeyPathLit(graph, [hoverId])),
+    [graph, hoverId]
+  );
+  const searchRecords = useMemo(() => sankeySearchRecords(graph, layout), [graph, layout]);
+  const cardRects = useMemo(() => sankeyCardRects(layout), [layout]);
+  const searchPathLit = useCallback((ids: ReadonlySet<string>) => sankeyPathLit(graph, ids), [graph]);
+  const search = useSankeySearch({
+    records: searchRecords,
+    rects: cardRects,
+    pathLit: searchPathLit,
+    fitToRect: zoom.fitToRect,
+  });
+  // Hovering a card while a search is lit shows that card's path alone; leaving it hands
+  // the chart back to the search.
+  const lit = hoverLit ?? search.lit;
 
   const summary = useMemo(() => {
     const inbound = new Map<string, number>();
@@ -671,6 +667,7 @@ export function SankeyView({
               onLinkLeave={hideTip}
               onKeyDown={handleKeyDown}
             >
+              <SankeySearchOverlay search={search} />
               <SankeyControlBar
                 percent={zoom.percent}
                 focusMode={focusMode}

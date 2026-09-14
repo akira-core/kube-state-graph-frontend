@@ -5,6 +5,7 @@ export {
   deriveSankey,
   formatBytesPerSec,
   hoverPathLinks,
+  hoverPathLinksMany,
   hoverPathForFrame,
   hoverPathForWrapper,
   resolveClaimAggregates,

@@ -409,6 +409,25 @@ describe('SearchBar', () => {
     expect(screen.getByTestId('search-result-list')).toBeInTheDocument();
   });
 
+  it('takes a test-id prefix and label copy, and works without labelById', () => {
+    render(
+      <SearchBar
+        query=""
+        onQueryChange={jest.fn()}
+        results={[]}
+        fitNodeIds={[]}
+        onLocate={jest.fn()}
+        onFitToIds={jest.fn()}
+        testIdPrefix="sankey-search"
+        placeholder="Search cards…"
+        ariaLabel="Search cards"
+      />
+    );
+    expect(screen.getByTestId('sankey-search-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('sankey-search-input')).toHaveAttribute('aria-label', 'Search cards');
+    expect(screen.getByPlaceholderText('Search cards…')).toBeInTheDocument();
+  });
+
   it('typing updates the controlled query via onQueryChange', () => {
     const onQueryChange = jest.fn();
     renderBar({ onQueryChange });

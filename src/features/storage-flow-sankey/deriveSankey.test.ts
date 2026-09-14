@@ -7,6 +7,7 @@ import {
   formatBytesPerSec,
   hoverPathForFrame,
   hoverPathLinks,
+  hoverPathLinksMany,
   resolveClaimAggregates,
   rootValueOptions,
   SANKEY_KIND_ORDER,
@@ -454,6 +455,34 @@ describe('deriveSankey', () => {
     expect(path.some((l) => l.tier === 'pod-application')).toBe(true);
     expect(path.some((l) => l.tier === 'application-namespace')).toBe(true);
     expect(path.some((l) => l.target.startsWith('node/'))).toBe(false);
+  });
+
+  it("a many-start walk lights exactly the union of each start's own path", () => {
+    const { elements: noAggr } = normalizeGraph(
+      (() => {
+        const body = clonePlain(SHOWCASE_STORAGE_GRAPH);
+        for (const n of body.elements.nodes) {
+          delete (n.data as { labels?: Record<string, unknown> }).labels?.aggr;
+        }
+        return body;
+      })()
+    );
+    expect(deriveSankey(noAggr, 'both').reportsClaimAggregates).toBe(false);
+    for (const [name, graph] of [
+      ['claim-aware', deriveSankey(elements, 'both')],
+      ['no claim aggregates', deriveSankey(noAggr, 'both')],
+      ['group', deriveSankey(elements, 'both', EMPTY_STORAGE_GRAPH_ROOTS, 'group')],
+    ] as const) {
+      const ids = graph.nodes.map((n) => n.id);
+      const union = new Set(ids.flatMap((id) => hoverPathLinks(graph, id)));
+      expect(new Set(hoverPathLinksMany(graph, ids)), name).toEqual(union);
+      expect(union.size, name).toBeGreaterThan(0);
+      // A subset mixing an SVM start (unconstrained) with constrained starts.
+      const some = graph.nodes.filter((n) => n.kind === 'netapp-svm' || n.kind === 'pvc').map((n) => n.id);
+      expect(new Set(hoverPathLinksMany(graph, some)), name).toEqual(
+        new Set(some.flatMap((id) => hoverPathLinks(graph, id)))
+      );
+    }
   });
 
   describe('hover: claim-aware crossing', () => {

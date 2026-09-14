@@ -489,3 +489,68 @@ describe('TraceView summary and warnings', () => {
     expect(screen.getByTestId('trace-namespace-table')).toHaveTextContent('telemetry');
   });
 });
+
+describe('TraceView card search', () => {
+  const type = (query: string): void => {
+    fireEvent.change(screen.getByTestId('sankey-search-input'), { target: { value: query } });
+  };
+  const opacityOf = (testId: string): string => screen.getByTestId(testId).style.opacity;
+
+  it('lights a hit card’s whole path, like hovering it, and fades the rest', () => {
+    renderTrace();
+    type('kafka-2');
+    expect(opacityOf('trace-node-kafka-2')).toBe('1');
+    expect(opacityOf('trace-node-node-w-11')).toBe('1');
+    expect(opacityOf('trace-node-ToR k8s (k8s)')).toBe('1');
+    expect(opacityOf('trace-node-Core 1')).toBe('1');
+    expect(opacityOf('trace-node-網管部 王小明')).toBe('0.3');
+    expect(opacityOf('trace-node-ingest-4f11')).toBe('0.3');
+    type('');
+    expect(opacityOf('trace-node-網管部 王小明')).toBe('1');
+  });
+
+  it('finds a leaf by a client address and names the address that matched', () => {
+    renderTrace();
+    type('10.42.7.31');
+    expect(screen.getByTestId('search-result-list')).toHaveTextContent('ip: 10.42.7.31');
+    expect(opacityOf('trace-node-網管部 王小明')).toBe('1');
+    expect(opacityOf('trace-node-kafka-2')).toBe('0.3');
+  });
+
+  it('fades everything for a query with no hits', () => {
+    renderTrace();
+    type('no-such-card');
+    expect(opacityOf('trace-node-Core 1')).toBe('0.3');
+    expect(opacityOf('trace-node-kafka-2')).toBe('0.3');
+  });
+
+  it('lets a hover take over while searching and hands back on leave', () => {
+    renderTrace();
+    type('kafka-2');
+    const owner = screen.getByTestId('trace-node-網管部 王小明');
+    fireEvent.mouseEnter(owner);
+    expect(opacityOf('trace-node-網管部 王小明')).toBe('1');
+    expect(opacityOf('trace-node-kafka-2')).toBe('0.3');
+    fireEvent.mouseLeave(owner);
+    expect(opacityOf('trace-node-kafka-2')).toBe('1');
+    expect(opacityOf('trace-node-網管部 王小明')).toBe('0.3');
+  });
+
+  it('frames a located result in the chart, ends the search and never leaves for Graph view', () => {
+    const { props } = renderTrace();
+    type('kafka-2');
+    fireEvent.click(screen.getByTestId('search-result-k8s/kafka-2'));
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    expect(screen.getByTestId('sankey-search-input')).toHaveValue('');
+    expect(opacityOf('trace-node-網管部 王小明')).toBe('1');
+    expect(props.onLocateNode).not.toHaveBeenCalled();
+  });
+
+  it('matches k8s node frames under the Node layout and lights their member pods', () => {
+    renderTrace({ elements: placedPods });
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    type('worker-0');
+    expect(opacityOf('trace-node-p-a')).toBe('1');
+    expect(opacityOf('trace-node-p-b')).toBe('0.3');
+  });
+});

@@ -7,7 +7,7 @@ import {
   type RefObject,
 } from 'react';
 
-import { clamp } from './geometry';
+import { clamp, type Rect } from './geometry';
 
 export interface Viewport {
   scale: number;
@@ -33,6 +33,16 @@ const BUTTON_STEP_FACTOR = 1.25;
  * seen keeps an un-moved click untouched.
  */
 const DRAG_THRESHOLD_PX = 4;
+/**
+ * Marks an overlay inside the chart host (the card search box and its result list) whose
+ * wheel and press belong to the overlay: without it a wheel over the result list zooms the
+ * chart instead of scrolling the list, and pressing in the input starts a pan.
+ */
+export const ZOOM_PAN_IGNORE_ATTR = 'data-zoom-pan-ignore';
+
+function insideIgnored(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(`[${ZOOM_PAN_IGNORE_ATTR}]`) !== null;
+}
 
 /**
  * Zooms `v` by `factor`, keeping the content point under `anchor` (same coordinate space
@@ -65,6 +75,30 @@ export function fitViewport(content: Size, container: Size): Viewport {
   return { scale, tx: (container.w - content.w * scale) / 2, ty: (container.h - content.h * scale) / 2 };
 }
 
+export interface FitRectOptions {
+  /** Screen pixels kept clear around the rect. */
+  padding?: number;
+  /** Never enlarge past this — a single card stays at its own size by default. */
+  maxScale?: number;
+}
+
+/** Centres `rect` in the container, scaled to fit inside `padding`, never past `maxScale`. */
+export function fitRectViewport(rect: Rect, container: Size, options: FitRectOptions = {}): Viewport {
+  const { padding = 40, maxScale = 1 } = options;
+  if (container.w <= 0 || container.h <= 0) {
+    return { scale: 1, tx: 0, ty: 0 };
+  }
+  const availW = Math.max(container.w - 2 * padding, 1);
+  const availH = Math.max(container.h - 2 * padding, 1);
+  const fitted = Math.min(rect.w > 0 ? availW / rect.w : maxScale, rect.h > 0 ? availH / rect.h : maxScale, maxScale);
+  const scale = clamp(fitted, MIN_SCALE, MAX_SCALE);
+  return {
+    scale,
+    tx: container.w / 2 - (rect.x + rect.w / 2) * scale,
+    ty: container.h / 2 - (rect.y + rect.h / 2) * scale,
+  };
+}
+
 export function oneToOneViewport(content: Size, container: Size): Viewport {
   return { scale: 1, tx: (container.w - content.w) / 2, ty: (container.h - content.h) / 2 };
 }
@@ -90,6 +124,8 @@ export interface ZoomPanApi {
   fit: () => void;
   resetOne: () => void;
   setViewport: (v: Viewport) => void;
+  /** Frames a content-space rect against the current container (see `fitRectViewport`). */
+  fitToRect: (rect: Rect, options?: FitRectOptions) => void;
 }
 
 /**
@@ -124,6 +160,9 @@ export function useZoomPan(
       return;
     }
     const onWheel = (e: WheelEvent): void => {
+      if (insideIgnored(e.target)) {
+        return;
+      }
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -135,6 +174,9 @@ export function useZoomPan(
   }, [wheelHostRef, remountKey]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
+    if (insideIgnored(e.target)) {
+      return;
+    }
     // No capture and no `dragging` yet — see DRAG_THRESHOLD_PX. Only the start point and
     // the viewport it started from are recorded.
     setViewportState((v) => {
@@ -174,6 +216,10 @@ export function useZoomPan(
     setViewportState((v) => zoomAroundPoint(v, anchor, direction === 1 ? BUTTON_STEP_FACTOR : 1 / BUTTON_STEP_FACTOR));
   }, []);
 
+  const fitToRect = useCallback((rect: Rect, options?: FitRectOptions) => {
+    setViewportState(fitRectViewport(rect, containerRef.current, options));
+  }, []);
+
   return {
     viewport,
     dragging,
@@ -184,5 +230,6 @@ export function useZoomPan(
     fit: () => setViewportState(fitViewport(contentRef.current, containerRef.current)),
     resetOne: () => setViewportState(oneToOneViewport(contentRef.current, containerRef.current)),
     setViewport: setViewportState,
+    fitToRect,
   };
 }

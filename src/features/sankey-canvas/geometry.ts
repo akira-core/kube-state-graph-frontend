@@ -24,6 +24,29 @@ export const WRAPPER_HEADER_H = 40;
 /** Baseline step of one extra text line inside a card body (below the subtitle). */
 export const CARD_LINE_H = 13;
 
+/** An axis-aligned box in content coordinates — a card's or a wrapper's frame. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The smallest box enclosing every rect; `null` for none. */
+export function unionRect(rects: Iterable<Rect>): Rect | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const r of rects) {
+    minX = Math.min(minX, r.x);
+    minY = Math.min(minY, r.y);
+    maxX = Math.max(maxX, r.x + r.w);
+    maxY = Math.max(maxY, r.y + r.h);
+  }
+  return minX === Infinity ? null : { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

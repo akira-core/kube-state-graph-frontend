@@ -28,7 +28,7 @@ export interface TraceChartProps {
   onResidualEnter: (n: TraceNode, side: 'in' | 'out', evt: MouseEvent) => void;
   onResidualLeave: () => void;
   onKeyDown: (evt: KeyboardEvent<HTMLDivElement>) => void;
-  /** The zoom control bar — see `SankeyCanvas`'s `overlay`. */
+  /** The chart's overlays (card search, zoom control bar) — see `SankeyCanvas`'s `overlay`. */
   children?: ReactNode;
 }
 

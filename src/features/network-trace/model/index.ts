@@ -1,5 +1,5 @@
 export { deriveTrace, directionFor, resolveInvestigation, resolveTraceDirection } from './deriveTrace';
-export { hoverPath } from './hoverPath';
+export { hoverPath, hoverPathMany } from './hoverPath';
 export type { HoverPath } from './hoverPath';
 export { locatable } from './locatable';
 export { hopBalanceRows, namespaceAggs } from './aggregates';

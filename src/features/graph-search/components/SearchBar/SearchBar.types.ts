@@ -7,8 +7,14 @@ export interface SearchBarProps {
   results: readonly SearchResult[];
   // Lit/fit node ids (proxy-hit substituted). Debounced fit and Enter-flush use this set.
   fitNodeIds: readonly string[];
-  labelById: ReadonlyMap<string, string>;
+  // Only read for `collapsedUnder` annotations — a view with no collapsed containers (the
+  // Sankey-style views) omits it.
+  labelById?: ReadonlyMap<string, string>;
   onLocate: (result: SearchResult) => void;
   // Imperative fit bridge from GraphCanvas (design D5). No-op-safe when null (cy not ready).
   onFitToIds: (ids: readonly string[]) => void;
+  // `<prefix>-bar` / `<prefix>-input` test ids. Defaults to `graph-search`.
+  testIdPrefix?: string;
+  placeholder?: string;
+  ariaLabel?: string;
 }

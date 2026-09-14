@@ -877,92 +877,145 @@ export function formatBytesPerSec(value: number): string {
  * already exact.
  */
 export function hoverPathLinks(graph: SankeyGraph, nodeId: string): SankeyLink[] {
-  const out = new Set<SankeyLink>();
-  const kindOf = new Map(graph.nodes.map((n) => [n.id, n.kind]));
-  const startsAtSvm = kindOf.get(nodeId) === 'netapp-svm';
-  const constrained = graph.reportsClaimAggregates && !startsAtSvm;
+  return hoverPathLinksMany(graph, [nodeId]);
+}
 
-  const forward = (id: string, seen: Set<string>): void => {
-    if (seen.has(id)) {
-      return;
-    }
-    seen.add(id);
-    for (const link of graph.links) {
-      if (link.source !== id) {
-        continue;
-      }
-      if (constrained && link.tier === 'aggr-svm') {
-        // Enter the svm only toward the claims whose claim aggregate is `id` — the
-        // aggregate this walk is currently at — bypassing the svm's own unconstrained
-        // fan-out (which may hold claims on a different aggregate).
-        out.add(link);
-        for (const sp of graph.links) {
-          if (sp.tier === 'svm-pvc' && sp.source === link.target && graph.claimAggregates.get(sp.target) === id) {
-            out.add(sp);
-            forward(sp.target, seen);
-          }
-        }
-        continue;
-      }
-      out.add(link);
-      forward(link.target, seen);
+interface LinkIndex {
+  kindOf: Map<string, SankeyKind>;
+  outBy: Map<string, SankeyLink[]>;
+  inBy: Map<string, SankeyLink[]>;
+  /** SVM id -> its `svm-pvc` links. */
+  svmPvcBySvm: Map<string, SankeyLink[]>;
+  /** SVM id -> its inbound `aggr-svm` links. */
+  aggrSvmBySvm: Map<string, SankeyLink[]>;
+}
+
+// A graph is immutable once derived, so its adjacency is built once however many walks
+// (one per hovered card, or one per search hit) read it.
+const linkIndexCache = new WeakMap<SankeyGraph, LinkIndex>();
+
+function linkIndexOf(graph: SankeyGraph): LinkIndex {
+  const cached = linkIndexCache.get(graph);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const push = (map: Map<string, SankeyLink[]>, key: string, link: SankeyLink): void => {
+    const list = map.get(key);
+    if (list === undefined) {
+      map.set(key, [link]);
+    } else {
+      list.push(link);
     }
   };
-
-  const backward = (id: string, seen: Set<string>): void => {
-    if (seen.has(id)) {
-      return;
+  const index: LinkIndex = {
+    kindOf: new Map(graph.nodes.map((n) => [n.id, n.kind])),
+    outBy: new Map(),
+    inBy: new Map(),
+    svmPvcBySvm: new Map(),
+    aggrSvmBySvm: new Map(),
+  };
+  for (const link of graph.links) {
+    push(index.outBy, link.source, link);
+    push(index.inBy, link.target, link);
+    if (link.tier === 'svm-pvc') {
+      push(index.svmPvcBySvm, link.source, link);
+    } else if (link.tier === 'aggr-svm') {
+      push(index.aggrSvmBySvm, link.target, link);
     }
-    seen.add(id);
-    for (const link of graph.links) {
-      if (link.target !== id) {
-        continue;
+  }
+  linkIndexCache.set(graph, index);
+  return index;
+}
+
+/**
+ * The union of `hoverPathLinks` over every start — what a search lights for all its hits at
+ * once. Each walk step depends only on the node it is at (and on whether the walk is
+ * claim-constrained), so starts sharing a constraint share their visited sets: the union is
+ * exact and costs one pass over the reachable links however many starts there are.
+ */
+export function hoverPathLinksMany(graph: SankeyGraph, startIds: Iterable<string>): SankeyLink[] {
+  const out = new Set<SankeyLink>();
+  const { kindOf, outBy, inBy, svmPvcBySvm, aggrSvmBySvm } = linkIndexOf(graph);
+
+  const walk = (starts: readonly string[], constrained: boolean): void => {
+    const seenForward = new Set<string>();
+    const seenBackward = new Set<string>();
+
+    const forward = (id: string): void => {
+      if (seenForward.has(id)) {
+        return;
       }
-      if (constrained && link.tier === 'svm-pvc' && kindOf.get(link.source) === 'netapp-svm') {
-        // Leave the pvc toward its OWN claim aggregate only. A FlexGroup claim (no claim
-        // aggregate) stops here — its SVM's other inbound edges may belong to a claim on
-        // a different aggregate entirely.
-        out.add(link);
-        const claimAggr = graph.claimAggregates.get(id);
-        if (claimAggr === undefined) {
+      seenForward.add(id);
+      for (const link of outBy.get(id) ?? []) {
+        if (constrained && link.tier === 'aggr-svm') {
+          // Enter the svm only toward the claims whose claim aggregate is `id` — the
+          // aggregate this walk is currently at — bypassing the svm's own unconstrained
+          // fan-out (which may hold claims on a different aggregate).
+          out.add(link);
+          for (const sp of svmPvcBySvm.get(link.target) ?? []) {
+            if (graph.claimAggregates.get(sp.target) === id) {
+              out.add(sp);
+              forward(sp.target);
+            }
+          }
           continue;
         }
-        for (const as of graph.links) {
-          if (as.tier === 'aggr-svm' && as.target === link.source && as.source === claimAggr) {
-            out.add(as);
-            backward(as.source, seen);
-          }
-        }
-        continue;
+        out.add(link);
+        forward(link.target);
       }
-      out.add(link);
-      backward(link.source, seen);
+    };
+
+    const backward = (id: string): void => {
+      if (seenBackward.has(id)) {
+        return;
+      }
+      seenBackward.add(id);
+      for (const link of inBy.get(id) ?? []) {
+        if (constrained && link.tier === 'svm-pvc' && kindOf.get(link.source) === 'netapp-svm') {
+          // Leave the pvc toward its OWN claim aggregate only. A FlexGroup claim (no claim
+          // aggregate) stops here — its SVM's other inbound edges may belong to a claim on
+          // a different aggregate entirely.
+          out.add(link);
+          const claimAggr = graph.claimAggregates.get(id);
+          if (claimAggr === undefined) {
+            continue;
+          }
+          for (const as of aggrSvmBySvm.get(link.source) ?? []) {
+            if (as.source === claimAggr) {
+              out.add(as);
+              backward(as.source);
+            }
+          }
+          continue;
+        }
+        out.add(link);
+        backward(link.source);
+      }
+    };
+
+    for (const id of starts) {
+      forward(id);
+      backward(id);
     }
   };
 
-  forward(nodeId, new Set());
-  backward(nodeId, new Set());
+  // Hovering an SVM card is unconstrained (see `hoverPathLinks`), so SVM starts walk apart.
+  const svmStarts: string[] = [];
+  const otherStarts: string[] = [];
+  for (const id of startIds) {
+    (kindOf.get(id) === 'netapp-svm' ? svmStarts : otherStarts).push(id);
+  }
+  walk(svmStarts, false);
+  walk(otherStarts, graph.reportsClaimAggregates);
   return [...out];
 }
 
 /** Union of every member pod's path — hovering a wrapper title lights them all. */
 export function hoverPathForWrapper(graph: SankeyGraph, k8sNode: SankeyK8sNode): SankeyLink[] {
-  const seen = new Set<SankeyLink>();
-  for (const podId of k8sNode.podIds) {
-    for (const link of hoverPathLinks(graph, podId)) {
-      seen.add(link);
-    }
-  }
-  return [...seen];
+  return hoverPathLinksMany(graph, k8sNode.podIds);
 }
 
 /** Union of every member PVC's path — hovering a Group-display frame title lights them all. */
 export function hoverPathForFrame(graph: SankeyGraph, frame: SankeySvmFrame): SankeyLink[] {
-  const seen = new Set<SankeyLink>();
-  for (const pvcId of frame.pvcIds) {
-    for (const link of hoverPathLinks(graph, pvcId)) {
-      seen.add(link);
-    }
-  }
-  return [...seen];
+  return hoverPathLinksMany(graph, frame.pvcIds);
 }

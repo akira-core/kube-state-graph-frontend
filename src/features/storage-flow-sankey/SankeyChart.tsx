@@ -29,7 +29,7 @@ export interface SankeyChartProps {
   onLinkEnter: (link: LayoutLink, evt: MouseEvent) => void;
   onLinkLeave: () => void;
   onKeyDown: (evt: KeyboardEvent<HTMLDivElement>) => void;
-  /** The zoom control bar — see `SankeyCanvas`'s `overlay`. */
+  /** The chart's overlays (card search, zoom control bar) — see `SankeyCanvas`'s `overlay`. */
   children?: ReactNode;
 }
 

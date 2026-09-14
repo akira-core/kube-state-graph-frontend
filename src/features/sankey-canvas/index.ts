@@ -3,6 +3,8 @@ export type { ColumnHeader, HoverLit, SankeyCanvasProps } from './SankeyCanvas';
 export { SankeyCard, SankeyWrapperBox } from './SankeyCard';
 export type { SankeyCardProps, SankeyWrapperBoxProps, SlotLabel } from './SankeyCard';
 export { SankeyControlBar } from './SankeyControlBar';
+export { SankeySearchOverlay } from './SankeySearchOverlay';
+export type { SankeySearchOverlayProps } from './SankeySearchOverlay';
 export { shellEmptyKind } from './emptyState';
 export type { ShellEmptyInputs, ShellEmptyKind } from './emptyState';
 export type { SankeyControlBarProps } from './SankeyControlBar';
@@ -16,16 +18,20 @@ export { useContainerSize } from './useContainerSize';
 export { UNMEASURED_CONTAINER, useOpeningViewport } from './useOpeningViewport';
 export type { OpeningViewportOptions } from './useOpeningViewport';
 export { useSankeyKeyboard } from './useSankeyKeyboard';
+export { useSankeySearch } from './useSankeySearch';
+export type { SankeySearch, SankeySearchOptions } from './useSankeySearch';
 export type { SankeyKeyboardOptions } from './useSankeyKeyboard';
 export { useSankeyTooltip } from './useSankeyTooltip';
 export type { SankeyTooltipApi, Tip } from './useSankeyTooltip';
 export {
+  fitRectViewport,
   fitViewport,
   MAX_SCALE,
   MIN_SCALE,
   oneToOneViewport,
   openingViewport,
   useZoomPan,
+  ZOOM_PAN_IGNORE_ATTR,
   zoomAroundPoint,
 } from './useZoomPan';
-export type { Size, Viewport, ZoomPanApi } from './useZoomPan';
+export type { FitRectOptions, Size, Viewport, ZoomPanApi } from './useZoomPan';

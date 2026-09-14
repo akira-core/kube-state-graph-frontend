@@ -1,0 +1,83 @@
+import type { SearchField, SearchRecord } from '../graph-search';
+import type { Rect } from '../sankey-canvas';
+
+import type { TraceGeometry } from './layout/types';
+import type { TraceModelOk } from './model/types';
+
+function fieldsOf(entries: ReadonlyArray<[string, string | null | undefined]>): SearchField[] {
+  return entries.flatMap(([field, value]) =>
+    value !== null && value !== undefined && value.length > 0 ? [{ field, value }] : []
+  );
+}
+
+/**
+ * One search record per DRAWN card: every placed node (hop, leaf, anchor) and every
+ * `node`-layout frame. A hop's `role` is its wire kind; a leaf reads better by the wire
+ * type it stopped at (`host`, `router`, …) than by the role `leaf`. A leaf's clients are
+ * searchable one value at a time, so a hit on an address names that address.
+ */
+export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): SearchRecord[] {
+  const records: SearchRecord[] = [];
+  for (const n of model.nodes) {
+    if (!geo.nodes.has(n.id)) {
+      continue;
+    }
+    const kind = n.role === 'leaf' ? (n.type ?? n.role) : n.role;
+    const context =
+      n.namespace !== null || n.ontapCluster !== null
+        ? {
+            ...(n.namespace !== null ? { namespace: n.namespace } : {}),
+            ...(n.ontapCluster !== null ? { cluster: n.ontapCluster } : {}),
+          }
+        : undefined;
+    records.push({
+      id: n.id,
+      label: n.label.length > 0 ? n.label : n.id,
+      kind,
+      ...(context !== undefined ? { context } : {}),
+      fields: [
+        ...fieldsOf([
+          ['label', n.label],
+          ['kind', kind],
+          ['namespace', n.namespace],
+          ['ontapCluster', n.ontapCluster],
+          ['tier', n.tier],
+          ['k8sNode', n.k8sNode],
+          ['owner', n.owner],
+        ]),
+        ...(n.clients ?? []).flatMap((c) =>
+          fieldsOf([
+            ['ip', c.ip],
+            ['hostname', c.hostname],
+            ['owner', c.owner],
+          ])
+        ),
+      ],
+    });
+  }
+  for (const wg of geo.wrappers) {
+    const w = wg.wrapper;
+    records.push({
+      id: w.id,
+      label: w.label.length > 0 ? w.label : w.id,
+      kind: 'node',
+      fields: fieldsOf([
+        ['label', w.label],
+        ['kind', 'node'],
+      ]),
+    });
+  }
+  return records;
+}
+
+/** Content-space frame of every placed card and frame, by id. */
+export function traceCardRects(geo: TraceGeometry): Map<string, Rect> {
+  const rects = new Map<string, Rect>();
+  for (const [id, g] of geo.nodes) {
+    rects.set(id, { x: g.x, y: g.y, w: g.w, h: g.h });
+  }
+  for (const wg of geo.wrappers) {
+    rects.set(wg.wrapper.id, { x: wg.x, y: wg.y, w: wg.w, h: wg.h });
+  }
+  return rects;
+}
