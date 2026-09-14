@@ -2,7 +2,15 @@ import { clonePlain } from '../../shared/clone/clonePlain';
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph, type StorageGraphRoots } from '../graph-data';
 
-import { deriveSankey, formatBytesPerSec, hoverPathLinks, rootValueOptions, SANKEY_KIND_ORDER } from './deriveSankey';
+import {
+  deriveSankey,
+  formatBytesPerSec,
+  hoverPathForFrame,
+  hoverPathLinks,
+  resolveClaimAggregates,
+  rootValueOptions,
+  SANKEY_KIND_ORDER,
+} from './deriveSankey';
 
 function wire(nodes: unknown[], edges: unknown[]): unknown {
   return { elements: { nodes: nodes.map((data) => ({ data })), edges: edges.map((data) => ({ data })) } };
@@ -74,7 +82,7 @@ describe('deriveSankey', () => {
     const opts = rootValueOptions(elements);
     expect(opts.ontap_cluster).toEqual(['ontap-prod']);
     expect(opts.aggr).toEqual(['aggr1', 'aggr2']);
-    expect(opts.svm).toEqual(['svm_dr', 'svm_jobs', 'svm_shop']);
+    expect(opts.svm).toEqual(['svm_jobs', 'svm_shop']);
     // `node` matches BOTH a NetApp controller and a Kubernetes node, exactly as the backend
     // matches that kind — offering only one side would hide half of what the root accepts.
     expect(opts.node).toEqual(['ontap-prod-01', 'ontap-prod-02', 'worker-0', 'worker-1']);
@@ -106,7 +114,7 @@ describe('deriveSankey', () => {
     );
     expect(byKind['netapp-node']).toEqual(['ontap-prod-01', 'ontap-prod-02']);
     expect(byKind['netapp-aggr']).toEqual(['aggr1', 'aggr2']);
-    expect(byKind['netapp-svm']).toEqual(expect.arrayContaining(['svm_shop', 'svm_dr', 'svm_jobs']));
+    expect(byKind['netapp-svm']).toEqual(expect.arrayContaining(['svm_shop', 'svm_jobs']));
     expect(byKind.pvc).toEqual(
       expect.arrayContaining(['data-mongo-0', 'data-mongo-1', 'data-scratch', 'data-orphan', 'data-pending'])
     );
@@ -446,7 +454,163 @@ describe('deriveSankey', () => {
     expect(path.some((l) => l.tier === 'pod-application')).toBe(true);
     expect(path.some((l) => l.tier === 'application-namespace')).toBe(true);
     expect(path.some((l) => l.target.startsWith('node/'))).toBe(false);
-    expect(path.some((l) => l.source.includes('aggr2') || l.target.includes('aggr2'))).toBe(false);
+  });
+
+  describe('hover: claim-aware crossing', () => {
+    const idOf = (graph: ReturnType<typeof deriveSankey>, kind: string, label: string): string => {
+      const found = graph.nodes.find((n) => n.kind === kind && n.label === label);
+      if (found === undefined) {
+        throw new Error(`missing node ${kind}/${label}`);
+      }
+      return found.id;
+    };
+    const hasEdge = (path: ReturnType<typeof hoverPathLinks>, source: string, target: string): boolean =>
+      path.some((l) => l.source === source && l.target === target);
+
+    it('hovering a pvc highlights upstream and downstream', () => {
+      const graph = deriveSankey(elements, 'both');
+      const mongo0 = idOf(graph, 'pvc', 'data-mongo-0');
+      const mongo1 = idOf(graph, 'pvc', 'data-mongo-1');
+      const aggr1 = idOf(graph, 'netapp-aggr', 'aggr1');
+      const aggr2 = idOf(graph, 'netapp-aggr', 'aggr2');
+      const svmShop = idOf(graph, 'netapp-svm', 'svm_shop');
+      const ontap01 = idOf(graph, 'netapp-node', 'ontap-prod-01');
+      const podMongo0 = idOf(graph, 'pod', 'mongo-0');
+      const podMongo1 = idOf(graph, 'pod', 'mongo-1');
+      const mongodb = idOf(graph, 'application', 'mongodb');
+      const prod = idOf(graph, 'namespace', 'prod');
+
+      const path = hoverPathLinks(graph, mongo0);
+      expect(hasEdge(path, ontap01, aggr1)).toBe(true);
+      expect(hasEdge(path, aggr1, svmShop)).toBe(true);
+      expect(hasEdge(path, svmShop, mongo0)).toBe(true);
+      expect(hasEdge(path, mongo0, podMongo0)).toBe(true);
+      expect(hasEdge(path, podMongo0, mongodb)).toBe(true);
+      expect(hasEdge(path, mongodb, prod)).toBe(true);
+      expect(hasEdge(path, aggr2, svmShop)).toBe(false);
+      expect(hasEdge(path, svmShop, mongo1)).toBe(false);
+      expect(hasEdge(path, podMongo1, mongodb)).toBe(false);
+    });
+
+    it('hovering an aggregate lights only its own claims', () => {
+      const graph = deriveSankey(elements, 'both');
+      const aggr2 = idOf(graph, 'netapp-aggr', 'aggr2');
+      const svmShop = idOf(graph, 'netapp-svm', 'svm_shop');
+      const ontap02 = idOf(graph, 'netapp-node', 'ontap-prod-02');
+      const mongo0 = idOf(graph, 'pvc', 'data-mongo-0');
+      const mongo1 = idOf(graph, 'pvc', 'data-mongo-1');
+      const scratch = idOf(graph, 'pvc', 'data-scratch');
+      const podMongo1 = idOf(graph, 'pod', 'mongo-1');
+      const mongodb = idOf(graph, 'application', 'mongodb');
+      const prod = idOf(graph, 'namespace', 'prod');
+
+      const path = hoverPathLinks(graph, aggr2);
+      expect(hasEdge(path, ontap02, aggr2)).toBe(true);
+      expect(hasEdge(path, aggr2, svmShop)).toBe(true);
+      expect(hasEdge(path, svmShop, mongo1)).toBe(true);
+      expect(hasEdge(path, mongo1, podMongo1)).toBe(true);
+      expect(hasEdge(path, podMongo1, mongodb)).toBe(true);
+      expect(hasEdge(path, mongodb, prod)).toBe(true);
+      expect(hasEdge(path, svmShop, mongo0)).toBe(false);
+      expect(hasEdge(path, svmShop, scratch)).toBe(false);
+    });
+
+    it("a FlexGroup claim's path starts at its SVM", () => {
+      const graph = deriveSankey(elements, 'both');
+      const scratch = idOf(graph, 'pvc', 'data-scratch');
+      const svmShop = idOf(graph, 'netapp-svm', 'svm_shop');
+      const path = hoverPathLinks(graph, scratch);
+      expect(hasEdge(path, svmShop, scratch)).toBe(true);
+      expect(path.some((l) => l.tier === 'aggr-svm')).toBe(false);
+      expect(path.some((l) => l.tier === 'node-aggr')).toBe(false);
+      expect(path.some((l) => l.tier === 'pvc-pod' && l.source === scratch)).toBe(true);
+    });
+
+    it('walks every link when the body reports no claim aggregates', () => {
+      const { elements: noAggr } = normalizeGraph(
+        wire(
+          [
+            { id: 'nn1', name: 'ontap-prod-01', type: 'netapp-node' },
+            { id: 'nn2', name: 'ontap-prod-02', type: 'netapp-node' },
+            { id: 'a1', name: 'aggr1', type: 'netapp-aggr' },
+            { id: 'a2', name: 'aggr2', type: 'netapp-aggr' },
+            { id: 's', name: 'svm_shop', type: 'netapp-svm' },
+            { id: 'p0', name: 'data-mongo-0', type: 'pvc' },
+          ],
+          [
+            {
+              id: 'na1',
+              type: 'storage-flow',
+              source: 'nn1',
+              target: 'a1',
+              labels: { tier: 'node-aggr' },
+              metrics: { read_bytes_per_sec: 1 },
+            },
+            {
+              id: 'na2',
+              type: 'storage-flow',
+              source: 'nn2',
+              target: 'a2',
+              labels: { tier: 'node-aggr' },
+              metrics: { read_bytes_per_sec: 1 },
+            },
+            {
+              id: 'as1',
+              type: 'storage-flow',
+              source: 'a1',
+              target: 's',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 1 },
+            },
+            {
+              id: 'as2',
+              type: 'storage-flow',
+              source: 'a2',
+              target: 's',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 1 },
+            },
+            {
+              id: 'sp0',
+              type: 'storage-flow',
+              source: 's',
+              target: 'p0',
+              labels: { tier: 'svm-pvc' },
+              metrics: { read_bytes_per_sec: 1 },
+            },
+          ]
+        )
+      );
+      const graph = deriveSankey(noAggr, 'read');
+      expect(graph.reportsClaimAggregates).toBe(false);
+      const mongo0 = idOf(graph, 'pvc', 'data-mongo-0');
+      const svmShop = idOf(graph, 'netapp-svm', 'svm_shop');
+      const aggr1 = idOf(graph, 'netapp-aggr', 'aggr1');
+      const aggr2 = idOf(graph, 'netapp-aggr', 'aggr2');
+      const path = hoverPathLinks(graph, mongo0);
+      expect(hasEdge(path, aggr1, svmShop)).toBe(true);
+      expect(hasEdge(path, aggr2, svmShop)).toBe(true);
+      expect(path.some((l) => l.tier === 'node-aggr')).toBe(true);
+    });
+
+    it('hovering a frame highlights its claims’ paths under Group', () => {
+      const graph = deriveSankey(elements, 'both', undefined, 'group');
+      const frame = graph.svmFrames.find((f) => f.label === 'svm_shop');
+      expect(frame).toBeDefined();
+      const path = hoverPathForFrame(graph, frame!);
+      const aggr1 = idOf(graph, 'netapp-aggr', 'aggr1');
+      const aggr2 = idOf(graph, 'netapp-aggr', 'aggr2');
+      const mongo0 = idOf(graph, 'pvc', 'data-mongo-0');
+      const mongo1 = idOf(graph, 'pvc', 'data-mongo-1');
+      const ontap01 = idOf(graph, 'netapp-node', 'ontap-prod-01');
+      const ontap02 = idOf(graph, 'netapp-node', 'ontap-prod-02');
+      const podMongo0 = idOf(graph, 'pod', 'mongo-0');
+      expect(hasEdge(path, aggr1, mongo0)).toBe(true);
+      expect(hasEdge(path, aggr2, mongo1)).toBe(true);
+      expect(hasEdge(path, ontap01, aggr1)).toBe(true);
+      expect(hasEdge(path, ontap02, aggr2)).toBe(true);
+      expect(hasEdge(path, mongo0, podMongo0)).toBe(true);
+    });
   });
 
   it('spans the fixture pod without an application to its namespace and leaves the unscheduled pod unwrapped', () => {
@@ -485,5 +649,162 @@ describe('deriveSankey', () => {
     const graph = deriveSankey(dangling, 'read');
     expect(graph.links).toEqual([]);
     expect(graph.nodes.some((n) => n.id === 'a' && n.noFlow === true)).toBe(true);
+  });
+
+  it('reads a claim aggregate from the PVC, never inferred from the SVM inbound hops', () => {
+    const graph = deriveSankey(elements, 'both');
+    const mongo0 = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-mongo-0');
+    const mongo1 = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-mongo-1');
+    const scratch = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-scratch');
+    const aggr1 = graph.nodes.find((n) => n.kind === 'netapp-aggr' && n.label === 'aggr1');
+    const aggr2 = graph.nodes.find((n) => n.kind === 'netapp-aggr' && n.label === 'aggr2');
+    expect(graph.claimAggregates.get(mongo0!.id)).toBe(aggr1!.id);
+    expect(graph.claimAggregates.get(mongo1!.id)).toBe(aggr2!.id);
+    expect(graph.claimAggregates.has(scratch!.id)).toBe(false);
+    expect(graph.reportsClaimAggregates).toBe(true);
+  });
+
+  it('resolves to no claim aggregate when the label names a node absent from the body', () => {
+    const { elements: absent } = normalizeGraph(
+      wire(
+        [
+          { id: 's', name: 's', type: 'netapp-svm' },
+          { id: 'c', name: 'c', type: 'pvc', labels: { aggr: 'netapp/does-not-exist' } },
+        ],
+        [
+          {
+            id: 'e',
+            type: 'storage-flow',
+            source: 's',
+            target: 'c',
+            labels: { tier: 'svm-pvc' },
+            metrics: { read_bytes_per_sec: 1 },
+          },
+        ]
+      )
+    );
+    expect(resolveClaimAggregates(absent).size).toBe(0);
+    const graph = deriveSankey(absent, 'read');
+    expect(graph.claimAggregates.size).toBe(0);
+    expect(graph.reportsClaimAggregates).toBe(false);
+  });
+
+  it('reports no claim aggregates when no PVC in the body carries the label', () => {
+    const { elements: noLabel } = normalizeGraph(
+      wire(
+        [
+          { id: 's', name: 's', type: 'netapp-svm' },
+          { id: 'c', name: 'c', type: 'pvc' },
+        ],
+        [
+          {
+            id: 'e',
+            type: 'storage-flow',
+            source: 's',
+            target: 'c',
+            labels: { tier: 'svm-pvc' },
+            metrics: { read_bytes_per_sec: 1 },
+          },
+        ]
+      )
+    );
+    const graph = deriveSankey(noLabel, 'read');
+    expect(graph.reportsClaimAggregates).toBe(false);
+  });
+
+  describe('SVM display: group', () => {
+    it('column output on the fixture equals today’s apart from the two new fields', () => {
+      const column = deriveSankey(elements, 'both', undefined, 'column');
+      expect(column.svmFrames).toEqual([]);
+      const { claimAggregates, reportsClaimAggregates, svmFrames, ...rest } = column;
+      expect(claimAggregates.size).toBeGreaterThan(0);
+      expect(reportsClaimAggregates).toBe(true);
+      expect(svmFrames).toEqual([]);
+      expect(rest.nodes.some((n) => n.kind === 'netapp-svm')).toBe(true);
+    });
+
+    it('draws each aggregate straight to its claims', () => {
+      const graph = deriveSankey(elements, 'both', undefined, 'group');
+      expect(graph.nodes.some((n) => n.kind === 'netapp-svm')).toBe(false);
+      const frame = graph.svmFrames.find((f) => f.label === 'svm_shop');
+      expect(frame).toBeDefined();
+      const mongo0 = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-mongo-0')!;
+      const mongo1 = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-mongo-1')!;
+      const scratch = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-scratch')!;
+      expect(frame!.pvcIds.sort()).toEqual([mongo0.id, mongo1.id, scratch.id].sort());
+      const aggr1 = graph.nodes.find((n) => n.kind === 'netapp-aggr' && n.label === 'aggr1')!;
+      const aggr2 = graph.nodes.find((n) => n.kind === 'netapp-aggr' && n.label === 'aggr2')!;
+      const ribbon1 = graph.links.find(
+        (l) => l.source === aggr1.id && l.target === mongo0.id && l.direction === 'read'
+      );
+      const ribbon2 = graph.links.find(
+        (l) => l.source === aggr2.id && l.target === mongo1.id && l.direction === 'read'
+      );
+      expect(ribbon1?.tier).toBe('svm-pvc');
+      expect(ribbon2?.tier).toBe('svm-pvc');
+      const column = deriveSankey(elements, 'read', undefined, 'column');
+      expect(ribbon1?.value).toBe(column.links.find((l) => l.target === mongo0.id && l.tier === 'svm-pvc')?.value);
+      expect(ribbon2?.value).toBe(column.links.find((l) => l.target === mongo1.id && l.tier === 'svm-pvc')?.value);
+      expect(graph.links.some((l) => l.tier === 'aggr-svm')).toBe(false);
+    });
+
+    it('draws a FlexGroup claim in its frame with no aggregate ribbon', () => {
+      const graph = deriveSankey(elements, 'both', undefined, 'group');
+      const scratch = graph.nodes.find((n) => n.kind === 'pvc' && n.label === 'data-scratch')!;
+      const frame = graph.svmFrames.find((f) => f.label === 'svm_shop');
+      expect(frame?.pvcIds).toContain(scratch.id);
+      expect(graph.links.some((l) => l.tier === 'svm-pvc' && l.target === scratch.id)).toBe(false);
+      // Its downstream (split pvc-pod) links are drawn as usual.
+      expect(graph.links.some((l) => l.tier === 'pvc-pod' && l.source === scratch.id)).toBe(true);
+    });
+
+    it('re-sources a claim’s weight without re-summing', () => {
+      const { elements: svmA } = normalizeGraph(
+        wire(
+          [
+            { id: 'aggr1', name: 'aggr1', type: 'netapp-aggr' },
+            { id: 'svm_a', name: 'svm_a', type: 'netapp-svm' },
+            { id: 'pvc-1', name: 'pvc-1', type: 'pvc', labels: { aggr: 'aggr1' } },
+            { id: 'pvc-2', name: 'pvc-2', type: 'pvc', labels: { aggr: 'aggr1' } },
+          ],
+          [
+            {
+              id: 'as',
+              type: 'storage-flow',
+              source: 'aggr1',
+              target: 'svm_a',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 1000 },
+            },
+            {
+              id: 'sp1',
+              type: 'storage-flow',
+              source: 'svm_a',
+              target: 'pvc-1',
+              labels: { tier: 'svm-pvc' },
+              metrics: { read_bytes_per_sec: 700 },
+            },
+            {
+              id: 'sp2',
+              type: 'storage-flow',
+              source: 'svm_a',
+              target: 'pvc-2',
+              labels: { tier: 'svm-pvc' },
+              metrics: { read_bytes_per_sec: 300 },
+            },
+          ]
+        )
+      );
+      const graph = deriveSankey(svmA, 'read', undefined, 'group');
+      const pvc1 = graph.nodes.find((n) => n.label === 'pvc-1')!;
+      const pvc2 = graph.nodes.find((n) => n.label === 'pvc-2')!;
+      const aggr1 = graph.nodes.find((n) => n.label === 'aggr1')!;
+      expect(graph.links.find((l) => l.target === pvc1.id)?.value).toBe(700);
+      expect(graph.links.find((l) => l.target === pvc2.id)?.value).toBe(300);
+      expect(graph.links.some((l) => l.value === 1000)).toBe(false);
+      const frame = graph.svmFrames.find((f) => f.label === 'svm_a');
+      expect(frame?.pvcIds.sort()).toEqual([pvc1.id, pvc2.id].sort());
+      expect(graph.links.every((l) => l.source === aggr1.id)).toBe(true);
+    });
   });
 });

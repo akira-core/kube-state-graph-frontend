@@ -7,6 +7,8 @@ export interface SegmentedOption<T extends string> {
   /** Accessible name, when the visible label is a glyph or an abbreviation. */
   ariaLabel?: string;
   title?: string;
+  /** Presented disabled — pair with `title` to say why. */
+  disabled?: boolean;
 }
 
 export interface SegmentedProps<T extends string> {
@@ -57,12 +59,14 @@ export function Segmented<T extends string>({
             name={name}
             value={option.value}
             checked={value === option.value}
+            disabled={option.disabled}
             aria-label={option.ariaLabel ?? (typeof option.label === 'string' ? option.label : option.value)}
             onChange={() => onChange(option.value)}
           />
           <span
             className={clsx(
-              'flex w-full cursor-pointer select-none items-center justify-center gap-1 truncate rounded-[5px] px-2 font-medium text-secondary transition-colors duration-100',
+              'flex w-full select-none items-center justify-center gap-1 truncate rounded-[5px] px-2 font-medium text-secondary transition-colors duration-100',
+              option.disabled === true ? 'cursor-not-allowed opacity-45' : 'cursor-pointer',
               'peer-hover:text-primary peer-checked:bg-selected peer-checked:text-primary peer-checked:shadow-sm',
               'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-1 peer-focus-visible:outline-[var(--ksg-accent-primary)]',
               size === 'sm' ? 'text-[11px]' : 'text-xs'

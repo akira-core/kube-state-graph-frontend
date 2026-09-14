@@ -6,6 +6,12 @@ import { formatBytes } from '../../shared/format/measurements';
 import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
 
 export type SankeyMode = 'read' | 'write' | 'both';
+/**
+ * How SVMs are presented. `column` draws today's `netapp-svm` card column; `group` removes
+ * it and wraps each SVM's PVCs into a frame in the PVC column instead — see "SVM display
+ * switch: column and group".
+ */
+export type SankeySvmDisplay = 'column' | 'group';
 export type SankeyKind = 'netapp-node' | 'netapp-aggr' | 'netapp-svm' | 'pvc' | 'pod' | 'application' | 'namespace';
 export type SankeyDirection = 'read' | 'write';
 export type StorageFlowTier = 'node-aggr' | 'aggr-svm' | 'svm-pvc' | 'pvc-pod';
@@ -56,6 +62,10 @@ export interface SankeyNode {
   k8sNodeId?: string;
   derived?: true;
   memberPodCount?: number;
+  /** A `pvc`'s raw `labels.svm` name — display text only, never resolved to a node id. */
+  svm?: string;
+  /** A `pvc`'s claim aggregate node id, when `resolveClaimAggregates` found one. */
+  claimAggregateId?: string;
 }
 
 export interface SankeyLink {
@@ -81,12 +91,36 @@ export interface SankeyK8sNode {
   noFlow?: boolean;
 }
 
+/**
+ * An SVM under the `group` SVM display: it leaves `nodes` and becomes a frame around its
+ * member PVCs in the PVC column instead of a card of its own. The backend judges no status
+ * for an SVM, so this carries none.
+ */
+export interface SankeySvmFrame {
+  id: string;
+  label: string;
+  ontapCluster?: string;
+  pvcIds: string[];
+  noFlow?: boolean;
+}
+
 export interface SankeyGraph {
   nodes: SankeyNode[];
   links: SankeyLink[];
   k8sNodes: SankeyK8sNode[];
   hasStorageFlowEdges: boolean;
   hasCurrentDirectionMeasurement: boolean;
+  /**
+   * PVC id -> its claim aggregate's node id, for every PVC whose `labels.aggr` names a
+   * `netapp-aggr` node present in the body. See "Flow chain and tier structure" —
+   * `resolveClaimAggregates` below is the ONE place this is read, shared by hover, the Top
+   * pods cut, the `Group` presentation and the PVC tooltip (design D1).
+   */
+  claimAggregates: ReadonlyMap<string, string>;
+  /** At least one PVC with an inbound `svm-pvc` edge carries a claim aggregate. */
+  reportsClaimAggregates: boolean;
+  /** Only populated under the `group` SVM display; empty under `column`. */
+  svmFrames: SankeySvmFrame[];
 }
 
 interface NodeRec {
@@ -102,6 +136,10 @@ interface NodeRec {
   hardware?: cytoscape.NodeDataDefinition['hardware'];
   perf?: cytoscape.NodeDataDefinition['perf'];
   alerts?: cytoscape.NodeDataDefinition['alerts'];
+  /** Raw `labels.svm` passthrough — display text only, never resolved to a node id. */
+  svm?: string;
+  /** Resolved against the body's node ids by `resolveClaimAggregates`; a `pvc` only. */
+  claimAggr?: string;
 }
 
 /**
@@ -148,6 +186,7 @@ function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<strin
           : undefined;
     const ontapCluster = typeof d.labels?.ontap_cluster === 'string' ? d.labels.ontap_cluster : undefined;
     const parent = typeof d.parent === 'string' && d.parent.length > 0 ? d.parent : undefined;
+    const svm = typeof d.labels?.svm === 'string' && d.labels.svm.length > 0 ? d.labels.svm : undefined;
     map.set(d.id, {
       id: d.id,
       label: typeof d.label === 'string' ? d.label : d.id,
@@ -161,9 +200,43 @@ function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<strin
       ...(d.hardware !== undefined ? { hardware: d.hardware } : {}),
       ...(d.perf !== undefined ? { perf: d.perf } : {}),
       ...(d.alerts !== undefined ? { alerts: d.alerts } : {}),
+      ...(svm !== undefined ? { svm } : {}),
     });
   }
   return map;
+}
+
+/**
+ * A PVC's claim aggregate: the `netapp-aggr` node its `labels.aggr` names, when that node
+ * is present in the body — the backend omits the label entirely for a FlexGroup claim, and
+ * a label naming a node absent from the body resolves to no claim aggregate rather than a
+ * guess. This is the ONE place that reads `labels.aggr`; `deriveSankey` and `cutTopPods`
+ * both call it so the hover walk, the Top pods cut, the `Group` presentation and the PVC
+ * tooltip cannot drift from one another (design D1).
+ */
+export function resolveClaimAggregates(elements: readonly cytoscape.ElementDefinition[]): ReadonlyMap<string, string> {
+  const nodeIds = new Set<string>();
+  const raw = new Map<string, string>();
+  for (const el of elements) {
+    if (el.group !== 'nodes') {
+      continue;
+    }
+    const d = el.data as cytoscape.NodeDataDefinition;
+    if (typeof d.id !== 'string') {
+      continue;
+    }
+    nodeIds.add(d.id);
+    if (recKind(d) === 'pvc' && typeof d.labels?.aggr === 'string' && d.labels.aggr.length > 0) {
+      raw.set(d.id, d.labels.aggr);
+    }
+  }
+  const resolved = new Map<string, string>();
+  for (const [pvcId, aggrId] of raw) {
+    if (nodeIds.has(aggrId)) {
+      resolved.set(pvcId, aggrId);
+    }
+  }
+  return resolved;
 }
 
 function metricOf(
@@ -268,6 +341,8 @@ function toSankeyNode(rec: NodeRec, noFlow: boolean, k8sNodeId?: string): Sankey
     ...(rec.alerts !== undefined ? { alerts: rec.alerts } : {}),
     ...(k8sNodeId !== undefined ? { k8sNodeId } : {}),
     ...(noFlow ? { noFlow: true } : {}),
+    ...(rec.svm !== undefined ? { svm: rec.svm } : {}),
+    ...(rec.claimAggr !== undefined ? { claimAggregateId: rec.claimAggr } : {}),
   };
 }
 
@@ -410,9 +485,17 @@ export function rootValueOptions(elements: readonly cytoscape.ElementDefinition[
 export function deriveSankey(
   elements: readonly cytoscape.ElementDefinition[],
   mode: SankeyMode,
-  roots: StorageGraphRoots = EMPTY_STORAGE_GRAPH_ROOTS
+  roots: StorageGraphRoots = EMPTY_STORAGE_GRAPH_ROOTS,
+  svmDisplay: SankeySvmDisplay = 'column'
 ): SankeyGraph {
   const nodes = indexNodes(elements);
+  const claimAggregates = resolveClaimAggregates(elements);
+  for (const [pvcId, aggrId] of claimAggregates) {
+    const rec = nodes.get(pvcId);
+    if (rec !== undefined) {
+      rec.claimAggr = aggrId;
+    }
+  }
   const directions: SankeyDirection[] = mode === 'both' ? ['read', 'write'] : [mode];
 
   const flowEdges: Array<{
@@ -425,6 +508,10 @@ export function deriveSankey(
   const incident = new Set<string>();
   const podToK8s = new Map<string, { id: string; label: string }>();
   const k8sPodIds = new Map<string, string[]>();
+  /** svmId -> member pvc ids, from every `svm-pvc` edge regardless of SVM display — frame
+   *  membership under `group` must include a FlexGroup claim even though it draws no ribbon. */
+  const svmMembers = new Map<string, string[]>();
+  let reportsClaimAggregates = false;
 
   for (const el of elements) {
     if (el.group !== 'edges') {
@@ -460,10 +547,32 @@ export function deriveSankey(
     if (tier === undefined) {
       continue;
     }
-    incident.add(sourceId);
+    if (tier === 'svm-pvc') {
+      const members = svmMembers.get(sourceId) ?? [];
+      members.push(targetId);
+      svmMembers.set(sourceId, members);
+    }
+    if (tier === 'svm-pvc' && claimAggregates.has(targetId)) {
+      reportsClaimAggregates = true;
+    }
+    // Under `group` the SVM tier draws no card: an `aggr-svm` edge draws no ribbon at all,
+    // and an `svm-pvc` edge is re-sourced from the SVM to the claim's aggregate — a claim
+    // with none (a FlexGroup claim) draws no inbound ribbon rather than a guessed one.
+    if (svmDisplay === 'group' && tier === 'aggr-svm') {
+      continue;
+    }
+    let effectiveSource = sourceId;
+    if (svmDisplay === 'group' && tier === 'svm-pvc') {
+      const claimAggr = claimAggregates.get(targetId);
+      if (claimAggr === undefined) {
+        continue;
+      }
+      effectiveSource = claimAggr;
+    }
+    incident.add(effectiveSource);
     incident.add(targetId);
     flowEdges.push({
-      source: sourceId,
+      source: effectiveSource,
       target: targetId,
       tier,
       ...(d.labels?.attribution !== undefined ? { attribution: d.labels.attribution } : {}),
@@ -503,6 +612,9 @@ export function deriveSankey(
   const kept: SankeyNode[] = [];
   for (const rec of nodes.values()) {
     if (rec.kind === 'node') {
+      continue;
+    }
+    if (svmDisplay === 'group' && rec.kind === 'netapp-svm') {
       continue;
     }
     const kind = asBackendKind(rec.kind);
@@ -650,6 +762,28 @@ export function deriveSankey(
     });
   }
 
+  const keptPvcIds = new Set(kept.filter((n) => n.kind === 'pvc').map((n) => n.id));
+  const svmFrames: SankeySvmFrame[] = [];
+  if (svmDisplay === 'group') {
+    for (const rec of nodes.values()) {
+      if (rec.kind !== 'netapp-svm') {
+        continue;
+      }
+      const members = (svmMembers.get(rec.id) ?? []).filter((id) => keptPvcIds.has(id));
+      const isRoot = isRequestedRoot(rec, roots);
+      if (members.length === 0 && !isRoot) {
+        continue;
+      }
+      svmFrames.push({
+        id: rec.id,
+        label: rec.label,
+        ...(rec.ontapCluster !== undefined ? { ontapCluster: rec.ontapCluster } : {}),
+        pvcIds: members,
+        ...(members.length === 0 ? { noFlow: true } : {}),
+      });
+    }
+  }
+
   const nodeIds = new Set(kept.map((n) => n.id));
   const keptLinks = [...links, ...derivedLinks].filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target));
   return sortSankey({
@@ -658,6 +792,9 @@ export function deriveSankey(
     k8sNodes,
     hasStorageFlowEdges: flowEdges.length > 0,
     hasCurrentDirectionMeasurement,
+    claimAggregates,
+    reportsClaimAggregates,
+    svmFrames,
   });
 }
 
@@ -699,6 +836,9 @@ function sortSankey(graph: SankeyGraph): SankeyGraph {
     return a.label.localeCompare(b.label);
   });
   const k8sNodes = [...graph.k8sNodes].sort((a, b) => a.label.localeCompare(b.label));
+  // Frames are looked up by name, like the wrappers above — see "Frames are ordered by
+  // name".
+  const svmFrames = [...graph.svmFrames].sort((a, b) => a.label.localeCompare(b.label));
   const links = [...graph.links].sort((a, b) => {
     if (a.source !== b.source) {
       return a.source.localeCompare(b.source);
@@ -708,7 +848,7 @@ function sortSankey(graph: SankeyGraph): SankeyGraph {
     }
     return a.direction.localeCompare(b.direction);
   });
-  return { ...graph, nodes, links, k8sNodes };
+  return { ...graph, nodes, links, k8sNodes, svmFrames };
 }
 
 // Rates ride the SAME SI ladder as every other byte count in the app — a tooltip renders a
@@ -719,32 +859,87 @@ export function formatBytesPerSec(value: number): string {
   return `${formatBytes(value)}/s`;
 }
 
+/**
+ * Highlights every link on a path through `nodeId` — see "Hover highlights the path".
+ *
+ * When the body reports claim aggregates, crossing an SVM is claim-aware (design D4):
+ * walking UP from a pvc leaves it only toward ITS OWN claim aggregate, never the SVM's
+ * other inbound `aggr-svm` edges (which may belong to a different claim), and stops at the
+ * SVM for a claim with none (a FlexGroup claim); walking DOWN from an aggregate enters the
+ * SVM only toward the pvcs whose claim aggregate is that same aggregate. Both crossings are
+ * handled by reading straight from the pvc / aggregate endpoint — the walk never lands ON
+ * the SVM node itself, so two claims sharing one SVM (a merge point) never fight over a
+ * single "visited" flag. Hovering the SVM card itself is unconstrained (its own inbound and
+ * outbound are both generic), and so is the whole walk when the body reports none at all —
+ * "a body that reports no claim aggregates is walked over every link, which is all such a
+ * body can say." Under the `Group` SVM display the SVM tier draws no card and no
+ * `aggr-svm` link at all, so neither special case ever triggers there — the plain walk is
+ * already exact.
+ */
 export function hoverPathLinks(graph: SankeyGraph, nodeId: string): SankeyLink[] {
   const out = new Set<SankeyLink>();
+  const kindOf = new Map(graph.nodes.map((n) => [n.id, n.kind]));
+  const startsAtSvm = kindOf.get(nodeId) === 'netapp-svm';
+  const constrained = graph.reportsClaimAggregates && !startsAtSvm;
+
   const forward = (id: string, seen: Set<string>): void => {
     if (seen.has(id)) {
       return;
     }
     seen.add(id);
     for (const link of graph.links) {
-      if (link.source === id) {
-        out.add(link);
-        forward(link.target, seen);
+      if (link.source !== id) {
+        continue;
       }
+      if (constrained && link.tier === 'aggr-svm') {
+        // Enter the svm only toward the claims whose claim aggregate is `id` — the
+        // aggregate this walk is currently at — bypassing the svm's own unconstrained
+        // fan-out (which may hold claims on a different aggregate).
+        out.add(link);
+        for (const sp of graph.links) {
+          if (sp.tier === 'svm-pvc' && sp.source === link.target && graph.claimAggregates.get(sp.target) === id) {
+            out.add(sp);
+            forward(sp.target, seen);
+          }
+        }
+        continue;
+      }
+      out.add(link);
+      forward(link.target, seen);
     }
   };
+
   const backward = (id: string, seen: Set<string>): void => {
     if (seen.has(id)) {
       return;
     }
     seen.add(id);
     for (const link of graph.links) {
-      if (link.target === id) {
-        out.add(link);
-        backward(link.source, seen);
+      if (link.target !== id) {
+        continue;
       }
+      if (constrained && link.tier === 'svm-pvc' && kindOf.get(link.source) === 'netapp-svm') {
+        // Leave the pvc toward its OWN claim aggregate only. A FlexGroup claim (no claim
+        // aggregate) stops here — its SVM's other inbound edges may belong to a claim on
+        // a different aggregate entirely.
+        out.add(link);
+        const claimAggr = graph.claimAggregates.get(id);
+        if (claimAggr === undefined) {
+          continue;
+        }
+        for (const as of graph.links) {
+          if (as.tier === 'aggr-svm' && as.target === link.source && as.source === claimAggr) {
+            out.add(as);
+            backward(as.source, seen);
+          }
+        }
+        continue;
+      }
+      out.add(link);
+      backward(link.source, seen);
     }
   };
+
   forward(nodeId, new Set());
   backward(nodeId, new Set());
   return [...out];
@@ -755,6 +950,17 @@ export function hoverPathForWrapper(graph: SankeyGraph, k8sNode: SankeyK8sNode):
   const seen = new Set<SankeyLink>();
   for (const podId of k8sNode.podIds) {
     for (const link of hoverPathLinks(graph, podId)) {
+      seen.add(link);
+    }
+  }
+  return [...seen];
+}
+
+/** Union of every member PVC's path — hovering a Group-display frame title lights them all. */
+export function hoverPathForFrame(graph: SankeyGraph, frame: SankeySvmFrame): SankeyLink[] {
+  const seen = new Set<SankeyLink>();
+  for (const pvcId of frame.pvcIds) {
+    for (const link of hoverPathLinks(graph, pvcId)) {
       seen.add(link);
     }
   }

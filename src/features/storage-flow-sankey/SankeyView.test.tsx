@@ -31,6 +31,22 @@ function withoutAggr1(): cytoscape.ElementDefinition[] {
   });
 }
 
+/** The fixture's PVCs stripped of `labels.aggr` — a body from a backend without `expose-claim-aggregate`. */
+function withoutClaimAggregates(): cytoscape.ElementDefinition[] {
+  return elements.map((el) => {
+    if (el.group !== 'nodes') {
+      return el;
+    }
+    const data = el.data as cytoscape.NodeDataDefinition;
+    const labels = data.labels;
+    if (labels?.aggr === undefined) {
+      return el;
+    }
+    const rest = Object.fromEntries(Object.entries(labels).filter(([key]) => key !== 'aggr'));
+    return { ...el, data: { ...data, labels: rest } };
+  });
+}
+
 type Overrides = Partial<SankeyViewProps>;
 
 function baseProps(overrides: Overrides = {}): SankeyViewProps {
@@ -784,5 +800,303 @@ describe('SankeyView', () => {
     const title = screen.getByTestId('sankey-wrapper-title-worker-0');
     expect(title).toHaveAttribute('data-locatable', 'true');
     expect(title.textContent).toContain('no flow');
+  });
+
+  it("hovering a wrapper highlights its pods' paths and does not recompute layout", () => {
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    const mongo0 = screen.getByTestId('sankey-node-mongo-0');
+    const orphan0 = screen.getByTestId('sankey-node-orphan-0');
+    const rectXBefore = mongo0.querySelector('rect')?.getAttribute('x');
+    fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-worker-0'));
+    // worker-0 wraps mongo-0 and orphan-0 — both members' paths light up.
+    expect(mongo0.style.opacity).toBe('1');
+    expect(orphan0.style.opacity).toBe('1');
+    // mongo-1 sits on worker-1, not a member of this wrapper — faded.
+    expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('0.3');
+    expect(mongo0.querySelector('rect')?.getAttribute('x')).toBe(rectXBefore);
+  });
+
+  it('reverts to normal display, with layout coordinates unchanged, after the mouse leaves', () => {
+    renderSankey();
+    const node = screen.getByTestId('sankey-node-aggr1');
+    const rectBefore = {
+      x: node.querySelector('rect')?.getAttribute('x'),
+      y: node.querySelector('rect')?.getAttribute('y'),
+    };
+    fireEvent.mouseEnter(node);
+    expect(screen.getByTestId('sankey-node-aggr2').style.opacity).toBe('0.3');
+    fireEvent.mouseLeave(node);
+    expect(screen.getByTestId('sankey-node-aggr2').style.opacity).toBe('1');
+    expect(node.style.opacity).toBe('1');
+    const rectAfter = {
+      x: node.querySelector('rect')?.getAttribute('x'),
+      y: node.querySelector('rect')?.getAttribute('y'),
+    };
+    expect(rectAfter).toEqual(rectBefore);
+  });
+
+  it('does not highlight a sibling aggregate under the same controller', () => {
+    const { elements: sideBranch } = normalizeGraph({
+      elements: {
+        nodes: [
+          { data: { id: 'n', name: 'ontap-node', type: 'netapp-node' } },
+          { data: { id: 'aggrA', name: 'aggrA', type: 'netapp-aggr' } },
+          { data: { id: 'aggrB', name: 'aggrB', type: 'netapp-aggr' } },
+          { data: { id: 'svmA', name: 'svmA', type: 'netapp-svm' } },
+          { data: { id: 'svmB', name: 'svmB', type: 'netapp-svm' } },
+          { data: { id: 'pvcA', name: 'pvcA', type: 'pvc' } },
+          { data: { id: 'pvcB', name: 'pvcB', type: 'pvc' } },
+          { data: { id: 'podA', name: 'podA', type: 'pod' } },
+          { data: { id: 'podB', name: 'podB', type: 'pod' } },
+        ],
+        edges: [
+          {
+            data: {
+              id: 'e1',
+              type: 'storage-flow',
+              source: 'n',
+              target: 'aggrA',
+              labels: { tier: 'node-aggr' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e2',
+              type: 'storage-flow',
+              source: 'n',
+              target: 'aggrB',
+              labels: { tier: 'node-aggr' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e3',
+              type: 'storage-flow',
+              source: 'aggrA',
+              target: 'svmA',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e4',
+              type: 'storage-flow',
+              source: 'aggrB',
+              target: 'svmB',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e5',
+              type: 'storage-flow',
+              source: 'svmA',
+              target: 'pvcA',
+              labels: { tier: 'svm-pvc' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e6',
+              type: 'storage-flow',
+              source: 'svmB',
+              target: 'pvcB',
+              labels: { tier: 'svm-pvc' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e7',
+              type: 'storage-flow',
+              source: 'pvcA',
+              target: 'podA',
+              labels: { tier: 'pvc-pod' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+          {
+            data: {
+              id: 'e8',
+              type: 'storage-flow',
+              source: 'pvcB',
+              target: 'podB',
+              labels: { tier: 'pvc-pod' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+        ],
+      },
+    });
+    renderSankey({ elements: sideBranch });
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggrA'));
+    expect(screen.getByTestId('sankey-node-aggrA').style.opacity).toBe('1');
+    expect(screen.getByTestId('sankey-node-svmA').style.opacity).toBe('1');
+    expect(screen.getByTestId('sankey-node-aggrB').style.opacity).toBe('0.3');
+    expect(screen.getByTestId('sankey-node-svmB').style.opacity).toBe('0.3');
+  });
+
+  it('lists namespace subtotals in the summary and hides the table when no pod carries a namespace', () => {
+    const { unmount } = renderSankey();
+    openSummary();
+    expect(screen.getByText('Namespace flow subtotal')).toBeInTheDocument();
+    expect(screen.getByTestId('sankey-summary')).toHaveTextContent('prod');
+    unmount();
+    renderSankey({
+      elements: [
+        { group: 'nodes', data: { id: 'c', label: 'c', kind: 'pvc' } },
+        { group: 'nodes', data: { id: 'p', label: 'p', kind: 'pod' } },
+        {
+          group: 'edges',
+          data: {
+            id: 'e',
+            source: 'c',
+            target: 'p',
+            edgeType: 'storage-flow',
+            labels: { tier: 'pvc-pod' },
+            metrics: { readBytesPerSec: 10, writeBytesPerSec: 0 },
+          },
+        },
+      ],
+    });
+    openSummary();
+    expect(screen.queryByText('Namespace flow subtotal')).not.toBeInTheDocument();
+  });
+
+  describe('SVM display', () => {
+    it('defaults to Column and remounts back to Column', () => {
+      const { unmount } = renderSankey();
+      expect(screen.getByRole('radio', { name: /^column$/i })).toBeChecked();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      expect(screen.getByRole('radio', { name: /^group$/i })).toBeChecked();
+      expect(screen.getByTestId('sankey-wrapper-title-svm_shop')).toBeInTheDocument();
+      unmount();
+      renderSankey();
+      expect(screen.getByRole('radio', { name: /^column$/i })).toBeChecked();
+      expect(screen.queryByTestId('sankey-wrapper-title-svm_shop')).not.toBeInTheDocument();
+    });
+
+    it('draws frames in the PVC column, and no SVM cards, under Group', () => {
+      renderSankey();
+      expect(screen.getByTestId('sankey-node-svm_shop')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      expect(screen.queryByTestId('sankey-node-svm_shop')).not.toBeInTheDocument();
+      const frame = screen.getByTestId('sankey-wrapper-title-svm_shop');
+      expect(frame).toHaveAttribute('data-locatable', 'false');
+      expect(screen.getByTestId('sankey-node-data-mongo-0')).toBeInTheDocument();
+      expect(screen.getAllByTestId('sankey-column-header').map((el) => el.textContent)).toEqual(
+        expect.arrayContaining(['SVM / PVC'])
+      );
+      expect(screen.queryByText('SVM', { selector: '[data-testid="sankey-column-header"]' })).not.toBeInTheDocument();
+    });
+
+    it('is unavailable when the body reports no claim aggregates, and draws as Column', () => {
+      renderSankey({ elements: withoutClaimAggregates() });
+      const group = screen.getByRole('radio', { name: /^group$/i });
+      expect(group).toBeDisabled();
+      expect(screen.getByTestId('sankey-svm-display-reason')).toHaveTextContent('no claim aggregates');
+      fireEvent.click(group);
+      expect(screen.getByRole('radio', { name: /^column$/i })).toBeChecked();
+      expect(screen.getByTestId('sankey-node-svm_shop')).toBeInTheDocument();
+      expect(screen.queryByTestId('sankey-wrapper-title-svm_shop')).not.toBeInTheDocument();
+    });
+
+    it('switching writes nothing to the URL and issues no request', () => {
+      const onModeChange = vi.fn();
+      const onPodLayoutChange = vi.fn();
+      const onFocusModeChange = vi.fn();
+      const onSvmDisplayChange = vi.fn();
+      const before = window.location.href;
+      renderSankey({ onModeChange, onPodLayoutChange, onFocusModeChange, onSvmDisplayChange });
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      expect(onSvmDisplayChange).toHaveBeenCalledWith('group');
+      expect(onModeChange).not.toHaveBeenCalled();
+      expect(onPodLayoutChange).not.toHaveBeenCalled();
+      expect(onFocusModeChange).not.toHaveBeenCalled();
+      expect(window.location.href).toBe(before);
+    });
+
+    it('preserves the viewport and hover highlight across a switch', () => {
+      renderSankey();
+      const host = screen.getByTestId('sankey-chart-host');
+      fireEvent.keyDown(host, { key: '1' });
+      expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+      fireEvent.mouseEnter(screen.getByTestId('sankey-node-data-mongo-0'));
+      expect(screen.getByRole('tooltip')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+      expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    });
+
+    it('names a PVC’s SVM and claim aggregate in its tooltip', () => {
+      renderSankey();
+      fireEvent.mouseEnter(screen.getByTestId('sankey-node-data-mongo-1'));
+      const tip = screen.getByRole('tooltip');
+      expect(tip).toHaveTextContent('SVM svm_shop');
+      expect(tip).toHaveTextContent('aggregate aggr2');
+      fireEvent.mouseLeave(screen.getByTestId('sankey-node-data-mongo-1'));
+      fireEvent.mouseEnter(screen.getByTestId('sankey-node-data-scratch'));
+      const scratchTip = screen.getByRole('tooltip');
+      expect(scratchTip).toHaveTextContent('SVM svm_shop');
+      expect(scratchTip).not.toHaveTextContent('aggregate');
+    });
+
+    it('shows a frame’s title-row tooltip: kind, ONTAP cluster, PVC count, derived inflow', () => {
+      renderSankey();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-svm_shop'));
+      const tip = screen.getByRole('tooltip');
+      expect(tip).toHaveTextContent('netapp-svm');
+      expect(tip).toHaveTextContent('svm_shop');
+      expect(tip).toHaveTextContent('ontap-prod');
+      expect(tip).toHaveTextContent('3 PVCs');
+      expect(tip).toHaveTextContent('derived from member PVCs');
+      expect(tip).not.toHaveTextContent('status');
+    });
+
+    it('names the SVM on a Group ribbon’s tooltip', () => {
+      renderSankey();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      const ribbon = screen.getAllByTestId('sankey-link-read').find((el) => {
+        fireEvent.mouseEnter(el);
+        const text = screen.queryByRole('tooltip')?.textContent ?? '';
+        fireEvent.mouseLeave(el);
+        return text.includes('aggr1 → data-mongo-0');
+      });
+      expect(ribbon).toBeDefined();
+      fireEvent.mouseEnter(ribbon!);
+      expect(screen.getByRole('tooltip')).toHaveTextContent('SVM svm_shop');
+    });
+
+    it('emits one summary row per frame in place of the SVM card rows', () => {
+      renderSankey();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      openSummary();
+      const summary = screen.getByTestId('sankey-summary');
+      expect(summary).toHaveTextContent('svm_shop');
+      expect(within(summary).queryAllByText('svm_shop')).toHaveLength(1);
+    });
+
+    it('is transient and independent of the Layout switch', () => {
+      const { unmount } = renderSankey();
+      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
+      fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+      // Before "refresh": PVCs framed by SVM AND pods wrapped by Kubernetes node, at once.
+      expect(screen.getByTestId('sankey-wrapper-title-svm_shop')).toBeInTheDocument();
+      expect(screen.getByTestId('sankey-wrapper-title-worker-0')).toBeInTheDocument();
+      unmount();
+      // After "refresh" (a fresh mount): both controls read their defaults again.
+      renderSankey();
+      expect(screen.getByRole('radio', { name: /^column$/i })).toBeChecked();
+      expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
+      expect(screen.queryByTestId('sankey-wrapper-title-svm_shop')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('sankey-wrapper-title-worker-0')).not.toBeInTheDocument();
+    });
   });
 });

@@ -26,4 +26,22 @@ describe('SankeySummary', () => {
     const appRow = screen.getAllByRole('row').find((row) => row.textContent?.includes('app'));
     expect(appRow?.textContent).toContain('n/a');
   });
+
+  it('a frame replaces its SVM’s row', () => {
+    // The SVM display's `Group` emits one row per frame (tier `netapp-svm`, derived
+    // inflow, no status) in place of the plain SVM card row — SankeySummary itself has no
+    // SVM-specific code, so this is the same derived-row rendering any wrapper kind gets.
+    const withFrame = [
+      ...NODES,
+      { id: 'svm_shop', tier: 'SVM', label: 'svm_shop', inbound: 5505024, outbound: 0, derived: true },
+    ];
+    render(<SankeySummary nodes={withFrame} namespaces={[]} applications={[]} />);
+    fireEvent.click(screen.getByTestId('sankey-summary-toggle'));
+    const svmRow = screen.getAllByRole('row').find((row) => row.textContent?.includes('svm_shop'));
+    expect(svmRow).toBeDefined();
+    expect(svmRow?.textContent).toContain('SVM');
+    expect(svmRow?.textContent).toContain('n/a');
+    expect(svmRow?.textContent).toContain('derived');
+    expect(svmRow?.textContent).toContain('5.51 MB/s');
+  });
 });

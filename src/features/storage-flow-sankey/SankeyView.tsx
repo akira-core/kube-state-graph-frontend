@@ -21,11 +21,14 @@ import {
   DERIVED_TIER_LABEL,
   deriveSankey,
   formatBytesPerSec,
+  hoverPathForFrame,
   hoverPathForWrapper,
   hoverPathLinks,
   isDerivedTier,
+  resolveClaimAggregates,
   type SankeyMode,
   type SankeyNode,
+  type SankeySvmDisplay,
 } from './deriveSankey';
 import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart, type HoverLit } from './SankeyChart';
@@ -59,6 +62,18 @@ const LAYOUT_OPTIONS: ReadonlyArray<SegmentedOption<SankeyPodLayout>> = [
   { value: 'node', label: 'Node' },
 ];
 
+const SVM_UNAVAILABLE_REASON = 'The backend reports no claim aggregates';
+
+const svmOptions = (available: boolean): ReadonlyArray<SegmentedOption<SankeySvmDisplay>> => [
+  { value: 'column', label: 'Column' },
+  {
+    value: 'group',
+    label: 'Group',
+    disabled: !available,
+    ...(available ? {} : { title: SVM_UNAVAILABLE_REASON }),
+  },
+];
+
 export interface SankeyViewProps {
   elements: cytoscape.ElementDefinition[];
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -87,6 +102,9 @@ export interface SankeyViewProps {
   /** Page-transient. Omitted = local default `flat`, reset on remount. */
   podLayout?: SankeyPodLayout;
   onPodLayoutChange?: (next: SankeyPodLayout) => void;
+  /** Page-transient. Omitted = local default `column`, reset on remount. */
+  svmDisplay?: SankeySvmDisplay;
+  onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
 }
 
 interface Tip {
@@ -144,7 +162,12 @@ function emptyCopy(kind: 1 | 2 | 3 | 4 | 5 | 6, demoMode: boolean, mode: SankeyM
  * is a reading, not a threshold, and colouring it would invent a health judgement the
  * backend never made. `health` is the only field that carries one.
  */
-function nodeTooltip(node: SankeyNode | undefined, id: string, flowLines: readonly string[]): string[] {
+function nodeTooltip(
+  node: SankeyNode | undefined,
+  id: string,
+  flowLines: readonly string[],
+  claimAggregateLabel: string | undefined
+): string[] {
   if (node === undefined) {
     return [id, ...flowLines];
   }
@@ -161,6 +184,8 @@ function nodeTooltip(node: SankeyNode | undefined, id: string, flowLines: readon
       ? [`namespace ${node.namespace}`]
       : []),
     ...(isNetapp && node.ontapCluster !== undefined ? [`ontap_cluster: ${node.ontapCluster}`] : []),
+    ...(node.kind === 'pvc' && node.svm !== undefined ? [`SVM ${node.svm}`] : []),
+    ...(node.kind === 'pvc' && claimAggregateLabel !== undefined ? [`aggregate ${claimAggregateLabel}`] : []),
     ...flowLines,
     ...(usage !== undefined && usage.length > 0 ? [usage] : []),
     // `status` is the backend's fold; `health` is one of the three signals it folded. Both
@@ -197,6 +222,24 @@ function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): str
   ];
 }
 
+/** An SVM frame's title-row tooltip under the SVM display's `Group` — shaped like a
+ *  wrapper's, but for its PVCs; the backend judges no status for an SVM. */
+function frameTooltip(
+  label: string,
+  ontapCluster: string | undefined,
+  pvcCount: number,
+  flowLines: readonly string[],
+  noFlow: boolean
+): string[] {
+  return [
+    `netapp-svm / ${label}`,
+    ...(ontapCluster !== undefined ? [`ontap_cluster: ${ontapCluster}`] : []),
+    pvcCount === 1 ? '1 PVC' : `${String(pvcCount)} PVCs`,
+    ...flowLines.map((line) => `${line} (derived from member PVCs)`),
+    ...(noFlow ? ['Selected root with no flow in this time range.'] : []),
+  ];
+}
+
 export function SankeyView({
   elements,
   status,
@@ -216,6 +259,8 @@ export function SankeyView({
   onLocateNode,
   podLayout: podLayoutProp,
   onPodLayoutChange,
+  svmDisplay: svmDisplayProp,
+  onSvmDisplayChange,
 }: Readonly<SankeyViewProps>): JSX.Element {
   const tokens = useThemeTokens();
   const [localMode, setLocalMode] = useState<SankeyMode>(modeProp ?? 'both');
@@ -233,6 +278,14 @@ export function SankeyView({
       setLocalPodLayout(next);
     }
     onPodLayoutChange?.(next);
+  };
+  const [localSvmDisplay, setLocalSvmDisplay] = useState<SankeySvmDisplay>(svmDisplayProp ?? 'column');
+  const svmDisplay = svmDisplayProp ?? localSvmDisplay;
+  const setSvmDisplay = (next: SankeySvmDisplay): void => {
+    if (svmDisplayProp === undefined) {
+      setLocalSvmDisplay(next);
+    }
+    onSvmDisplayChange?.(next);
   };
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
@@ -289,7 +342,33 @@ export function SankeyView({
     () => (podRootPresent ? { elements, shown: 0, total: 0 } : cutTopPods(elements, mode, topPods)),
     [elements, mode, podRootPresent, topPods]
   );
-  const graph = useMemo(() => deriveSankey(cut.elements, mode, roots), [cut.elements, mode, roots]);
+  // `Group` needs the backend's `expose-claim-aggregate`: available only when the body has
+  // at least one svm-pvc-fed pvc that names a claim aggregate. Checked directly off the
+  // elements (not off a `group`-derived graph) so an unavailable choice never has to be
+  // derived once to find out it draws frames with no inbound ribbon.
+  const svmAvailable = useMemo(() => {
+    const claimAggregates = resolveClaimAggregates(cut.elements);
+    let hasSvmPvc = false;
+    for (const el of cut.elements) {
+      if (el.group !== 'edges') {
+        continue;
+      }
+      const d = el.data as cytoscape.EdgeDataDefinition;
+      if (d.edgeType !== 'storage-flow' || d.labels?.tier !== 'svm-pvc') {
+        continue;
+      }
+      hasSvmPvc = true;
+      if (typeof d.target === 'string' && claimAggregates.has(d.target)) {
+        return true;
+      }
+    }
+    return !hasSvmPvc;
+  }, [cut.elements]);
+  const effectiveSvmDisplay: SankeySvmDisplay = svmAvailable ? svmDisplay : 'column';
+  const graph = useMemo(
+    () => deriveSankey(cut.elements, mode, roots, effectiveSvmDisplay),
+    [cut.elements, mode, roots, effectiveSvmDisplay]
+  );
   const scopeComplete = azEnvReady && (hasRoot ?? hasAnyRoot(roots));
   // Layout depends only on the derived graph and the theme's namespace palette — never on
   // container size or the pan/zoom viewport, so a resize or a drag can never re-run it
@@ -304,7 +383,10 @@ export function SankeyView({
     ],
     [tokens]
   );
-  const layout = useMemo(() => layoutSankey(graph, namespacePalette, podLayout), [graph, namespacePalette, podLayout]);
+  const layout = useMemo(
+    () => layoutSankey(graph, namespacePalette, podLayout, effectiveSvmDisplay),
+    [graph, namespacePalette, podLayout, effectiveSvmDisplay]
+  );
 
   const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize ?? UNMEASURED_CONTAINER);
   // A fresh `zoom` object comes back every render; pull out just the one stable setter the
@@ -349,7 +431,8 @@ export function SankeyView({
     if (
       hoverId !== null &&
       !graph.nodes.some((n) => n.id === hoverId) &&
-      !graph.k8sNodes.some((n) => n.id === hoverId)
+      !graph.k8sNodes.some((n) => n.id === hoverId) &&
+      !graph.svmFrames.some((f) => f.id === hoverId)
     ) {
       setHoverId(null);
       setTip(null);
@@ -361,7 +444,13 @@ export function SankeyView({
       return null;
     }
     const wrapper = graph.k8sNodes.find((n) => n.id === hoverId);
-    const pathLinks = wrapper !== undefined ? hoverPathForWrapper(graph, wrapper) : hoverPathLinks(graph, hoverId);
+    const frame = graph.svmFrames.find((f) => f.id === hoverId);
+    const pathLinks =
+      wrapper !== undefined
+        ? hoverPathForWrapper(graph, wrapper)
+        : frame !== undefined
+          ? hoverPathForFrame(graph, frame)
+          : hoverPathLinks(graph, hoverId);
     const keys = new Set(pathLinks.map((l) => linkKey(l.source, l.target, l.direction, l.tier)));
     const nodeIds = new Set<string>([hoverId]);
     for (const l of pathLinks) {
@@ -418,10 +507,10 @@ export function SankeyView({
       }),
       ...layout.wrappers.map((w) => ({
         id: w.id,
-        tier: 'Node',
+        tier: w.kind === 'netapp-svm' ? TIER_LABEL['netapp-svm'] : 'Node',
         label: w.label,
-        inbound: w.podIds.reduce((sum, id) => sum + (inbound.get(id) ?? 0), 0),
-        outbound: w.podIds.reduce((sum, id) => sum + (outbound.get(id) ?? 0), 0),
+        inbound: w.memberIds.reduce((sum, id) => sum + (inbound.get(id) ?? 0), 0),
+        outbound: w.memberIds.reduce((sum, id) => sum + (outbound.get(id) ?? 0), 0),
         ...(w.status !== undefined ? { status: w.status } : {}),
         derived: true,
       })),
@@ -498,8 +587,10 @@ export function SankeyView({
     }
     setHoverId(id);
     const wrapper = graph.k8sNodes.find((n) => n.id === id);
+    const frame = graph.svmFrames.find((f) => f.id === id);
     const node = graph.nodes.find((g) => g.id === id);
-    const members = wrapper === undefined ? null : new Set(wrapper.podIds);
+    const members =
+      wrapper !== undefined ? new Set(wrapper.podIds) : frame !== undefined ? new Set(frame.pvcIds) : null;
     const inboundLinks =
       members !== null ? graph.links.filter((l) => members.has(l.target)) : graph.links.filter((l) => l.target === id);
     const outboundLinks =
@@ -529,11 +620,21 @@ export function SankeyView({
       });
       return;
     }
+    if (frame !== undefined) {
+      setTip({
+        x: evt.clientX,
+        y: evt.clientY,
+        text: frameTooltip(frame.label, frame.ontapCluster, frame.pvcIds.length, flowLines, frame.noFlow === true),
+      });
+      return;
+    }
     if (node?.kind === 'application' || node?.kind === 'namespace') {
       setTip({ x: evt.clientX, y: evt.clientY, text: derivedCardTooltip(node, flowLines) });
       return;
     }
-    setTip({ x: evt.clientX, y: evt.clientY, text: nodeTooltip(node, id, flowLines) });
+    const claimAggregateLabel =
+      node?.claimAggregateId !== undefined ? graph.nodes.find((n) => n.id === node.claimAggregateId)?.label : undefined;
+    setTip({ x: evt.clientX, y: evt.clientY, text: nodeTooltip(node, id, flowLines, claimAggregateLabel) });
   };
 
   const onLinkEnter = (link: LayoutLink, evt: MouseEvent): void => {
@@ -554,6 +655,9 @@ export function SankeyView({
       : [
           `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
           `tier ${link.tier}`,
+          // Under `Group` the ribbon runs straight from the claim aggregate, so this is
+          // the only place left naming the SVM the claim belongs to.
+          ...(link.tier === 'svm-pvc' && dst?.svm !== undefined ? [`SVM ${dst.svm}`] : []),
           `${link.direction}: ${formatBytesPerSec(link.value)}`,
           // The backend flags a weight it split evenly rather than measured. Saying so is the
           // difference between a reading and an estimate that happens to be a number.
@@ -637,6 +741,20 @@ export function SankeyView({
             onChange={setPodLayout}
             data-testid="sankey-layout"
           />
+          <span className={eyebrowClass}>SVM</span>
+          <Segmented
+            name="sankey-svm-display"
+            aria-label="SVM"
+            value={effectiveSvmDisplay}
+            options={svmOptions(svmAvailable)}
+            onChange={setSvmDisplay}
+            data-testid="sankey-svm-display"
+          />
+          {!svmAvailable && (
+            <span className="text-[11px] text-secondary" data-testid="sankey-svm-display-reason">
+              {SVM_UNAVAILABLE_REASON}
+            </span>
+          )}
           {cut.shown < cut.total && (
             <span className="text-[11px] text-secondary" data-testid="sankey-top-pods-label">
               Top {cut.shown} pods
