@@ -15,6 +15,8 @@ import {
   useSankeyKeyboard,
   useSankeyTooltip,
   useZoomPan,
+  nodeTooltipRows,
+  rawReading,
   shellEmptyKind,
   Swatch,
   type ShellEmptyKind,
@@ -143,13 +145,7 @@ function emptyCopy(kind: SankeyEmptyKind, demoMode: boolean, mode: SankeyMode): 
   }
 }
 
-/**
- * Node tooltip lines for a storage-graph node.
- *
- * The hardware and perf readings are shown RAW and uncoloured on purpose: `cpu_busy_pct`
- * is a reading, not a threshold, and colouring it would invent a health judgement the
- * backend never made. `health` is the only field that carries one.
- */
+/** Node tooltip lines for a storage-graph node, in the shared row order (see `nodeTooltipRows`). */
 function nodeTooltip(
   node: SankeyNode | undefined,
   id: string,
@@ -164,50 +160,51 @@ function nodeTooltip(
     node.kind === 'pvc' || node.kind === 'netapp-aggr'
       ? formatUsage(node.usage?.usedBytes, node.usage?.capacityBytes)
       : undefined;
-  const raw = (label: string, value: number | undefined, format: (v: number) => string): string[] =>
-    value === undefined ? [] : [`${label} ${format(value)} (raw)`];
-  return [
-    `${node.kind} / ${node.label}`,
+  return nodeTooltipRows({
+    head: `${node.kind} / ${node.label}`,
     ...((node.kind === 'pod' || node.kind === 'pvc') && node.namespace !== undefined
-      ? [`namespace ${node.namespace}`]
-      : []),
-    ...(isNetapp && node.ontapCluster !== undefined ? [`ontap_cluster: ${node.ontapCluster}`] : []),
-    ...(node.kind === 'pvc' && node.svm !== undefined ? [`SVM ${node.svm}`] : []),
-    ...(node.kind === 'pvc' && claimAggregateLabel !== undefined ? [`aggregate ${claimAggregateLabel}`] : []),
-    ...flowLines,
-    ...(usage !== undefined && usage.length > 0 ? [usage] : []),
+      ? { namespace: node.namespace }
+      : {}),
+    ...(isNetapp && node.ontapCluster !== undefined ? { ontapCluster: node.ontapCluster } : {}),
+    identity: [
+      ...(node.kind === 'pvc' && node.svm !== undefined ? [`SVM ${node.svm}`] : []),
+      ...(node.kind === 'pvc' && claimAggregateLabel !== undefined ? [`aggregate ${claimAggregateLabel}`] : []),
+    ],
+    flow: flowLines,
+    ...(usage !== undefined ? { usage } : {}),
     // `status` is the backend's fold; `health` is one of the three signals it folded. Both
     // are shown because they answer different questions — a NetApp node can be
     // `health online` and still `status critical` off a firing alert.
-    ...(node.status !== undefined ? [`status ${node.status}`] : []),
-    ...(node.health !== undefined ? [`health ${node.health}`] : []),
-    ...(node.hardware?.model !== undefined ? [`model ${node.hardware.model}`] : []),
-    ...raw('cpu_busy_pct', node.perf?.cpuBusyPct, String),
-    ...raw('total_ops', node.perf?.totalOps, String),
-    ...raw('total_latency_us', node.perf?.totalLatencyUs, String),
-    ...raw('total_bytes_per_sec', node.perf?.totalBytesPerSec, formatBytes),
+    ...(node.status !== undefined ? { status: node.status } : {}),
+    ...(node.health !== undefined ? { health: node.health } : {}),
+    ...(node.hardware?.model !== undefined ? { model: node.hardware.model } : {}),
+    perf: [
+      ...rawReading('cpu_busy_pct', node.perf?.cpuBusyPct, String),
+      ...rawReading('total_ops', node.perf?.totalOps, String),
+      ...rawReading('total_latency_us', node.perf?.totalLatencyUs, String),
+      ...rawReading('total_bytes_per_sec', node.perf?.totalBytesPerSec, formatBytes),
+    ],
     // `severity` is optional (a rule may declare none), so the prefix has to drop with it
     // rather than render the string "undefined" in front of the alert name.
-    ...(node.alerts ?? []).map((alert) =>
+    alerts: (node.alerts ?? []).map((alert) =>
       alert.severity === undefined ? alert.name : `${alert.severity} ${alert.name}`
     ),
-    ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-  ];
+    trailer: node.noFlow === true ? ['Selected root with no flow in this time range.'] : [],
+  });
 }
 
 function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): string[] {
-  const members =
-    node.memberPodCount !== undefined
-      ? [node.memberPodCount === 1 ? '1 pod' : `${String(node.memberPodCount)} pods`]
-      : [];
-  return [
-    `${node.kind} / ${node.label}`,
-    ...(node.kind === 'application' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
-    ...members,
+  return nodeTooltipRows({
+    head: `${node.kind} / ${node.label}`,
+    ...(node.kind === 'application' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
+    identity:
+      node.memberPodCount !== undefined
+        ? [node.memberPodCount === 1 ? '1 pod' : `${String(node.memberPodCount)} pods`]
+        : [],
     // Derived cards carry no status: they are synthesised columns.
-    ...flowLines.map((line) => `${line} (derived from member pods)`),
-    ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-  ];
+    flow: flowLines.map((line) => `${line} (derived from member pods)`),
+    trailer: node.noFlow === true ? ['Selected root with no flow in this time range.'] : [],
+  });
 }
 
 /** An SVM frame's title-row tooltip under the SVM display's `Group` — shaped like a
@@ -219,13 +216,13 @@ function frameTooltip(
   flowLines: readonly string[],
   noFlow: boolean
 ): string[] {
-  return [
-    `netapp-svm / ${label}`,
-    ...(ontapCluster !== undefined ? [`ontap_cluster: ${ontapCluster}`] : []),
-    pvcCount === 1 ? '1 PVC' : `${String(pvcCount)} PVCs`,
-    ...flowLines.map((line) => `${line} (derived from member PVCs)`),
-    ...(noFlow ? ['Selected root with no flow in this time range.'] : []),
-  ];
+  return nodeTooltipRows({
+    head: `netapp-svm / ${label}`,
+    ...(ontapCluster !== undefined ? { ontapCluster } : {}),
+    identity: [pvcCount === 1 ? '1 PVC' : `${String(pvcCount)} PVCs`],
+    flow: flowLines.map((line) => `${line} (derived from member PVCs)`),
+    trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
+  });
 }
 
 export function SankeyView({

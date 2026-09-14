@@ -9,6 +9,8 @@ export type { SankeyControlBarProps } from './SankeyControlBar';
 export { SankeyTooltip } from './SankeyTooltip';
 export { StatusLegend } from './StatusLegend';
 export { Swatch } from './Swatch';
+export { nodeTooltipRows, rawReading } from './tooltipLines';
+export type { NodeTooltipRows } from './tooltipLines';
 export * from './geometry';
 export { useContainerSize } from './useContainerSize';
 export { UNMEASURED_CONTAINER, useOpeningViewport } from './useOpeningViewport';

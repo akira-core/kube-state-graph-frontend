@@ -330,7 +330,7 @@ describe('SankeyView', () => {
     fireEvent.mouseEnter(screen.getByTestId('sankey-node-ontap-prod-02'));
     const tip = screen.getByRole('tooltip');
     expect(tip).toHaveTextContent('netapp-node');
-    expect(tip).toHaveTextContent('ontap_cluster: ontap-prod');
+    expect(tip).toHaveTextContent('ontap_cluster ontap-prod');
     expect(tip).toHaveTextContent('AFF-A400');
     expect(tip).toHaveTextContent('cpu_busy_pct');
     expect(tip).toHaveTextContent('(raw)');

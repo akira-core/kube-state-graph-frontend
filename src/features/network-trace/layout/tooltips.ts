@@ -1,4 +1,5 @@
 import { formatBitsPerSec, formatBytes, formatDeltaBps } from '../../../shared/format/measurements';
+import { nodeTooltipRows } from '../../sankey-canvas';
 import { bandOf, isClientPartition, k8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
 import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
@@ -64,10 +65,7 @@ function wrapperEdges(w: TraceWrapper, model: TraceModelOk): { inb: TraceEdge[];
   return { inb, outb };
 }
 
-/**
- * Node tooltip, in the storage Sankey's order: kind / name, namespace, ontap_cluster, the
- * flow lines, usage, status, health, model, perf (raw), alerts, clients, id.
- */
+/** Node tooltip in the shared row order (see `nodeTooltipRows`), from the trace model's fields. */
 export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelOk): string[] {
   if (n.kind === 'anchor') {
     const inv = model.investigation;
@@ -79,84 +77,73 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
     ];
   }
   const isW = n.kind === 'wrapper';
-  const lines: string[] = [`${typeWord(n)} / ${n.label}`];
-  if (!isW && n.namespace !== null && n.role !== 'ns') {
-    lines.push(`namespace ${n.namespace}`);
-  }
-  if (!isW && n.ontapCluster !== null) {
-    lines.push(`ontap_cluster ${n.ontapCluster}`);
-  }
   const { inb, outb } = n.kind === 'wrapper' ? wrapperEdges(n, model) : { inb: n.inEdges, outb: n.outEdges };
+  const flow: string[] = [];
   if (n.kind !== 'wrapper' && n.noFlow) {
-    lines.push('no drawable flow edge (no flow)');
+    flow.push('no drawable flow edge (no flow)');
   } else if (n.kind !== 'wrapper' && n.role === 'owner' && !(n.bps > 0)) {
-    lines.push('in — (metered at the port: the port also carries other owners)');
+    flow.push('in — (metered at the port: the port also carries other owners)');
   } else {
-    lines.push(`in ${formatBitsPerSec(sum(inb))}`);
-    lines.push(`out ${formatBitsPerSec(sum(outb))}`);
+    flow.push(`in ${formatBitsPerSec(sum(inb))}`);
+    flow.push(`out ${formatBitsPerSec(sum(outb))}`);
   }
+  const membership: string[] = [];
   if (isW) {
-    lines.push('derived from member pods');
-    lines.push(`${String(n.podIds.length)} pod${n.podIds.length === 1 ? '' : 's'}`);
+    membership.push('derived from member pods');
+    membership.push(`${String(n.podIds.length)} pod${n.podIds.length === 1 ? '' : 's'}`);
   } else if (n.kind === 'node') {
     if (resIn(n) > 0) {
-      lines.push(`other in ${formatBitsPerSec(n.otherIn)}`);
+      membership.push(`other in ${formatBitsPerSec(n.otherIn)}`);
     }
     if (resOut(n) > 0) {
-      lines.push(`other out ${formatBitsPerSec(n.otherOut)}`);
+      membership.push(`other out ${formatBitsPerSec(n.otherOut)}`);
     }
   } else if (n.role === 'owner') {
     if (n.bps > 0) {
-      lines.push(`derived from port cards${n.meteredPorts < n.portCount ? ' (partial ports)' : ''}`);
+      membership.push(`derived from port cards${n.meteredPorts < n.portCount ? ' (partial ports)' : ''}`);
     }
-    lines.push(`${String(n.clientCount)} client${n.clientCount === 1 ? '' : 's'}`);
-    lines.push(`${String(n.portCount)} port${n.portCount === 1 ? '' : 's'}`);
+    membership.push(`${String(n.clientCount)} client${n.clientCount === 1 ? '' : 's'}`);
+    membership.push(`${String(n.portCount)} port${n.portCount === 1 ? '' : 's'}`);
   } else if (n.role === 'ns' || n.role === 'app') {
-    lines.push('derived from member pods');
-    lines.push(`${String(n.podCount)} pod${n.podCount === 1 ? '' : 's'}`);
+    membership.push('derived from member pods');
+    membership.push(`${String(n.podCount)} pod${n.podCount === 1 ? '' : 's'}`);
   }
-  if (n.usage !== null) {
-    lines.push(`usage ${usageText(n.usage)}`);
-  }
-  if (n.status !== null) {
-    const fold =
-      !isW && (n.role === 'ns' || n.role === 'app')
-        ? ' (worst of member pods)'
-        : isW
-          ? ' (worst of node and member pods)'
-          : '';
-    lines.push(`status ${n.status}${fold}`);
-  }
+  const fold =
+    !isW && (n.role === 'ns' || n.role === 'app')
+      ? ' (worst of member pods)'
+      : isW
+        ? ' (worst of node and member pods)'
+        : '';
   const info = n.info;
-  if (info !== null) {
-    if (info.health !== undefined) {
-      lines.push(`health ${info.health}`);
-    }
-    if (info.model !== undefined) {
-      lines.push(`model ${info.model}`);
-    }
-    if (info.perf !== undefined) {
-      for (const [k, v] of Object.entries(info.perf)) {
-        lines.push(`${k} ${k === 'total_bytes_per_sec' ? `${formatBytes(v)}/s` : String(v)} (raw)`);
-      }
-    }
-    for (const a of info.alerts ?? []) {
-      lines.push(`alert ${a}`);
-    }
-  }
+  const perf =
+    info?.perf === undefined
+      ? []
+      : Object.entries(info.perf).map(
+          ([k, v]) => `${k} ${k === 'total_bytes_per_sec' ? `${formatBytes(v)}/s` : String(v)} (raw)`
+        );
   const clients = isW ? null : n.clients;
-  if (clients !== null) {
-    clients.forEach((c, i) => {
-      lines.push(
-        `${clients.length === 1 ? 'client' : `client ${String(i + 1)}`} ${[c.ip, c.hostname, c.owner].filter((v) => v !== null).join(' · ')}`
-      );
-    });
-  }
   const synthetic = !isW && (n.role === 'ns' || n.role === 'app' || n.role === 'owner');
-  if (!synthetic && n.id !== n.label) {
-    lines.push(`id ${n.id}`);
-  }
-  return lines;
+  return nodeTooltipRows({
+    head: `${typeWord(n)} / ${n.label}`,
+    ...(!isW && n.namespace !== null && n.role !== 'ns' ? { namespace: n.namespace } : {}),
+    ...(!isW && n.ontapCluster !== null ? { ontapCluster: n.ontapCluster } : {}),
+    flow,
+    membership,
+    ...(n.usage !== null ? { usage: `usage ${usageText(n.usage)}` } : {}),
+    ...(n.status !== null ? { status: `${n.status}${fold}` } : {}),
+    ...(info?.health !== undefined ? { health: info.health } : {}),
+    ...(info?.model !== undefined ? { model: info.model } : {}),
+    perf,
+    alerts: (info?.alerts ?? []).map((a) => `alert ${a}`),
+    clients:
+      clients === null
+        ? []
+        : clients.map(
+            (c, i) =>
+              `${clients.length === 1 ? 'client' : `client ${String(i + 1)}`} ${[c.ip, c.hostname, c.owner].filter((v) => v !== null).join(' · ')}`
+          ),
+    ...(!synthetic && n.id !== n.label ? { id: n.id } : {}),
+  });
 }
 
 export function residualTooltipLines(n: TraceNode, side: 'in' | 'out'): string[] {
