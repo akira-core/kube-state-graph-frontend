@@ -31,28 +31,23 @@ function NumberField({
   testId,
   value,
   placeholder,
-  min,
-  max,
-  step,
   onChange,
 }: Readonly<{
   label: string;
   testId: string;
   value: string;
   placeholder: string;
-  min: number;
-  max?: number;
-  step: number;
   onChange: (next: string) => void;
 }>): JSX.Element {
   return (
     <div className="flex min-w-[5.5rem] flex-col gap-1">
       <span className="text-[10px] font-semibold uppercase tracking-eyebrow text-secondary">{label}</span>
+      {/* A text box, not type="number": the browser blanks a non-numeric value in a number
+          input, so a link carrying `max_hops=abc` would show an empty field beside a
+          message about a value the operator cannot see. Refused, never rewritten. */}
       <input
-        type="number"
-        min={min}
-        {...(max !== undefined ? { max } : {})}
-        step={step}
+        type="text"
+        inputMode="decimal"
         aria-label={label}
         data-testid={testId}
         placeholder={placeholder}
@@ -112,8 +107,6 @@ export function TraceScopeBar({
           testId="trace-max-hops"
           value={draft.maxHops}
           placeholder={String(TRACE_DEFAULTS.maxHops)}
-          min={1}
-          step={1}
           onChange={(maxHops) => onDraftChange({ maxHops })}
         />
         <NumberField
@@ -121,8 +114,6 @@ export function TraceScopeBar({
           testId="trace-top-n"
           value={draft.topN}
           placeholder={String(TRACE_DEFAULTS.topN)}
-          min={1}
-          step={1}
           onChange={(topN) => onDraftChange({ topN })}
         />
         <NumberField
@@ -130,9 +121,6 @@ export function TraceScopeBar({
           testId="trace-threshold"
           value={draft.threshold}
           placeholder={String(TRACE_DEFAULTS.threshold)}
-          min={0}
-          max={100}
-          step={0.1}
           onChange={(threshold) => onDraftChange({ threshold })}
         />
 
