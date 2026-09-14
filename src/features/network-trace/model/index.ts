@@ -1,4 +1,4 @@
-export { deriveTrace, resolveInvestigation, resolveTraceDirection } from './deriveTrace';
+export { deriveTrace, directionFor, resolveInvestigation, resolveTraceDirection } from './deriveTrace';
 export { hoverPath } from './hoverPath';
 export type { HoverPath } from './hoverPath';
 export { locatable } from './locatable';

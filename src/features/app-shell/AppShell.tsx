@@ -1,10 +1,12 @@
 import { useEffect, useState, type JSX } from 'react';
-import { BrowserRouter, Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router';
 
 import type { RuntimeConfig } from '../runtime-config';
 
 import { GraphPage } from './GraphPage';
 import { NavBar } from './NavBar';
+import { NetworkPage } from './NetworkPage';
+import { NotFoundPage } from './NotFoundPage';
 import { SankeyPage } from './SankeyPage';
 import { IDLE_PAGE_STATUS, ShellFrameProvider, type PageStatus } from './ShellFrame';
 import { useViewTimeRange } from './useViewTimeRange';
@@ -27,20 +29,25 @@ function RootRedirect(): JSX.Element {
   return <Navigate to={{ pathname: '/graph', search: location.search }} replace />;
 }
 
-function NotFoundPage(): JSX.Element {
-  return (
-    <main className="relative min-h-0 flex-1">
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-primary">
-        <p className="text-[13px] text-secondary">Page not found</p>
-        <Link
-          to="/graph"
-          className="inline-flex h-8 items-center rounded-md border border-hairline-strong bg-raised px-3 text-[13px] font-medium text-primary transition-colors duration-100 hover:bg-raised-hover"
-        >
-          Back to Graph
-        </Link>
-      </div>
-    </main>
-  );
+/** `/network` is an alias for `/network/graph`, carrying the query for the same reason. */
+function NetworkRedirect(): JSX.Element {
+  const location = useLocation();
+  return <Navigate to={{ pathname: '/network/graph', search: location.search }} replace />;
+}
+
+function titleFor(path: string): string {
+  switch (path) {
+    case '/graph':
+      return 'Kube State Graph — Graph';
+    case '/sankey':
+      return 'Kube State Graph — Sankey';
+    case '/network/graph':
+      return 'Kube State Graph — Network Graph';
+    case '/network/sankey':
+      return 'Kube State Graph — Network Sankey';
+    default:
+      return 'Kube State Graph';
+  }
 }
 
 function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
@@ -48,21 +55,23 @@ function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
   const path = pathKey(location.pathname);
   const isGraph = path === '/graph';
   const isSankey = path === '/sankey';
+  const isNetwork = path === '/network/graph' || path === '/network/sankey';
+  const isAnySankey = isSankey || path === '/network/sankey';
   const time = useViewTimeRange();
   const [status, setStatus] = useState<PageStatus>(IDLE_PAGE_STATUS);
   const [focusMode, setFocusMode] = useState(false);
 
   useEffect(() => {
-    document.title = isSankey ? 'Kube State Graph — Sankey' : isGraph ? 'Kube State Graph — Graph' : 'Kube State Graph';
-  }, [isGraph, isSankey]);
+    document.title = titleFor(path);
+  }, [path]);
 
   useEffect(() => {
-    if (!isSankey && focusMode) {
+    if (!isAnySankey && focusMode) {
       setFocusMode(false);
     }
-  }, [focusMode, isSankey]);
+  }, [focusMode, isAnySankey]);
 
-  const notFound = !isGraph && !isSankey && path !== '/';
+  const notFound = !isGraph && !isSankey && !isNetwork && path !== '/' && path !== '/network';
   const reloadDisabled = notFound || status.reloadDisabled;
 
   return (
@@ -75,7 +84,7 @@ function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
             lastLoadedAt={status.lastLoadedAt}
             refreshing={status.refreshing}
             error={status.error}
-            refreshIntervalSeconds={isGraph || isSankey ? config.refreshIntervalSeconds : 0}
+            refreshIntervalSeconds={isGraph || isSankey || isNetwork ? config.refreshIntervalSeconds : 0}
             onReload={status.reload}
             reloadDisabled={reloadDisabled}
             viewRange={time.range}
@@ -97,6 +106,8 @@ export function AppShell({ config }: Readonly<AppShellProps>): JSX.Element {
         <Route element={<AppLayout config={config} />}>
           <Route path="graph" element={<GraphPage />} />
           <Route path="sankey" element={<SankeyPage />} />
+          <Route path="network" element={<NetworkRedirect />} />
+          <Route path="network/:view" element={<NetworkPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

@@ -12,3 +12,12 @@ export {
   serializeTraceScope,
 } from './traceUrlScope';
 export type { TraceDraft, TraceUrlScope } from './traceUrlScope';
+export { TraceView } from './TraceView';
+export type { TraceViewProps } from './TraceView';
+export { TraceScopeBar } from './TraceScopeBar';
+export type { TraceScopeBarProps } from './TraceScopeBar';
+export { switchHostnames, useHostnameCandidates } from './useHostnameCandidates';
+export { deriveTrace, directionFor } from './model';
+export type { TraceDirection, TraceLayout, TraceModel, TraceModelOk } from './model';
+export { layoutTrace } from './layout/layoutTrace';
+export type { TraceNodeOrder } from './layout/layoutTrace';

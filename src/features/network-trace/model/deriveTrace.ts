@@ -4,16 +4,29 @@ import { assemble, normalizeColumns } from './assemble';
 import { assignColumns } from './columns';
 import type { BuildCtx } from './ctx';
 import { buildEdges } from './edges';
-import { addAnchor, resolveInvestigation } from './investigation';
+import { addAnchor, resolveInvestigation, resolveTraceDirection } from './investigation';
 import { indexNodes } from './nodeIndex';
 import { attachAndPrune } from './prune';
 import { computeResiduals } from './residuals';
 import { scanEdges, scanNodes } from './scan';
-import type { DeriveTraceOptions, TraceModel } from './types';
+import type { DeriveTraceOptions, TraceDirection, TraceModel } from './types';
 import { validateTraceSemantics } from './validate';
 import { buildWrappers } from './wrappers';
 
 export { resolveInvestigation, resolveTraceDirection } from './investigation';
+
+/**
+ * The direction a body should be drawn in, before deriving it: the requested `track_dir`
+ * wins; a body whose start states the opposite side yields a warning to show beside the
+ * chart. Cheap enough to run on every render — it only indexes the nodes.
+ */
+export function directionFor(
+  elements: readonly cytoscape.ElementDefinition[],
+  trackDir: TraceDirection | undefined
+): { direction: TraceDirection; warning?: string } {
+  const index = indexNodes(elements);
+  return resolveTraceDirection(trackDir, resolveInvestigation(index, elements).inv);
+}
 
 /**
  * Normalized elements → the trace model. Every value on the chart is a measurement; nothing

@@ -1,0 +1,383 @@
+{
+  "apiVersion": "v1",
+  "clusters": ["prod"],
+  "elements": {
+    "nodes": [
+      {
+        "data": {
+          "id": "sw/dist-a",
+          "name": "dist-a",
+          "type": "switch",
+          "status": "normal",
+          "labels": {
+            "level": "2",
+            "role": "distribution"
+          },
+          "investigation": {
+            "iface": "et-0/0/48",
+            "delta_bps": 40000000000,
+            "direction": "in",
+            "note": "uplink from core-edge: +40 Gbps since 09:40"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/spine-a",
+          "name": "spine-a",
+          "type": "switch",
+          "status": "normal",
+          "labels": {
+            "level": "3",
+            "role": "spine",
+            "tier": "spine"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/spine-b",
+          "name": "spine-b",
+          "type": "switch",
+          "status": "warning",
+          "labels": {
+            "level": "3",
+            "role": "spine",
+            "tier": "spine"
+          },
+          "alerts": [
+            {
+              "name": "SwitchInterfaceErrors",
+              "severity": "warning"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "sw/core",
+          "name": "core",
+          "type": "switch",
+          "status": "normal",
+          "labels": {
+            "level": "4",
+            "role": "core"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "sw/core:et-1/0/9",
+          "type": "host",
+          "name": "storage gateways",
+          "clients": [
+            {
+              "ip": "10.0.1.5",
+              "hostname": "storage-gw-a",
+              "owner": "Storage team"
+            },
+            {
+              "ip": "10.0.1.6",
+              "hostname": "storage-gw-b",
+              "owner": "Backup team"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "sw/spine-b:xe-0/0/12",
+          "type": "host",
+          "clients": [
+            {
+              "ip": "10.42.7.31",
+              "hostname": "lab-gpu-01",
+              "owner": "Platform team"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "cluster/prod",
+          "name": "prod",
+          "type": "cluster"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/ns/prod",
+          "name": "prod",
+          "type": "namespace",
+          "parent": "cluster/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/mongodb",
+          "name": "mongodb",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "prod/app/gateway",
+          "name": "gateway",
+          "type": "application",
+          "parent": "prod/ns/prod"
+        }
+      },
+      {
+        "data": {
+          "id": "node/worker-0",
+          "name": "worker-0",
+          "type": "node",
+          "status": "normal",
+          "labels": {
+            "cluster": "prod"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "node/worker-1",
+          "name": "worker-1",
+          "type": "node",
+          "status": "warning",
+          "labels": {
+            "cluster": "prod"
+          },
+          "alerts": [
+            {
+              "name": "KubeNodeMemoryPressure",
+              "severity": "warning"
+            }
+          ]
+        }
+      },
+      {
+        "data": {
+          "id": "pod/mongo-0",
+          "name": "mongo-0",
+          "type": "pod",
+          "status": "normal",
+          "parent": "prod/app/mongodb",
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/gateway",
+          "name": "gateway",
+          "type": "pod",
+          "status": "normal",
+          "parent": "prod/app/gateway",
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-0"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "pod/mongo-1",
+          "name": "mongo-1",
+          "type": "pod",
+          "status": "warning",
+          "parent": "prod/app/mongodb",
+          "labels": {
+            "namespace": "prod",
+            "cluster": "prod",
+            "node": "node/worker-1"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "data": {
+          "id": "tf-dist-a-spine-a",
+          "type": "network-flow",
+          "source": "sw/dist-a",
+          "target": "sw/spine-a",
+          "labels": {
+            "source_iface": "et-0/0/1",
+            "target_iface": "et-0/0/17"
+          },
+          "metrics": {
+            "delta_bps": 24000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-dist-a-spine-b",
+          "type": "network-flow",
+          "source": "sw/dist-a",
+          "target": "sw/spine-b",
+          "labels": {
+            "source_iface": "et-0/0/2",
+            "target_iface": "et-0/0/17"
+          },
+          "metrics": {
+            "delta_bps": 12000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-spine-b-spine-a",
+          "type": "network-flow",
+          "source": "sw/spine-b",
+          "target": "sw/spine-a",
+          "labels": {
+            "source_iface": "et-0/0/31",
+            "target_iface": "et-0/0/31"
+          },
+          "metrics": {
+            "delta_bps": 3000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-spine-a-core",
+          "type": "network-flow",
+          "source": "sw/spine-a",
+          "target": "sw/core",
+          "labels": {
+            "source_iface": "et-0/0/48",
+            "target_iface": "et-1/0/1"
+          },
+          "metrics": {
+            "delta_bps": 20000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-core-dist-a",
+          "type": "network-flow",
+          "source": "sw/core",
+          "target": "sw/dist-a",
+          "labels": {
+            "source_iface": "et-1/0/3",
+            "target_iface": "et-0/0/47"
+          },
+          "metrics": {
+            "delta_bps": 1000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-core-storage",
+          "type": "network-flow",
+          "source": "sw/core",
+          "target": "sw/core:et-1/0/9",
+          "labels": {
+            "source_iface": "et-1/0/9"
+          },
+          "metrics": {
+            "delta_bps": 19000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-spine-a-mongo-0",
+          "type": "network-flow",
+          "source": "sw/spine-a",
+          "target": "pod/mongo-0",
+          "labels": {
+            "source_iface": "xe-0/0/3"
+          },
+          "metrics": {
+            "delta_bps": 4000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-spine-a-gateway",
+          "type": "network-flow",
+          "source": "sw/spine-a",
+          "target": "pod/gateway",
+          "labels": {
+            "source_iface": "xe-0/0/4"
+          },
+          "metrics": {
+            "delta_bps": 3000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-spine-b-mongo-1",
+          "type": "network-flow",
+          "source": "sw/spine-b",
+          "target": "pod/mongo-1",
+          "labels": {
+            "source_iface": "xe-0/0/5"
+          },
+          "metrics": {
+            "delta_bps": 5000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tf-spine-b-gpu",
+          "type": "network-flow",
+          "source": "sw/spine-b",
+          "target": "sw/spine-b:xe-0/0/12",
+          "labels": {
+            "source_iface": "xe-0/0/12"
+          },
+          "metrics": {
+            "delta_bps": 4000000000
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tp-mongo-0",
+          "type": "network-flow",
+          "source": "pod/mongo-0",
+          "target": "node/worker-0",
+          "labels": {
+            "tier": "pod-node"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tp-gateway",
+          "type": "network-flow",
+          "source": "pod/gateway",
+          "target": "node/worker-0",
+          "labels": {
+            "tier": "pod-node"
+          }
+        }
+      },
+      {
+        "data": {
+          "id": "tp-mongo-1",
+          "type": "network-flow",
+          "source": "pod/mongo-1",
+          "target": "node/worker-1",
+          "labels": {
+            "tier": "pod-node"
+          }
+        }
+      }
+    ]
+  }
+}
