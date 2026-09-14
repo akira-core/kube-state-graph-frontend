@@ -11,3 +11,4 @@ package-lock.json
 # Prettier would collapse short arrays and fight the generator.
 public/demo/graph.json
 public/demo/storage-graph.json
+public/demo/trace.json

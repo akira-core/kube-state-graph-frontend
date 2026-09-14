@@ -8,6 +8,7 @@ data:
       "endpoints": {
         "graph": "/api/v1/graph/service_graph",
         "storageGraph": "/api/v1/storage-graph",
+        "trace": "/api/v1/trace",
         "labelValues": "/metrics-api",
         "codeChanges": "/api/v1/graph/code_changes",
         "configChanges": "/api/v1/graph/config_changes",
