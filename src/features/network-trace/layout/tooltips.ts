@@ -1,12 +1,13 @@
 import { countWord } from '../../../shared/format/countWord';
 import { formatBitsPerSec, formatBytes, formatDeltaBps } from '../../../shared/format/measurements';
-import { nodeTooltipRows } from '../../sankey-canvas';
+import type { ThemeTokens } from '../../../shared/theme/tokens';
+import { nodeTooltipRows, type TooltipLine } from '../../sankey-canvas';
 import { bandOf, isClientPartition, k8sSubcol, type K8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
 import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
 import { mustGet, sum } from '../model/util';
 
-import { resIn, resOut, typeWord, usageText } from './text';
+import { typeWord, usageText } from './text';
 
 /** Clients behind the far (downstream) end of a ribbon, for the ribbon's tooltip. */
 function clientsOnRibbon(e: TraceEdge, model: TraceModelOk): string[] | null {
@@ -66,8 +67,12 @@ function wrapperEdges(w: TraceWrapper, model: TraceModelOk): { inb: TraceEdge[];
   return { inb, outb };
 }
 
-/** Node tooltip in the shared row order (see `nodeTooltipRows`), from the trace model's fields. */
-export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelOk): string[] {
+/**
+ * Node tooltip in the shared row order (see `nodeTooltipRows`), from the trace model's
+ * fields. A hop splits what the trace followed from what it did not, each row painted like
+ * its mark: `traced in / out` in the ribbon colour, `other in / out` in the residual colours.
+ */
+export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelOk, tokens: ThemeTokens): TooltipLine[] {
   if (n.kind === 'anchor') {
     const inv = model.investigation;
     return [
@@ -79,25 +84,26 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
   }
   const isW = n.kind === 'wrapper';
   const { inb, outb } = n.kind === 'wrapper' ? wrapperEdges(n, model) : { inb: n.inEdges, outb: n.outEdges };
-  const flow: string[] = [];
+  const flow: TooltipLine[] = [];
   if (n.kind !== 'wrapper' && n.noFlow) {
     flow.push('no drawable flow edge (no flow)');
   } else if (n.kind !== 'wrapper' && n.role === 'owner' && !(n.bps > 0)) {
     flow.push('in — (metered at the port: the port also carries other owners)');
+  } else if (n.kind === 'node') {
+    flow.push({ text: `traced in ${formatBitsPerSec(n.tracedIn)}`, color: tokens.sankey.traceFlow });
+    flow.push({ text: `traced out ${formatBitsPerSec(n.tracedOut)}`, color: tokens.sankey.traceFlow });
   } else {
     flow.push(`in ${formatBitsPerSec(sum(inb))}`);
     flow.push(`out ${formatBitsPerSec(sum(outb))}`);
   }
-  const membership: string[] = [];
+  const membership: TooltipLine[] = [];
   if (isW) {
     membership.push('derived from member pods');
     membership.push(countWord(n.podIds.length, 'pod'));
   } else if (n.kind === 'node') {
-    if (resIn(n) > 0) {
-      membership.push(`other in ${formatBitsPerSec(n.otherIn)}`);
-    }
-    if (resOut(n) > 0) {
-      membership.push(`other out ${formatBitsPerSec(n.otherOut)}`);
+    if (!n.noFlow) {
+      membership.push({ text: `other in ${formatBitsPerSec(n.otherIn)}`, color: tokens.sankey.traceResidualIn });
+      membership.push({ text: `other out ${formatBitsPerSec(n.otherOut)}`, color: tokens.sankey.traceResidualOut });
     }
   } else if (n.role === 'owner') {
     if (n.bps > 0) {
@@ -147,11 +153,17 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
   });
 }
 
-export function residualTooltipLines(n: TraceNode, side: 'in' | 'out'): string[] {
+export function residualTooltipLines(n: TraceNode, side: 'in' | 'out', tokens: ThemeTokens): TooltipLine[] {
   const amount = side === 'in' ? n.otherIn : n.otherOut;
   return [
-    `${n.label} · other ${side} ${formatDeltaBps(amount)}`,
-    `traced in ${formatBitsPerSec(n.tracedIn)} / out ${formatBitsPerSec(n.tracedOut)}`,
+    {
+      text: `${n.label} · other ${side} ${formatDeltaBps(amount)}`,
+      color: side === 'in' ? tokens.sankey.traceResidualIn : tokens.sankey.traceResidualOut,
+    },
+    {
+      text: `traced in ${formatBitsPerSec(n.tracedIn)} / out ${formatBitsPerSec(n.tracedOut)}`,
+      color: tokens.sankey.traceFlow,
+    },
   ];
 }
 

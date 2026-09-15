@@ -18,6 +18,7 @@ import {
   Swatch,
   type HoverLit,
   type ShellEmptyKind,
+  type TooltipLine,
 } from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
 
@@ -147,7 +148,7 @@ function nodeTooltip(
   id: string,
   flowLines: readonly string[],
   claimAggregateLabel: string | undefined
-): string[] {
+): TooltipLine[] {
   if (node === undefined) {
     return [id, ...flowLines];
   }
@@ -189,7 +190,7 @@ function nodeTooltip(
   });
 }
 
-function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): string[] {
+function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): TooltipLine[] {
   return nodeTooltipRows({
     head: `${node.kind} / ${node.label}`,
     ...(node.kind === 'application' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
@@ -211,7 +212,7 @@ function frameTooltip(
   pvcCount: number,
   flowLines: readonly string[],
   noFlow: boolean
-): string[] {
+): TooltipLine[] {
   return nodeTooltipRows({
     head: `netapp-svm / ${label}`,
     ...(ontapCluster !== undefined ? { ontapCluster } : {}),

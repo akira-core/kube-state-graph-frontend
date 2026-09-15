@@ -15,9 +15,15 @@ export function SankeyTooltip({ tooltip }: Readonly<{ tooltip: SankeyTooltipApi 
       style={{ left: tipPos.left, top: tipPos.top }}
       role="tooltip"
     >
-      {tip.text.map((line) => (
-        <div key={line}>{line}</div>
-      ))}
+      {tip.text.map((line, i) =>
+        typeof line === 'string' ? (
+          <div key={i}>{line}</div>
+        ) : (
+          <div key={i} style={{ color: line.color }}>
+            {line.text}
+          </div>
+        )
+      )}
     </div>
   );
 }

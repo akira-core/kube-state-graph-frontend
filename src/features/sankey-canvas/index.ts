@@ -29,7 +29,7 @@ export { useSankeyStage } from './useSankeyStage';
 export type { SankeyStage, SankeyStageOptions } from './useSankeyStage';
 export type { SankeyKeyboardOptions } from './useSankeyKeyboard';
 export { useSankeyTooltip } from './useSankeyTooltip';
-export type { SankeyTooltipApi, Tip } from './useSankeyTooltip';
+export type { SankeyTooltipApi, Tip, TooltipLine } from './useSankeyTooltip';
 export {
   fitRectViewport,
   fitViewport,

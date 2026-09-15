@@ -1,3 +1,5 @@
+import type { TooltipLine } from './useSankeyTooltip';
+
 /**
  * The one row order for a card's tooltip, so the storage and trace Sankeys describe a
  * node the same way: kind / name, namespace, ontap_cluster, the feature's own identity
@@ -13,9 +15,9 @@ export interface NodeTooltipRows {
   ontapCluster?: string;
   /** Feature-specific identity rows shown before the flow (an SVM, a claim aggregate). */
   identity?: readonly string[];
-  flow?: readonly string[];
+  flow?: readonly TooltipLine[];
   /** Membership counts and "derived from …" notes, shown right after the flow. */
-  membership?: readonly string[];
+  membership?: readonly TooltipLine[];
   usage?: string;
   /** The full status row text after the `status ` prefix, fold note included. */
   status?: string;
@@ -38,7 +40,7 @@ export function rawReading(label: string, value: number | undefined, format: (v:
   return value === undefined ? [] : [`${label} ${format(value)} (raw)`];
 }
 
-export function nodeTooltipRows(r: NodeTooltipRows): string[] {
+export function nodeTooltipRows(r: NodeTooltipRows): TooltipLine[] {
   return [
     r.head,
     ...(r.namespace !== undefined ? [`namespace ${r.namespace}`] : []),

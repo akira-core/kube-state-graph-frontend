@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
+/** One tooltip row: plain, or painted the colour of the mark it describes (a ribbon, a residual). */
+export type TooltipLine = string | { text: string; color: string };
+
 export interface Tip {
   x: number;
   y: number;
-  text: string[];
+  text: TooltipLine[];
 }
 
 export interface SankeyTooltipApi {
   tip: Tip | null;
   tipPos: { left: number; top: number } | null;
   tipRef: RefObject<HTMLDivElement>;
-  show: (x: number, y: number, text: string[]) => void;
+  show: (x: number, y: number, text: TooltipLine[]) => void;
   hide: () => void;
 }
 
@@ -50,7 +53,7 @@ export function useSankeyTooltip(boxRef: RefObject<HTMLDivElement>, dragging: bo
     setTipPos({ left, top });
   }, [boxRef, tip]);
 
-  const show = useCallback((x: number, y: number, text: string[]) => {
+  const show = useCallback((x: number, y: number, text: TooltipLine[]) => {
     setTip({ x, y, text });
   }, []);
   const hide = useCallback(() => {

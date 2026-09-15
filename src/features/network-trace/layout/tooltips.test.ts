@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { DARK_TOKENS } from '../../../shared/theme/tokens';
 import { normalizeGraph } from '../../graph-data';
+import { type TooltipLine } from '../../sankey-canvas';
 import { deriveTrace } from '../model/deriveTrace';
 import type { TraceModelOk } from '../model/types';
 import { traceSample } from '../testing/samples';
@@ -17,8 +19,18 @@ function model(key: string, layout: 'flat' | 'node' = 'flat'): TraceModelOk {
   return m;
 }
 
+const T = DARK_TOKENS;
+const text = (l: TooltipLine): string => (typeof l === 'string' ? l : l.text);
+const plain = (lines: readonly TooltipLine[]): string[] => lines.map(text);
+const colorOf = (lines: readonly TooltipLine[], prefix: string): string | undefined => {
+  const l = lines.find((x) => text(x).startsWith(prefix));
+  return l === undefined || typeof l === 'string' ? undefined : l.color;
+};
+const nodeTip = (n: Parameters<typeof nodeTooltipLines>[0], m: TraceModelOk): string[] =>
+  plain(nodeTooltipLines(n, m, T));
+
 describe('tooltip and card text', () => {
-  it('a hop names its residuals only when they are drawn, and its id only when it differs', () => {
+  it('a hop splits traced from other, paints each like its mark, and names its id only when it differs', () => {
     const m = model('classic');
     const a = m.nodeMap.get('sw-edge-a');
     const core = m.nodeMap.get('sw-core-1');
@@ -27,15 +39,24 @@ describe('tooltip and card text', () => {
     if (a === undefined || core === undefined) {
       return;
     }
-    const lines = nodeTooltipLines(a, m);
-    expect(lines[0]).toBe('switch / Edge A');
-    expect(lines).toContain('in 10 Gbps');
-    expect(lines).toContain('out 20 Gbps');
-    expect(lines).toContain('other in 10 Gbps');
-    expect(lines.some((l) => l.startsWith('other out'))).toBe(false);
-    expect(lines[lines.length - 1]).toBe('id sw-edge-a');
-    expect(nodeTooltipLines(core, m).some((l) => l.startsWith('other'))).toBe(false);
-    expect(residualTooltipLines(a, 'in')).toEqual(['Edge A · other in +10 Gbps', 'traced in 10 Gbps / out 20 Gbps']);
+    const lines = nodeTooltipLines(a, m, T);
+    const words = plain(lines);
+    expect(words[0]).toBe('switch / Edge A');
+    expect(words).toContain('traced in 10 Gbps');
+    expect(words).toContain('traced out 20 Gbps');
+    expect(words).toContain('other in 10 Gbps');
+    expect(words).toContain('other out 0 bps');
+    expect(colorOf(lines, 'traced in')).toBe(T.sankey.traceFlow);
+    expect(colorOf(lines, 'traced out')).toBe(T.sankey.traceFlow);
+    expect(colorOf(lines, 'other in')).toBe(T.sankey.traceResidualIn);
+    expect(colorOf(lines, 'other out')).toBe(T.sankey.traceResidualOut);
+    expect(words[words.length - 1]).toBe('id sw-edge-a');
+    // A balanced hop still lists both residual rows: the split is the point of the tooltip.
+    expect(nodeTip(core, m).filter((l) => l.startsWith('other'))).toEqual(['other in 0 bps', 'other out 0 bps']);
+    const res = residualTooltipLines(a, 'in', T);
+    expect(plain(res)).toEqual(['Edge A · other in +10 Gbps', 'traced in 10 Gbps / out 20 Gbps']);
+    expect(colorOf(res, 'Edge A')).toBe(T.sankey.traceResidualIn);
+    expect(colorOf(res, 'traced')).toBe(T.sankey.traceFlow);
   });
 
   it('the anchor tooltip and card carry the iface, direction and delta', () => {
@@ -45,7 +66,7 @@ describe('tooltip and card text', () => {
     if (anchor === undefined) {
       return;
     }
-    expect(nodeTooltipLines(anchor, m)).toEqual([
+    expect(nodeTip(anchor, m)).toEqual([
       'trace start',
       'iface xe-0/0/1',
       'in +10 Gbps',
@@ -90,7 +111,7 @@ describe('tooltip and card text', () => {
     expect(text.label).toBe('未管理小 switch');
     expect(text.cornerLabel).toBe('3 clients');
     expect(text.extraLines[text.extraLines.length - 1]).toMatch(/^\+/);
-    const tip = nodeTooltipLines(shared, m);
+    const tip = nodeTip(shared, m);
     expect(tip.filter((l) => l.startsWith('client '))).toHaveLength(shared.clients?.length ?? 0);
     expect(tip[tip.length - 1]).toBe('id sw-tor-1:xe-0/0/14');
     const single = m.nodeMap.get('sw-tor-1:xe-0/0/12');
@@ -98,7 +119,7 @@ describe('tooltip and card text', () => {
     if (single !== undefined) {
       expect(cardText(single, m).label).toBe('');
       expect(cardText(single, m).cornerLabel).toBe('1 client');
-      expect(nodeTooltipLines(single, m)).toContain('client 10.42.7.31 · lab-gpu-01 · 網管部 王小明');
+      expect(nodeTip(single, m)).toContain('client 10.42.7.31 · lab-gpu-01 · 網管部 王小明');
     }
     // An end device with no clients has no corner: "0 clients" would read as missing data.
     const host = m.nodeMap.get('srv-legacy-09');
@@ -117,18 +138,18 @@ describe('tooltip and card text', () => {
       expect(text.subtitle).toBe('owner');
       if (o.bps > 0) {
         expect(text.extraLines[0]).toMatch(/^\+/);
-        expect(nodeTooltipLines(o, m).some((l) => l.startsWith('derived from port cards'))).toBe(true);
+        expect(nodeTip(o, m).some((l) => l.startsWith('derived from port cards'))).toBe(true);
       } else {
         expect(text.extraLines[0]).toBe('metered at port');
-        expect(nodeTooltipLines(o, m).some((l) => l.startsWith('in — (metered at the port'))).toBe(true);
+        expect(nodeTip(o, m).some((l) => l.startsWith('in — (metered at the port'))).toBe(true);
       }
-      expect(nodeTooltipLines(o, m).some((l) => l.startsWith('id '))).toBe(false);
+      expect(nodeTip(o, m).some((l) => l.startsWith('id '))).toBe(false);
     }
     const k8s = model('k8s');
     const ns = k8s.nodes.find((n) => n.role === 'ns');
     expect(ns).toBeDefined();
     if (ns !== undefined) {
-      expect(nodeTooltipLines(ns, k8s)).toContain('derived from member pods');
+      expect(nodeTip(ns, k8s)).toContain('derived from member pods');
       expect(cardText(ns, k8s).extraLines[0]).toMatch(/pods?$/);
     }
   });
@@ -157,7 +178,7 @@ describe('tooltip and card text', () => {
     const w = m.wrappers[0];
     expect(w).toBeDefined();
     if (w !== undefined) {
-      expect(nodeTooltipLines(w, m)).toEqual([
+      expect(nodeTip(w, m)).toEqual([
         'node / worker-1',
         'in 1 Gbps',
         'out 1 Gbps', // the pod's derived edge to its namespace card

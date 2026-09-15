@@ -247,7 +247,7 @@ export function TraceView({
     setHoverId(id);
     const target = model.nodeMap.get(id) ?? model.wrappers.find((w) => w.id === id);
     if (target !== undefined) {
-      tooltip.show(evt.clientX, evt.clientY, nodeTooltipLines(target, model));
+      tooltip.show(evt.clientX, evt.clientY, nodeTooltipLines(target, model, tokens));
     }
   };
   const onBandEnter = (e: TraceEdge, evt: MouseEvent): void => {
@@ -260,7 +260,7 @@ export function TraceView({
     if (zoom.dragging) {
       return;
     }
-    tooltip.show(evt.clientX, evt.clientY, residualTooltipLines(n, side));
+    tooltip.show(evt.clientX, evt.clientY, residualTooltipLines(n, side, tokens));
   };
   const cleaned = cleanMinBps(minText);
 
