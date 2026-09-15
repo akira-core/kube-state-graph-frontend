@@ -63,3 +63,45 @@ export function useSeedTimeOnMount<T>(
     commit(applied, time.range);
   }, [applied, commit, params, time]);
 }
+
+/**
+ * A control that commits one field of the applied scope straight to the URL (Top pods, the
+ * Sankey mode, the trace threshold): the rest of the scope and the applied `from` / `to`
+ * ride along unchanged, so the write never disturbs the drawn query. Demo mode has no URL
+ * scope — the value goes to the page's own state instead.
+ */
+export function useCommitField<T, K extends keyof T>(
+  field: K,
+  {
+    applied,
+    commit,
+    fallbackRange,
+    demoMode,
+    onDemo,
+  }: {
+    applied: T;
+    commit: (scope: T, range: ViewTimeRange) => void;
+    /** The shell's range, for a URL with no `from` / `to` pair of its own. */
+    fallbackRange: ViewTimeRange;
+    demoMode: boolean;
+    onDemo: (value: T[K]) => void;
+  }
+): (value: T[K]) => void {
+  const [searchParams] = useSearchParams();
+  // Memoised on the params object: `parseTimeQuery` returns a fresh object per call, and an
+  // identity that changed every render would churn the callback and, through the trace
+  // view's `onMinBpsChange`, restart its threshold debounce on each render.
+  const appliedRange = useMemo(() => parseTimeQuery(searchParams) ?? fallbackRange, [fallbackRange, searchParams]);
+  return useCallback(
+    (value: T[K]) => {
+      if (demoMode) {
+        onDemo(value);
+        return;
+      }
+      const next = { ...applied };
+      next[field] = value;
+      commit(next, appliedRange);
+    },
+    [applied, appliedRange, commit, demoMode, field, onDemo]
+  );
+}

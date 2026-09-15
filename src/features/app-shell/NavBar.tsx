@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import type { JSX } from 'react';
-import { NavLink } from 'react-router';
+import { Link, NavLink, useLocation } from 'react-router';
 
 import type { RelativeWindow, ViewTimeRange } from '../../shared/time/viewTimeRange';
 import { Badge } from '../../shared/ui/Badge';
@@ -10,6 +10,7 @@ import { Select } from '../../shared/ui/Select';
 import { StatusLamp, type LampState } from '../../shared/ui/StatusLamp';
 import { useRequiredThemeController, type ThemeChoice } from '../theme';
 
+import { CATEGORY_LABEL, categoryHome, categoryOf, VIEW_LABEL, viewsOf, type Category } from './routes';
 import type { PagePhase } from './ShellFrame';
 
 export interface NavBarProps {
@@ -56,10 +57,19 @@ function datetimeLocalToUnix(value: string): number | null {
   return Math.floor(ms / 1000);
 }
 
-const VIEWS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: '/graph', label: 'Graph' },
-  { to: '/sankey', label: 'Sankey' },
-];
+/**
+ * Two-level navigation: a category (what is being traced — the cluster's storage estate,
+ * or a switch's traffic) and, inside it, a view of the same body (Graph or Sankey).
+ * Switching category lands on its Graph with a fresh scope; whether switching view keeps
+ * the query string is each route's own `keepSearch` (see `routes.ts`).
+ */
+const CATEGORIES: ReadonlyArray<{ key: Category; to: string; label: string }> = (['storage', 'network'] as const).map(
+  (key) => ({ key, to: categoryHome(key), label: CATEGORY_LABEL[key] })
+);
+
+const SEGMENT_CLASS = 'flex h-6 items-center rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-100';
+const SEGMENT_ACTIVE = 'bg-selected text-primary shadow-sm';
+const SEGMENT_IDLE = 'text-secondary hover:text-primary';
 
 const DATETIME_INPUT_CLASS =
   'h-7 rounded-md border border-hairline-strong bg-raised px-1.5 font-mono text-[11px] text-primary transition-colors duration-100 hover:bg-raised-hover';
@@ -78,6 +88,8 @@ export function NavBar({
   onAbsolute,
 }: Readonly<NavBarProps>): JSX.Element {
   const theme = useRequiredThemeController();
+  const location = useLocation();
+  const category = categoryOf(location.pathname);
   const resolvedPhase: PagePhase =
     phase ?? (refreshing ? 'loading' : error !== undefined ? 'error' : lastLoadedAt === null ? 'awaiting' : 'ready');
   const lamp: LampState =
@@ -103,19 +115,40 @@ export function NavBar({
 
       <span className="h-5 w-px shrink-0 bg-[var(--ksg-ui-hairline)]" aria-hidden />
 
-      <div className="inline-flex h-7 items-center gap-0.5 rounded-md border border-hairline bg-raised p-0.5">
-        {VIEWS.map((view) => (
+      <div
+        className="inline-flex h-7 items-center gap-0.5 rounded-md border border-hairline bg-raised p-0.5"
+        role="group"
+        aria-label="Category"
+        data-testid="nav-category"
+      >
+        {CATEGORIES.map((item) => {
+          const active = item.key === category;
+          return (
+            <Link
+              key={item.key}
+              to={item.to}
+              className={clsx(SEGMENT_CLASS, active ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
+              {...(active ? { 'aria-current': 'true' as const } : {})}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div
+        className="inline-flex h-7 items-center gap-0.5 rounded-md border border-hairline bg-raised p-0.5"
+        role="group"
+        aria-label="View"
+        data-testid="nav-view"
+      >
+        {viewsOf(category).map((route) => (
           <NavLink
-            key={view.to}
-            to={view.to}
-            className={({ isActive }) =>
-              clsx(
-                'flex h-6 items-center rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-100',
-                isActive ? 'bg-selected text-primary shadow-sm' : 'text-secondary hover:text-primary'
-              )
-            }
+            key={route.path}
+            to={route.keepSearch ? { pathname: route.path, search: location.search } : route.path}
+            className={({ isActive }) => clsx(SEGMENT_CLASS, isActive ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
           >
-            {view.label}
+            {VIEW_LABEL[route.view]}
           </NavLink>
         ))}
       </div>

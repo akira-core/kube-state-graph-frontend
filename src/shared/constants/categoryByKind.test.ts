@@ -22,6 +22,10 @@ describe('categoryByKind', () => {
     expect(CATEGORY_BY_KIND.external).toBe('Other');
   });
 
+  it('files a traced host beside external (outside every Kubernetes cluster)', () => {
+    expect(CATEGORY_BY_KIND.host).toBe(CATEGORY_BY_KIND.external);
+  });
+
   it('covers the same kind universe as the icon map (no kind mapped in one map but not the other)', () => {
     expect(Object.keys(CATEGORY_BY_KIND).sort()).toEqual(Object.keys(ICON_SVG_BY_KIND).sort());
   });

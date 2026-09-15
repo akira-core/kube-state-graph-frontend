@@ -1,4 +1,6 @@
 export { computeHits } from './computeHits';
+export { matchRecords, searchFields, tokenizeQuery } from './matchRecords';
+export type { LazySearchRecord, SearchDescription, SearchField, SearchRecord } from './matchRecords';
 export { resolveSearchHits } from './resolveSearchHits';
 export type { ResolvedSearchHits } from './resolveSearchHits';
 export type { ComputeHitsResult, SearchResult, SearchResultContext } from './types';

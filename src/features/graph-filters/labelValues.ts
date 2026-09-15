@@ -43,11 +43,16 @@ export type LabelValuesResult = { ok: true; values: string[] } | { ok: false; pr
  * empty and say why — throwing here would reach the graph load path and turn a missing
  * dropdown into a missing graph, which is the opposite of what an operator needs to see.
  */
-export async function fetchLabelValues(base: string, label: string, selector?: string): Promise<LabelValuesResult> {
+export async function fetchLabelValues(
+  base: string,
+  label: string,
+  selector?: string,
+  signal?: AbortSignal
+): Promise<LabelValuesResult> {
   const url = labelValuesUrl(base, label, selector);
   let payload: unknown;
   try {
-    payload = await fetchJson(url);
+    payload = await fetchJson(url, signal === undefined ? undefined : { signal });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw err;

@@ -38,6 +38,9 @@ export const EDGE_ENDPOINTS_BY_TYPE: Record<EdgeType, EdgeEndpoints> = {
   // Spans the whole storage → workload chain; individual hops are named by
   // `labels.tier` rather than by a distinct edge type.
   'storage-flow': { from: 'netapp-node', to: 'node' },
+  // One traced interface hop. The far end is whatever the trace resolved — another
+  // switch, a K8s node or a bare `host` — so the legend names the most general one.
+  'network-flow': { from: 'switch', to: 'host' },
 };
 
 // Which edge types carry REQUEST TRAFFIC (as opposed to placement, storage or
@@ -61,6 +64,8 @@ export const EDGE_IS_TRAFFIC_BY_TYPE: Record<EdgeType, boolean> = {
   'switch-to-switch': false,
   'node-to-switch': false,
   'storage-flow': false,
+  // Bits on a wire, not requests through a gateway — never dashed as ingress traffic.
+  'network-flow': false,
 };
 
 // The safe read of the map above: an unmapped backend type (GraphEdgeType widens to
@@ -122,6 +127,10 @@ export const EDGE_STYLE_BY_TYPE: Record<EdgeType, EdgeStyle> = {
   'switch-to-switch': { color: DARK_TOKENS.edge['switch-to-switch'], lineStyle: 'solid', routing: 'taxi' },
   'node-to-switch': { color: DARK_TOKENS.edge['node-to-switch'], lineStyle: 'solid', routing: 'taxi' },
   'storage-flow': { color: DARK_TOKENS.edge['storage-flow'], lineStyle: 'solid', routing: 'bezier' },
+  // A traced hop rides the same physical fabric as the two switch edges, so it shares
+  // their cyan family and orthogonal routing; its own (lighter) token keeps a traced
+  // hop distinguishable from a plain link when both appear on one canvas.
+  'network-flow': { color: DARK_TOKENS.edge['network-flow'], lineStyle: 'solid', routing: 'taxi' },
 };
 
 export const FALLBACK_EDGE_STYLE: EdgeStyle = {

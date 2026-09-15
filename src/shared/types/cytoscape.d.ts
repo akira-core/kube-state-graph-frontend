@@ -120,6 +120,25 @@ declare module 'cytoscape' {
     // expand-collapse `+`/`-` cue is drawn only on a SELECTED parent, and folding the
     // group is the whole point of it.
     isNodeGroup?: boolean;
+    // ── Switch-trace payload (`GET /v1/trace`) fields, all absent on `/v1/graph` and
+    // `/v1/storage-graph`. Read by the network-trace Sankey; the graph view only shows them.
+    //
+    // The trace's starting point: the one node (a switch) whose interface the operator
+    // asked about. `iface` names the port, `deltaBps` is the rate delta measured there
+    // (bits/s, > 0 — a trace has nothing to follow otherwise), `direction` is which side
+    // of the port the delta was seen on when the backend says (absent = unstated; the
+    // requested `track_dir` decides). At most one node carries it; normalize drops a
+    // malformed one and reports it, since a trace without an anchor is still drawable.
+    investigation?: { iface: string; deltaBps: number; direction?: 'in' | 'out'; note?: string };
+    // The endpoints a `host` (or trace-stop) node stands for. Each entry keeps whatever
+    // the backend resolved — an entry with neither `ip` nor `hostname` is dropped as
+    // unidentifiable; `owner` is free-form attribution. Omitted when absent or empty.
+    clients?: Array<{ ip?: string; hostname?: string; owner?: string }>;
+    // Traffic (bits/s, ≥ 0) that entered / left this hop but was NOT followed by the
+    // trace — the Sankey's "other in" / "other out" residuals. Independently optional;
+    // absent means the backend reported no residual, which is NOT a measured 0.
+    otherInBps?: number;
+    otherOutBps?: number;
   }
 
   // RED measurements the backend attaches to trace-derived edges (upstream `data.metrics`),
@@ -163,11 +182,22 @@ declare module 'cytoscape' {
     maxBytesPerSec?: number; // ceiling on combined throughput, bytes per second
   }
 
-  // The two families are mutually exclusive by provenance — a trace-derived call edge or a
-  // storage edge, never both — so `metrics` is a union and `rate` can no longer be assumed
-  // present. Discriminate with `'rate' in metrics`; normalize guarantees it never emits a
-  // mixed object (RED wins if both somehow arrive).
-  type EdgeMetrics = EdgeRedMetrics | EdgeIoMetrics;
+  // Switch-trace measurement, carried on `network-flow` edges (`/v1/trace`). A rate DELTA
+  // in bits per second — how much the interface's rate rose over the query window, not the
+  // absolute throughput — which is why the Sankey formats it with a leading `+`. ≥ 0 by
+  // construction (normalize rejects negatives); absence ≠ 0. Declared as its own family
+  // but INTERSECTED with the I/O one below rather than added as a third union member, so
+  // every existing `'rate' in metrics` narrowing keeps resolving the remainder to
+  // `EdgeIoMetrics`. A trace consumer discriminates with `typeof m.deltaBps === 'number'`.
+  interface EdgeFlowMetrics {
+    deltaBps?: number;
+  }
+
+  // The families are mutually exclusive by provenance — a trace-derived call edge, a
+  // storage edge or a traced hop, never two at once — so `metrics` is a union and `rate`
+  // can no longer be assumed present. Discriminate with `'rate' in metrics`; normalize
+  // guarantees it never emits a mixed object (RED wins if both somehow arrive).
+  type EdgeMetrics = EdgeRedMetrics | (EdgeIoMetrics & EdgeFlowMetrics);
 
   interface EdgeDataDefinition {
     edgeType?: GraphEdgeType; // mapped from upstream data.type (may be an unknown backend edge type)

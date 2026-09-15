@@ -121,6 +121,45 @@ describe('SankeyView', () => {
     expect(screen.getAllByTestId('sankey-link-write').length).toBeGreaterThan(0);
   });
 
+  it('wheel-zooms a chart that mounted after the loading gate — the live page never renders the host first', () => {
+    // Live mode: the first commit is `loading` with no payload, so the chart host (and the
+    // ref the wheel listener attaches to) does not exist yet. The listener must attach once
+    // the host actually mounts, not only if it happened to be there on the first render.
+    const { rerender } = renderSankeyWithProps(
+      baseProps({ demoMode: false, hasRoot: true, status: 'loading', hasPayload: false, elements: [] })
+    );
+    expect(screen.queryByTestId('sankey-chart-host')).not.toBeInTheDocument();
+
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps({ demoMode: false, hasRoot: true })} />
+        </div>
+      </ThemeProvider>
+    );
+    const host = screen.getByTestId('sankey-chart-host');
+    const before = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
+  });
+
+  it('keeps the drawn chart when the draft is edited into an incomplete scope (explicit-query: drafts never alter drawn data)', () => {
+    const { rerender } = renderSankeyWithProps(baseProps({ demoMode: false, hasRoot: true }));
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+
+    // The operator unchecks the last root pill. The APPLIED selection (what was drawn) has
+    // not changed; only the draft has, and the Query button says "Changes not applied".
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps({ demoMode: false, hasRoot: false })} />
+        </div>
+      </ThemeProvider>
+    );
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-empty-scope')).not.toBeInTheDocument();
+  });
+
   it('shows an unconfigured empty state without drawing', () => {
     renderSankey({ demoMode: false, endpointConfigured: false, azEnvReady: false, hasPayload: false, status: 'idle' });
     expect(screen.getByTestId('sankey-empty-unconfigured')).toHaveTextContent('not configured');
@@ -274,6 +313,14 @@ describe('SankeyView', () => {
     fireEvent.click(screen.getByRole('radio', { name: /write/i }));
     expect(screen.queryByTestId('sankey-empty-mode')).not.toBeInTheDocument();
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+
+    // The host was unmounted by the empty state and mounted again by the mode switch, with
+    // nothing about the view's status changing: the wheel listener must follow the element,
+    // not the status, or zoom is dead for the rest of the session.
+    const host = screen.getByTestId('sankey-chart-host');
+    const before = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
   });
 
   it('locates a storage node on click but not an SVM', () => {
@@ -291,7 +338,7 @@ describe('SankeyView', () => {
     fireEvent.mouseEnter(screen.getByTestId('sankey-node-ontap-prod-02'));
     const tip = screen.getByRole('tooltip');
     expect(tip).toHaveTextContent('netapp-node');
-    expect(tip).toHaveTextContent('ontap_cluster: ontap-prod');
+    expect(tip).toHaveTextContent('ontap_cluster ontap-prod');
     expect(tip).toHaveTextContent('AFF-A400');
     expect(tip).toHaveTextContent('cpu_busy_pct');
     expect(tip).toHaveTextContent('(raw)');
@@ -350,6 +397,23 @@ describe('SankeyView', () => {
 
     expect(screen.getByTestId('sankey-node-aggr2')).toBeInTheDocument();
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
+  });
+
+  it('clears the tooltip and highlight when the layout stops drawing the hovered wrapper', () => {
+    // The derived graph keeps every Kubernetes node whichever pod layout is on; only the
+    // layout decides whether a wrapper is a card. Switching back to Flat removes the hovered
+    // wrapper with no mouseleave, exactly like a refresh removing a node.
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-worker-0'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('0.3');
+
+    fireEvent.click(screen.getByRole('radio', { name: /^flat$/i }));
+
+    expect(screen.queryByTestId('sankey-wrapper-title-worker-0')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('1');
   });
 
   it('renders nodes as box cards with a title and a subtitle line, not a bare thin rect', () => {
@@ -817,6 +881,21 @@ describe('SankeyView', () => {
     expect(mongo0.querySelector('rect')?.getAttribute('x')).toBe(rectXBefore);
   });
 
+  it("describes a wrapper in the shared row order: count, the members' flow, then its status", () => {
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-worker-0'));
+    const text = screen.getByRole('tooltip').textContent ?? '';
+    expect(text).toContain('node / worker-0');
+    expect(text).toContain('2 pods');
+    // Flow before status, as on every other card (see `nodeTooltipRows`).
+    const flowAt = text.indexOf('(derived from member pods)');
+    const statusAt = text.indexOf('status ');
+    expect(flowAt).toBeGreaterThan(text.indexOf('2 pods'));
+    expect(statusAt).toBeGreaterThan(flowAt);
+    expect(text).toContain('(worst of node and member pods)');
+  });
+
   it('reverts to normal display, with layout coordinates unchanged, after the mouse leaves', () => {
     renderSankey();
     const node = screen.getByTestId('sankey-node-aggr1');
@@ -1098,5 +1177,127 @@ describe('SankeyView', () => {
       expect(screen.queryByTestId('sankey-wrapper-title-svm_shop')).not.toBeInTheDocument();
       expect(screen.queryByTestId('sankey-wrapper-title-worker-0')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('SankeyView card search', () => {
+  const type = (query: string): void => {
+    fireEvent.change(screen.getByTestId('sankey-search-input'), { target: { value: query } });
+  };
+  const opacityOf = (testId: string): string => screen.getByTestId(testId).style.opacity;
+
+  it('lights every hit card’s whole path, like hovering it, and fades the rest', () => {
+    renderSankey();
+    type('aggr1');
+    expect(opacityOf('sankey-node-aggr1')).toBe('1');
+    // aggr1's claim runs down to data-mongo-0 → mongo-0 → mongodb → prod.
+    expect(opacityOf('sankey-node-ontap-prod-01')).toBe('1');
+    expect(opacityOf('sankey-node-data-mongo-0')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-0')).toBe('1');
+    expect(opacityOf('sankey-node-aggr2')).toBe('0.3');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('0.3');
+    expect(screen.getAllByTestId(/^sankey-link-/).some((el) => el.getAttribute('fill-opacity') === '0.14')).toBe(true);
+
+    // Every hit contributes its path: both aggregates light both claims.
+    type('aggr');
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('1');
+
+    type('');
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(screen.getAllByTestId(/^sankey-link-/).every((el) => el.getAttribute('fill-opacity') !== '0.14')).toBe(true);
+  });
+
+  it('fades everything for a query with no hits', () => {
+    renderSankey();
+    type('no-such-card');
+    expect(screen.getByTestId('search-no-results')).toBeInTheDocument();
+    expect(opacityOf('sankey-node-aggr1')).toBe('0.3');
+    expect(opacityOf('sankey-node-mongo-0')).toBe('0.3');
+  });
+
+  it('matches wrappers under the Node layout and lights their member pods', () => {
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    type('worker-0');
+    expect(opacityOf('sankey-node-mongo-0')).toBe('1');
+    expect(opacityOf('sankey-node-orphan-0')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('0.3');
+  });
+
+  it('lets a hover take over while searching and hands back on leave', () => {
+    renderSankey();
+    type('aggr1');
+    const aggr2 = screen.getByTestId('sankey-node-aggr2');
+    fireEvent.mouseEnter(aggr2);
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(opacityOf('sankey-node-aggr1')).toBe('0.3');
+    fireEvent.mouseLeave(aggr2);
+    expect(opacityOf('sankey-node-aggr1')).toBe('1');
+    expect(opacityOf('sankey-node-aggr2')).toBe('0.3');
+  });
+
+  it('frames a located result in the chart, ends the search and never leaves for Graph view', () => {
+    const { props } = renderSankey();
+    const svg = screen.getByTestId('sankey-svg');
+    type('ontap-prod-02');
+    fireEvent.click(screen.getByTestId('search-result-netapp/ontap-prod/ontap-prod-02'));
+    // A single card is framed at its own size, never enlarged.
+    expect(scaleOf(svg)).toBe(1);
+    expect(screen.getByTestId('sankey-search-input')).toHaveValue('');
+    expect(opacityOf('sankey-node-aggr1')).toBe('1');
+    expect(props.onLocateNode).not.toHaveBeenCalled();
+  });
+
+  it('fits the chart to every hit once typing pauses', () => {
+    vi.useFakeTimers();
+    try {
+      renderSankey();
+      const svg = screen.getByTestId('sankey-svg');
+      fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '0' });
+      const fitted = svg.querySelector('g')?.getAttribute('transform');
+      type('mongo');
+      expect(svg.querySelector('g')?.getAttribute('transform')).toBe(fitted);
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(svg.querySelector('g')?.getAttribute('transform')).not.toBe(fitted);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps chart shortcuts, wheel zoom and drag pan out of the search box', () => {
+    const onFocusModeChange = vi.fn();
+    renderSankey({ onFocusModeChange });
+    const input = screen.getByTestId('sankey-search-input');
+    const readout = (): string | null => screen.getByTestId('sankey-zoom-controls').textContent;
+    const before = readout();
+    fireEvent.keyDown(input, { key: 'f' });
+    fireEvent.keyDown(input, { key: '+' });
+    fireEvent.wheel(screen.getByTestId('sankey-search-bar'), { deltaY: -600, clientX: 700, clientY: 20 });
+    expect(onFocusModeChange).not.toHaveBeenCalled();
+    expect(readout()).toBe(before);
+
+    const svg = screen.getByTestId('sankey-svg');
+    const transform = svg.querySelector('g')?.getAttribute('transform');
+    fireEvent.pointerDown(input, { pointerId: 1, clientX: 700, clientY: 20 });
+    fireEvent.pointerMove(input, { pointerId: 1, clientX: 600, clientY: 120 });
+    expect(svg.querySelector('g')?.getAttribute('transform')).toBe(transform);
+  });
+
+  it('keeps the query across a refresh and drops hits the new body has no card for', () => {
+    const { rerender } = renderSankeyWithProps(baseProps());
+    type('aggr');
+    rerender(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps({ elements: withoutAggr1() })} />
+        </div>
+      </ThemeProvider>
+    );
+    expect(screen.getByTestId('sankey-search-input')).toHaveValue('aggr');
+    expect(opacityOf('sankey-node-aggr2')).toBe('1');
+    expect(opacityOf('sankey-node-mongo-1')).toBe('1');
   });
 });

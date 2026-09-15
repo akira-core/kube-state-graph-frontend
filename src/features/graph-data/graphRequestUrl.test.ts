@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_GRAPH_FILTERS, type GraphFilters } from '../../shared/types/graphFilters';
 
-import { buildGraphRequestUrl, graphRequestKey } from './graphRequestUrl';
+import { buildGraphRequestUrl } from './graphRequestUrl';
 
 const NOW_MS = 1_767_225_600_000; // 2026-01-01T00:00:00Z
 const NOW_S = NOW_MS / 1000;
@@ -107,23 +107,5 @@ describe('buildGraphRequestUrl', () => {
     const first = params(buildGraphRequestUrl('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS, NOW_MS));
     const later = params(buildGraphRequestUrl('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS, NOW_MS + 3_600_000));
     expect(Number(later.get('end'))).toBe(Number(first.get('end')) + 3600);
-  });
-});
-
-describe('graphRequestKey', () => {
-  it('is stable while only the clock moves', () => {
-    const range = { kind: 'relative', window: '1h' } as const;
-    expect(graphRequestKey('/api/v1/graph', range, DEFAULT_GRAPH_FILTERS)).toBe(
-      graphRequestKey('/api/v1/graph', range, { ...DEFAULT_GRAPH_FILTERS })
-    );
-  });
-
-  it('changes when the selection changes', () => {
-    const base = graphRequestKey('/api/v1/graph', { kind: 'relative', window: '1h' }, DEFAULT_GRAPH_FILTERS);
-    expect(graphRequestKey('/api/v1/graph', { kind: 'relative', window: '6h' }, DEFAULT_GRAPH_FILTERS)).not.toBe(base);
-    expect(
-      graphRequestKey('/api/v1/graph', { kind: 'relative', window: '1h' }, { ...DEFAULT_GRAPH_FILTERS, prune: false })
-    ).not.toBe(base);
-    expect(graphRequestKey(undefined, { kind: 'relative', window: '1h' }, DEFAULT_GRAPH_FILTERS)).not.toBe(base);
   });
 });

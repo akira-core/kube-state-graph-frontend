@@ -166,12 +166,20 @@ describe('useGraphLoader', () => {
     expect(result.current.state.hasPayload).toBe(true);
   });
 
-  it('does not start a second in-flight request from run or reload', async () => {
+  it('reload during flight is inert; run during flight supersedes the request with the new URL', async () => {
+    const signals: AbortSignal[] = [];
     let resolveFirst: ((value: Response) => void) | undefined;
     const fetchMock = vi.fn().mockImplementation(
-      () =>
+      (_url: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((resolve) => {
-          resolveFirst = resolve;
+          if (init?.signal !== undefined && init.signal !== null) {
+            signals.push(init.signal);
+          }
+          if (signals.length === 1) {
+            resolveFirst = resolve;
+          } else {
+            resolve(jsonResponse(SHOWCASE_GRAPH));
+          }
         })
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -184,13 +192,45 @@ describe('useGraphLoader', () => {
     });
     act(() => {
       result.current.reload();
-      result.current.run(() => '/api/v1/graph?other=1');
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    resolveFirst?.(jsonResponse(SHOWCASE_GRAPH));
+
+    // The page committed a new scope to the URL and asked for it. The first request is
+    // aborted and the new one goes out at once — the drawn body must follow the address bar.
+    act(() => {
+      result.current.run(() => '/api/v1/graph?other=1');
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe('/api/v1/graph?other=1');
     await waitFor(() => {
       expect(result.current.state.status).toBe('ready');
     });
+    expect(result.current.state.cancelled).toBe(false);
+
+    // The superseded response lands late and changes nothing.
+    const loadedAt = result.current.state.lastLoadedAt;
+    resolveFirst?.(jsonResponse({ elements: { nodes: [], edges: [] } }));
+    await settle();
+    expect(result.current.state.lastLoadedAt).toBe(loadedAt);
+    expect(result.current.state.hasPayload).toBe(true);
+  });
+
+  it('cancel after a completed request is a no-op', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(SHOWCASE_GRAPH)));
+    const { result } = renderHook(() => useGraphLoader(LIVE));
+    act(() => {
+      result.current.run(() => '/api/v1/graph');
+    });
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('ready');
+    });
+    const before = result.current.state;
+    act(() => {
+      result.current.cancel();
+    });
+    expect(result.current.state).toBe(before);
+    expect(result.current.state.cancelled).toBe(false);
   });
 
   it('cancel aborts and keeps a payload as ready with no error', async () => {

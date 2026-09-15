@@ -86,16 +86,3 @@ export function buildStorageGraphRequestUrl(
   };
   return withQuery(storageGraphEndpoint, params);
 }
-
-/**
- * Changes when the SELECTION changes, not when the clock moves. Same contract as
- * `graphRequestKey`: a relative window's URL is different every millisecond, so the
- * loader keys on this instead.
- */
-export function storageGraphRequestKey(
-  storageGraphEndpoint: string | undefined,
-  range: ViewTimeRange,
-  query: StorageGraphQuery
-): string {
-  return JSON.stringify([storageGraphEndpoint ?? null, range, query]);
-}

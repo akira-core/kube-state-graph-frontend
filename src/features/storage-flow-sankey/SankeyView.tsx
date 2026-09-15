@@ -1,38 +1,42 @@
 import type cytoscape from 'cytoscape';
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX,
-  type KeyboardEvent,
-  type MouseEvent,
-} from 'react';
+import { useCallback, useMemo, useState, type JSX, type MouseEvent } from 'react';
 
-import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
+import { countWord } from '../../shared/format/countWord';
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { EMPTY_STORAGE_GRAPH_ROOTS, hasAnyRoot, type StorageGraphRoots } from '../graph-data';
+import {
+  loadGateScreen,
+  SankeyControlBar,
+  SankeySearchOverlay,
+  SankeyTooltip,
+  StatusLegend,
+  useSankeyStage,
+  nodeTooltipRows,
+  rawReading,
+  shellEmptyKind,
+  Swatch,
+  type HoverLit,
+  type LoadStatus,
+  type ShellEmptyKind,
+  type TooltipLine,
+} from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
 
 import {
   DERIVED_TIER_LABEL,
   deriveSankey,
   formatBytesPerSec,
-  hoverPathForFrame,
-  hoverPathForWrapper,
-  hoverPathLinks,
   isDerivedTier,
   resolveClaimAggregates,
   type SankeyMode,
   type SankeyNode,
   type SankeySvmDisplay,
 } from './deriveSankey';
-import { layoutSankey, linkKey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
-import { SankeyChart, type HoverLit } from './SankeyChart';
-import { SankeyControlBar } from './SankeyControlBar';
+import { layoutSankey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
+import { SankeyChart } from './SankeyChart';
+import { sankeyCardRects, sankeyPathLit, sankeySearchRecords } from './sankeySearch';
 import {
   SankeySummary,
   type ApplicationSubtotalRow,
@@ -41,15 +45,6 @@ import {
 } from './SankeySummary';
 import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
 import { cutTopPods } from './topPods';
-import { openingViewport, useZoomPan, type Size } from './useZoomPan';
-
-/**
- * Stands in for the chart box only while it has never been measured. Nothing opens against
- * it — the opening viewport waits for a real measurement — so it is reached solely by the
- * zoom controls in an environment that reports no layout at all, where a zero-sized
- * container would make `fit` a no-op and the controls untestable.
- */
-const UNMEASURED_CONTAINER: Size = { w: 800, h: 480 };
 
 const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
   { value: 'read', label: 'Read' },
@@ -76,7 +71,7 @@ const svmOptions = (available: boolean): ReadonlyArray<SegmentedOption<SankeySvm
 
 export interface SankeyViewProps {
   elements: cytoscape.ElementDefinition[];
-  status: 'idle' | 'loading' | 'ready' | 'error';
+  status: LoadStatus;
   error: string | undefined;
   hasPayload: boolean;
   demoMode: boolean;
@@ -107,67 +102,55 @@ export interface SankeyViewProps {
   onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
 }
 
-interface Tip {
-  x: number;
-  y: number;
-  text: string[];
+type SankeyEmptyKind = ShellEmptyKind | 'mode' | 'response';
+
+function emptyCopy(kind: SankeyEmptyKind, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
+  switch (kind) {
+    case 'unconfigured':
+      return {
+        testId: 'sankey-empty-unconfigured',
+        text: 'Storage graph endpoint is not configured. Graph view is unaffected.',
+      };
+    case 'scope':
+      return {
+        testId: 'sankey-empty-scope',
+        text: 'Select one az, one env and at least one root. No request has been sent yet.',
+      };
+    case 'awaiting':
+      return {
+        testId: 'sankey-empty-awaiting',
+        text: 'Nothing has been requested yet. Press Query to load storage flow for the current scope and time range.',
+      };
+    case 'cancelled':
+      return {
+        testId: 'sankey-empty-cancelled',
+        text: 'The request was cancelled. Press Query to load storage flow.',
+      };
+    case 'response':
+      return {
+        testId: 'sankey-empty-response',
+        text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
+      };
+    default:
+      return {
+        testId: 'sankey-empty-mode',
+        text:
+          mode === 'read'
+            ? 'Read direction has no measurements. Switch to Write or Both.'
+            : mode === 'write'
+              ? 'Write direction has no measurements. Switch to Read or Both.'
+              : 'The current direction has no measurements. Switch to Read, Write, or Both.',
+      };
+  }
 }
 
-function emptyCopy(kind: 1 | 2 | 3 | 4 | 5 | 6, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
-  if (kind === 1) {
-    return {
-      testId: 'sankey-empty-unconfigured',
-      text: 'Storage graph endpoint is not configured. Graph view is unaffected.',
-    };
-  }
-  if (kind === 2) {
-    return {
-      testId: 'sankey-empty-scope',
-      text: 'Select one az, one env and at least one root. No request has been sent yet.',
-    };
-  }
-  if (kind === 3) {
-    return {
-      testId: 'sankey-empty-awaiting',
-      text: 'Nothing has been requested yet. Press Query to load storage flow for the current scope and time range.',
-    };
-  }
-  if (kind === 4) {
-    return {
-      testId: 'sankey-empty-cancelled',
-      text: 'The request was cancelled. Press Query to load storage flow.',
-    };
-  }
-  if (kind === 5) {
-    return {
-      testId: 'sankey-empty-response',
-      text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
-    };
-  }
-  return {
-    testId: 'sankey-empty-mode',
-    text:
-      mode === 'read'
-        ? 'Read direction has no measurements. Switch to Write or Both.'
-        : mode === 'write'
-          ? 'Write direction has no measurements. Switch to Read or Both.'
-          : 'The current direction has no measurements. Switch to Read, Write, or Both.',
-  };
-}
-
-/**
- * Node tooltip lines for a storage-graph node.
- *
- * The hardware and perf readings are shown RAW and uncoloured on purpose: `cpu_busy_pct`
- * is a reading, not a threshold, and colouring it would invent a health judgement the
- * backend never made. `health` is the only field that carries one.
- */
+/** Node tooltip lines for a storage-graph node, in the shared row order (see `nodeTooltipRows`). */
 function nodeTooltip(
   node: SankeyNode | undefined,
   id: string,
   flowLines: readonly string[],
   claimAggregateLabel: string | undefined
-): string[] {
+): TooltipLine[] {
   if (node === undefined) {
     return [id, ...flowLines];
   }
@@ -176,50 +159,66 @@ function nodeTooltip(
     node.kind === 'pvc' || node.kind === 'netapp-aggr'
       ? formatUsage(node.usage?.usedBytes, node.usage?.capacityBytes)
       : undefined;
-  const raw = (label: string, value: number | undefined, format: (v: number) => string): string[] =>
-    value === undefined ? [] : [`${label} ${format(value)} (raw)`];
-  return [
-    `${node.kind} / ${node.label}`,
+  return nodeTooltipRows({
+    head: `${node.kind} / ${node.label}`,
     ...((node.kind === 'pod' || node.kind === 'pvc') && node.namespace !== undefined
-      ? [`namespace ${node.namespace}`]
-      : []),
-    ...(isNetapp && node.ontapCluster !== undefined ? [`ontap_cluster: ${node.ontapCluster}`] : []),
-    ...(node.kind === 'pvc' && node.svm !== undefined ? [`SVM ${node.svm}`] : []),
-    ...(node.kind === 'pvc' && claimAggregateLabel !== undefined ? [`aggregate ${claimAggregateLabel}`] : []),
-    ...flowLines,
-    ...(usage !== undefined && usage.length > 0 ? [usage] : []),
+      ? { namespace: node.namespace }
+      : {}),
+    ...(isNetapp && node.ontapCluster !== undefined ? { ontapCluster: node.ontapCluster } : {}),
+    identity: [
+      ...(node.kind === 'pvc' && node.svm !== undefined ? [`SVM ${node.svm}`] : []),
+      ...(node.kind === 'pvc' && claimAggregateLabel !== undefined ? [`aggregate ${claimAggregateLabel}`] : []),
+    ],
+    flow: flowLines,
+    ...(usage !== undefined ? { usage } : {}),
     // `status` is the backend's fold; `health` is one of the three signals it folded. Both
     // are shown because they answer different questions — a NetApp node can be
     // `health online` and still `status critical` off a firing alert.
-    ...(node.status !== undefined ? [`status ${node.status}`] : []),
-    ...(node.health !== undefined ? [`health ${node.health}`] : []),
-    ...(node.hardware?.model !== undefined ? [`model ${node.hardware.model}`] : []),
-    ...raw('cpu_busy_pct', node.perf?.cpuBusyPct, String),
-    ...raw('total_ops', node.perf?.totalOps, String),
-    ...raw('total_latency_us', node.perf?.totalLatencyUs, String),
-    ...raw('total_bytes_per_sec', node.perf?.totalBytesPerSec, formatBytes),
+    ...(node.status !== undefined ? { status: node.status } : {}),
+    ...(node.health !== undefined ? { health: node.health } : {}),
+    ...(node.hardware?.model !== undefined ? { model: node.hardware.model } : {}),
+    perf: [
+      ...rawReading('cpu_busy_pct', node.perf?.cpuBusyPct, String),
+      ...rawReading('total_ops', node.perf?.totalOps, String),
+      ...rawReading('total_latency_us', node.perf?.totalLatencyUs, String),
+      ...rawReading('total_bytes_per_sec', node.perf?.totalBytesPerSec, formatBytes),
+    ],
     // `severity` is optional (a rule may declare none), so the prefix has to drop with it
     // rather than render the string "undefined" in front of the alert name.
-    ...(node.alerts ?? []).map((alert) =>
+    alerts: (node.alerts ?? []).map((alert) =>
       alert.severity === undefined ? alert.name : `${alert.severity} ${alert.name}`
     ),
-    ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-  ];
+    trailer: node.noFlow === true ? ['Selected root with no flow in this time range.'] : [],
+  });
 }
 
-function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): string[] {
-  const members =
-    node.memberPodCount !== undefined
-      ? [node.memberPodCount === 1 ? '1 pod' : `${String(node.memberPodCount)} pods`]
-      : [];
-  return [
-    `${node.kind} / ${node.label}`,
-    ...(node.kind === 'application' && node.namespace !== undefined ? [`namespace ${node.namespace}`] : []),
-    ...members,
+function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): TooltipLine[] {
+  return nodeTooltipRows({
+    head: `${node.kind} / ${node.label}`,
+    ...(node.kind === 'application' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
+    identity: node.memberPodCount !== undefined ? [countWord(node.memberPodCount, 'pod')] : [],
     // Derived cards carry no status: they are synthesised columns.
-    ...flowLines.map((line) => `${line} (derived from member pods)`),
-    ...(node.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-  ];
+    flow: flowLines.map((line) => `${line} (derived from member pods)`),
+    trailer: node.noFlow === true ? ['Selected root with no flow in this time range.'] : [],
+  });
+}
+
+/** A Kubernetes node wrapper's title-row tooltip under the `Node` pod layout: its pod count,
+ *  the members' flow, and the status the backend folded over the node and its pods. */
+function wrapperTooltip(
+  label: string,
+  podCount: number,
+  flowLines: readonly string[],
+  status: string | undefined,
+  noFlow: boolean
+): TooltipLine[] {
+  return nodeTooltipRows({
+    head: `node / ${label}`,
+    identity: [countWord(podCount, 'pod')],
+    flow: flowLines.map((line) => `${line} (derived from member pods)`),
+    ...(status !== undefined ? { status: `${status} (worst of node and member pods)` } : {}),
+    trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
+  });
 }
 
 /** An SVM frame's title-row tooltip under the SVM display's `Group` — shaped like a
@@ -230,14 +229,14 @@ function frameTooltip(
   pvcCount: number,
   flowLines: readonly string[],
   noFlow: boolean
-): string[] {
-  return [
-    `netapp-svm / ${label}`,
-    ...(ontapCluster !== undefined ? [`ontap_cluster: ${ontapCluster}`] : []),
-    pvcCount === 1 ? '1 PVC' : `${String(pvcCount)} PVCs`,
-    ...flowLines.map((line) => `${line} (derived from member PVCs)`),
-    ...(noFlow ? ['Selected root with no flow in this time range.'] : []),
-  ];
+): TooltipLine[] {
+  return nodeTooltipRows({
+    head: `netapp-svm / ${label}`,
+    ...(ontapCluster !== undefined ? { ontapCluster } : {}),
+    identity: [countWord(pvcCount, 'PVC')],
+    flow: flowLines.map((line) => `${line} (derived from member PVCs)`),
+    trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
+  });
 }
 
 export function SankeyView({
@@ -287,53 +286,6 @@ export function SankeyView({
     }
     onSvmDisplayChange?.(next);
   };
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const [tip, setTip] = useState<Tip | null>(null);
-  const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const chartHostRef = useRef<HTMLDivElement>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
-  /**
-   * `null` until the chart box has actually been measured, and deliberately not a
-   * plausible-looking placeholder. The opening viewport fits against this and then locks
-   * itself, so a placeholder is not a harmless default — it is the size the diagram gets
-   * fitted to. Seeded at 800x480 it opened every estate at that ratio and never revisited
-   * it: 2096-wide content drew at 38% in a 1600px-wide window instead of 76%, off-centre,
-   * looking exactly like a chart too big for its area. Environments with no layout (jsdom)
-   * measure nothing and stay `null`, which is what `UNMEASURED_CONTAINER` below is for.
-   */
-  const [containerSize, setContainerSize] = useState<Size | null>(null);
-  const openedRef = useRef(false);
-
-  // See SankeyView.test.tsx: the ref'd box only renders once the loading / fatal-error
-  // early returns below have passed, so a first-load effect with a null ref must re-run
-  // once the box actually mounts, not just once at first render.
-  useEffect(() => {
-    const el = boxRef.current;
-    if (el === null) {
-      return;
-    }
-    // Measured up front, not only from the observer's callback. The opening viewport is a
-    // separate effect that runs in the same commit as this one, so it would otherwise fit
-    // and lock against whatever the state held before the observer's first delivery.
-    const rect = el.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setContainerSize({ w: rect.width, h: rect.height });
-    }
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry === undefined) {
-        return;
-      }
-      const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) {
-        setContainerSize({ w: width, h: height });
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [status, hasPayload]);
-
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
   // weight conservation, which is why this view has no cluster selector of its own.
@@ -388,96 +340,31 @@ export function SankeyView({
     [graph, namespacePalette, podLayout, effectiveSvmDisplay]
   );
 
-  const zoom = useZoomPan(chartHostRef, { w: layout.width, h: layout.height }, containerSize ?? UNMEASURED_CONTAINER);
-  // A fresh `zoom` object comes back every render; pull out just the one stable setter the
-  // opening-viewport effect below needs so its dep array doesn't chase the whole object.
-  const { setViewport } = zoom;
-
-  // One-shot opening viewport: fit-but-never-enlarge, computed the first time real content
-  // is drawn, then never touched again — mode / cluster / refresh / theme / resize and
-  // focus mode all preserve whatever the user set after.
-  //
-  // The box is measured HERE rather than read from state, because the two are not the same
-  // moment. The observer above attaches while the chart is still loading, when the box is
-  // the only thing in the column and stretches to 1502px; the summary tables that shrink it
-  // to 982 arrive with the chart itself. Fitting against the state written by that earlier
-  // measurement parked the diagram low — a 593px gap above it and 80px below — and the lock
-  // then refused the corrected size the observer delivered a moment later. Measuring at the
-  // instant of the fit means the chart being drawn is what gets measured.
-  useEffect(() => {
-    const el = boxRef.current;
-    if (openedRef.current || layout.nodes.length === 0 || el === null) {
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const box = rect.width >= 40 && rect.height >= 40 ? { w: rect.width, h: rect.height } : containerSize;
-    if (box === null || box.w < 40 || box.h < 40) {
-      return;
-    }
-    setViewport(openingViewport({ w: layout.width, h: layout.height }, box));
-    openedRef.current = true;
-  }, [layout, containerSize, setViewport]);
-
-  useEffect(() => {
-    if (zoom.dragging) {
-      setTip(null);
-    }
-  }, [zoom.dragging]);
-
-  // A refresh may remove the node under the cursor; its mouseleave never fires, so nothing
-  // else clears this — the tooltip would describe a gone node and `lit` would fade
-  // everything against zero surviving links.
-  useEffect(() => {
-    if (
-      hoverId !== null &&
-      !graph.nodes.some((n) => n.id === hoverId) &&
-      !graph.k8sNodes.some((n) => n.id === hoverId) &&
-      !graph.svmFrames.some((f) => f.id === hoverId)
-    ) {
-      setHoverId(null);
-      setTip(null);
-    }
-  }, [graph, hoverId]);
-
-  const lit: HoverLit | null = useMemo(() => {
-    if (hoverId === null) {
-      return null;
-    }
-    const wrapper = graph.k8sNodes.find((n) => n.id === hoverId);
-    const frame = graph.svmFrames.find((f) => f.id === hoverId);
-    const pathLinks =
-      wrapper !== undefined
-        ? hoverPathForWrapper(graph, wrapper)
-        : frame !== undefined
-          ? hoverPathForFrame(graph, frame)
-          : hoverPathLinks(graph, hoverId);
-    const keys = new Set(pathLinks.map((l) => linkKey(l.source, l.target, l.direction, l.tier)));
-    const nodeIds = new Set<string>([hoverId]);
-    for (const l of pathLinks) {
-      nodeIds.add(l.source);
-      nodeIds.add(l.target);
-    }
-    return { keys, nodeIds };
-  }, [graph, hoverId]);
-
-  useLayoutEffect(() => {
-    if (tip === null) {
-      setTipPos(null);
-      return;
-    }
-    const el = tipRef.current;
-    const box = boxRef.current;
-    if (el === null || box === null) {
-      setTipPos({ left: tip.x + 12, top: tip.y + 12 });
-      return;
-    }
-    const rect = box.getBoundingClientRect();
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const left = Math.max(rect.left + 4, Math.min(tip.x + 12, rect.right - w - 4));
-    const top = Math.max(rect.top + 4, Math.min(tip.y + 12, rect.bottom - h - 4));
-    setTipPos({ left, top });
-  }, [tip]);
+  const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
+  const hoverLit = useCallback((id: string): HoverLit => sankeyPathLit(graph, [id]), [graph]);
+  const searchRecords = useMemo(() => sankeySearchRecords(graph, layout), [graph, layout]);
+  const cardRects = useMemo(() => sankeyCardRects(layout), [layout]);
+  // A gone hovered card would leave the tooltip describing it and `lit` fading everything
+  // against zero surviving links; the stage clears the hover when this says the card left.
+  // Answered off the LAYOUT, not the derived graph: a wrapper the graph still carries is
+  // no card once the pod layout stops drawing it.
+  const hasCard = useCallback((id: string) => cardRects.has(id), [cardRects]);
+  const searchPathLit = useCallback((ids: ReadonlySet<string>) => sankeyPathLit(graph, ids), [graph]);
+  const { boxRef, zoom, tooltip, handleKeyDown, setHoverId, search, lit } = useSankeyStage({
+    status,
+    hasPayload,
+    content,
+    hasContent: layout.nodes.length > 0,
+    focusMode,
+    onFocusModeChange,
+    hasCard,
+    hoverLit,
+    records: searchRecords,
+    rects: cardRects,
+    pathLit: searchPathLit,
+  });
+  const setTip = tooltip.show;
+  const hideTip = tooltip.hide;
 
   const summary = useMemo(() => {
     const inbound = new Map<string, number>();
@@ -545,40 +432,35 @@ export function SankeyView({
     return { nodes, namespaces, applications };
   }, [graph, layout]);
 
-  if (status === 'loading' && !hasPayload) {
-    return <div className="flex h-full items-center justify-center text-secondary">Loading…</div>;
-  }
-  if (status === 'error' && !hasPayload) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-primary" role="alert">
-        {error}
-      </div>
-    );
+  const gate = loadGateScreen({ status, hasPayload, error });
+  if (gate !== null) {
+    return gate;
   }
 
-  // Four causes, four sentences. They are not interchangeable: an unfinished selection that
-  // reads as "no storage flow" makes a working pipeline look broken, and vice versa.
-  const emptyKind: 1 | 2 | 3 | 4 | 5 | 6 | null = (() => {
-    if (!demoMode && !endpointConfigured) {
-      return 1;
-    }
-    if (!demoMode && !scopeComplete) {
-      return 2;
-    }
-    if (!demoMode && status === 'idle' && !hasPayload && !cancelled) {
-      return 3;
-    }
-    if (!demoMode && cancelled && !hasPayload) {
-      return 4;
+  // Six causes, six sentences. They are not interchangeable: an unfinished selection that
+  // reads as "no storage flow" makes a working pipeline look broken, and vice versa. The
+  // four shell-level causes are decided by `shellEmptyKind`, shared with the trace view.
+  const emptyKind: SankeyEmptyKind | null = (() => {
+    const shell = shellEmptyKind({
+      demoMode,
+      endpointConfigured,
+      scopeReady: scopeComplete,
+      status,
+      hasPayload,
+      cancelled,
+    });
+    if (shell !== null) {
+      return shell;
     }
     if (graph.links.length === 0 && graph.hasStorageFlowEdges && !graph.hasCurrentDirectionMeasurement) {
-      return 6;
+      return 'mode';
     }
     if (graph.nodes.length === 0 && !(podLayout === 'node' && graph.k8sNodes.length > 0)) {
-      return 5;
+      return 'response';
     }
     return null;
   })();
+  const empty = emptyKind === null ? null : emptyCopy(emptyKind, demoMode, mode);
   const chartReady = emptyKind === null;
 
   const onNodeEnter = (id: string, evt: MouseEvent): void => {
@@ -607,34 +489,28 @@ export function SankeyView({
           ]
         : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
     if (wrapper !== undefined) {
-      setTip({
-        x: evt.clientX,
-        y: evt.clientY,
-        text: [
-          `node / ${wrapper.label}`,
-          wrapper.podIds.length === 1 ? '1 pod' : `${String(wrapper.podIds.length)} pods`,
-          ...(wrapper.status !== undefined ? [`status ${wrapper.status} (worst of node and member pods)`] : []),
-          ...flowLines.map((line) => `${line} (derived from member pods)`),
-          ...(wrapper.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-        ],
-      });
+      setTip(
+        evt.clientX,
+        evt.clientY,
+        wrapperTooltip(wrapper.label, wrapper.podIds.length, flowLines, wrapper.status, wrapper.noFlow === true)
+      );
       return;
     }
     if (frame !== undefined) {
-      setTip({
-        x: evt.clientX,
-        y: evt.clientY,
-        text: frameTooltip(frame.label, frame.ontapCluster, frame.pvcIds.length, flowLines, frame.noFlow === true),
-      });
+      setTip(
+        evt.clientX,
+        evt.clientY,
+        frameTooltip(frame.label, frame.ontapCluster, frame.pvcIds.length, flowLines, frame.noFlow === true)
+      );
       return;
     }
     if (node?.kind === 'application' || node?.kind === 'namespace') {
-      setTip({ x: evt.clientX, y: evt.clientY, text: derivedCardTooltip(node, flowLines) });
+      setTip(evt.clientX, evt.clientY, derivedCardTooltip(node, flowLines));
       return;
     }
     const claimAggregateLabel =
       node?.claimAggregateId !== undefined ? graph.nodes.find((n) => n.id === node.claimAggregateId)?.label : undefined;
-    setTip({ x: evt.clientX, y: evt.clientY, text: nodeTooltip(node, id, flowLines, claimAggregateLabel) });
+    setTip(evt.clientX, evt.clientY, nodeTooltip(node, id, flowLines, claimAggregateLabel));
   };
 
   const onLinkEnter = (link: LayoutLink, evt: MouseEvent): void => {
@@ -675,49 +551,7 @@ export function SankeyView({
             ? [`latency ${String(link.writeLatencyUs)} µs`]
             : []),
         ];
-    setTip({ x: evt.clientX, y: evt.clientY, text: lines });
-  };
-
-  const handleKeyDown = (evt: KeyboardEvent<HTMLDivElement>): void => {
-    const target = evt.target as HTMLElement;
-    // A plain button (the zoom/focus control bar) has no native keydown behavior for any
-    // of these keys, so it is deliberately not excluded here — unlike an input, select, or
-    // radio, which do, and whose own key handling this must not clobber.
-    if (target.closest('input, select, textarea, [role="radio"]') !== null) {
-      return;
-    }
-    switch (evt.key) {
-      case '+':
-      case '=':
-        evt.preventDefault();
-        zoom.zoomIn();
-        break;
-      case '-':
-        evt.preventDefault();
-        zoom.zoomOut();
-        break;
-      case '0':
-        evt.preventDefault();
-        zoom.fit();
-        break;
-      case '1':
-        evt.preventDefault();
-        zoom.resetOne();
-        break;
-      case 'f':
-      case 'F':
-        evt.preventDefault();
-        onFocusModeChange(!focusMode);
-        break;
-      case 'Escape':
-        if (focusMode) {
-          evt.preventDefault();
-          onFocusModeChange(false);
-        }
-        break;
-      default:
-        break;
-    }
+    setTip(evt.clientX, evt.clientY, lines);
   };
 
   return (
@@ -761,36 +595,17 @@ export function SankeyView({
             </span>
           )}
           <div className="ml-auto flex items-center gap-3">
-            {/* Border colours are the backend's folded `data.status`, the same three bands
-                Graph view borders by. Without this strip a green card and a red one are two
-                unexplained decorations. */}
-            <span className="flex items-center gap-2" data-testid="sankey-status-legend">
-              {Object.entries(STATUS_COLOR).map(([status, color]) => (
-                <span key={status} className="flex items-center gap-1 text-[11px] text-secondary">
-                  <span
-                    aria-hidden
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                    data-testid={`sankey-status-swatch-${status}`}
-                  />
-                  {status}
-                </span>
-              ))}
-            </span>
+            <StatusLegend />
             <span aria-hidden className="h-4 border-l border-medium" />
             {(mode === 'both' || mode === 'read') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-                  <path d="M0 3h22" stroke={tokens.sankey.read} strokeWidth="3" />
-                </svg>
+                <Swatch color={tokens.sankey.read} />
                 read
               </span>
             )}
             {(mode === 'both' || mode === 'write') && (
               <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <svg width="22" height="6" viewBox="0 0 22 6" aria-hidden>
-                  <path d="M0 3h22" stroke={tokens.sankey.write} strokeWidth="3" strokeDasharray="4 3" />
-                </svg>
+                <Swatch color={tokens.sankey.write} dashed />
                 write
               </span>
             )}
@@ -801,12 +616,12 @@ export function SankeyView({
       {/* The chart keeps a floor. Six tiers make the summary tall enough to take the whole
           column otherwise, and a zero-height chart host renders its nodes outside the SVG. */}
       <div className="relative flex min-h-[220px] flex-1 flex-col" ref={boxRef}>
-        {emptyKind !== null && (
+        {empty !== null && (
           <div
             className="flex flex-1 items-center justify-center p-6 text-center text-sm text-secondary"
-            data-testid={emptyCopy(emptyKind, demoMode, mode).testId}
+            data-testid={empty.testId}
           >
-            {emptyCopy(emptyKind, demoMode, mode).text}
+            {empty.text}
           </div>
         )}
         {chartReady && (
@@ -815,20 +630,20 @@ export function SankeyView({
               layout={layout}
               tokens={tokens}
               viewport={zoom.viewport}
-              hostRef={chartHostRef}
               hostProps={zoom.hostProps}
               dragging={zoom.dragging}
               lit={lit}
               onNodeEnter={onNodeEnter}
               onNodeLeave={() => {
                 setHoverId(null);
-                setTip(null);
+                hideTip();
               }}
               onNodeClick={onLocateNode}
               onLinkEnter={onLinkEnter}
-              onLinkLeave={() => setTip(null)}
+              onLinkLeave={hideTip}
               onKeyDown={handleKeyDown}
             >
+              <SankeySearchOverlay search={search} />
               <SankeyControlBar
                 percent={zoom.percent}
                 focusMode={focusMode}
@@ -852,18 +667,7 @@ export function SankeyView({
         />
       )}
 
-      {tip !== null && tipPos !== null && (
-        <div
-          ref={tipRef}
-          className="pointer-events-none fixed z-[1100] max-w-xs rounded-md border border-hairline bg-elevated px-2.5 py-1.5 font-mono text-[11px] leading-relaxed shadow-panel"
-          style={{ left: tipPos.left, top: tipPos.top }}
-          role="tooltip"
-        >
-          {tip.text.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </div>
-      )}
+      <SankeyTooltip tooltip={tooltip} />
     </div>
   );
 }

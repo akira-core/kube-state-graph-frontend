@@ -41,6 +41,11 @@ export const ICON_SVG_BY_KIND: Record<NodeKind, string> = {
   switch: icon(
     '<rect x="2.5" y="8" width="19" height="8" rx="1.5"/><rect x="5" y="10.4" width="2" height="3.2" rx="0.4"/><rect x="8" y="10.4" width="2" height="3.2" rx="0.4"/><rect x="11" y="10.4" width="2" height="3.2" rx="0.4"/><rect x="14" y="10.4" width="2" height="3.2" rx="0.4"/><circle cx="18.7" cy="12" r="0.9"/>'
   ),
+  // Router: a disc seen from above with two crossing arrows — the classic network-diagram
+  // router mark, so a routed hop reads apart from the switch chassis.
+  router: icon(
+    '<ellipse cx="12" cy="12" rx="9" ry="6"/><path d="M8 10.5h8M8 13.5h8"/><path d="M14 8.5l2 2-2 2M10 11.5l-2 2 2 2"/>'
+  ),
   // Cloud: "outside the cluster / internet". Plump rounded cloud (single stroke).
   external: icon(
     '<path d="M7 18C4.8 18 3 16.2 3 14C3 12.1 4.4 10.5 6.2 10.1C6.8 7.7 9.2 6 12 6C14.8 6 17.2 7.7 17.8 10.1C19.6 10.5 21 12.1 21 14C21 16.2 19.2 18 17 18Z"/>'
@@ -93,6 +98,12 @@ export const ICON_SVG_BY_KIND: Record<NodeKind, string> = {
   // like netapp-node ⇄ netapp-aggr.
   network: icon(
     '<path d="M3.5 11.5 a12 12 0 0 1 17 0 M6.5 14.5 a7.8 7.8 0 0 1 11 0 M9.4 17.3 a3.7 3.7 0 0 1 5.2 0"/><circle cx="12" cy="19.8" r="1.1"/>'
+  ),
+  // Generic network endpoint: a small box (the machine) with a single lead running up
+  // to a port dot — "something plugged into the fabric". Deliberately plainer than the
+  // `node` monitor so a traced client / external port reads apart from a K8s node.
+  host: icon(
+    '<rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M12 11V6.5"/><circle cx="12" cy="4.6" r="1.4"/><path d="M8.5 15.5h7"/>'
   ),
 };
 

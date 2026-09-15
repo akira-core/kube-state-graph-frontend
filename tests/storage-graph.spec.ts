@@ -229,3 +229,21 @@ test('a pod root added to the draft leaves the drawn Top pods cut in place until
   await expect(page.getByTestId('sankey-summary')).toContainText('10 of 15 pods');
   expect(storageUrls).toHaveLength(1);
 });
+
+test('removing the last root from the draft leaves the drawn chart in place until Query', async ({ page }) => {
+  const storageUrls = await routeFifteenPodStore(page);
+
+  await page.goto('/sankey?az=local-a&env=local-a&aggr=a1');
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(page.getByTestId('sankey-svg')).toBeVisible({ timeout: 30_000 });
+
+  // The pill removes its root from the DRAFT. What was drawn is the applied selection and
+  // must stay; the scope bar reports the pending change instead.
+  await page.getByRole('button', { name: /aggr:a1/ }).click();
+  await expect(page.getByRole('button', { name: /aggr:a1/ })).toHaveCount(0);
+  await expect(page.getByTestId('sankey-svg')).toBeVisible();
+  await expect(page.getByTestId('sankey-empty-scope')).toHaveCount(0);
+  await expect(page.getByTestId('query-button')).toBeDisabled();
+  await expect(page.getByTestId('query-disabled-reason')).toBeVisible();
+  expect(storageUrls).toHaveLength(1);
+});

@@ -1,11 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+
+import { clamp, type Rect } from './geometry';
 
 export interface Viewport {
   scale: number;
@@ -31,9 +26,15 @@ const BUTTON_STEP_FACTOR = 1.25;
  * seen keeps an un-moved click untouched.
  */
 const DRAG_THRESHOLD_PX = 4;
+/**
+ * Marks an overlay inside the chart host (the card search box and its result list) whose
+ * wheel and press belong to the overlay: without it a wheel over the result list zooms the
+ * chart instead of scrolling the list, and pressing in the input starts a pan.
+ */
+export const ZOOM_PAN_IGNORE_ATTR = 'data-zoom-pan-ignore';
 
-export function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+function insideIgnored(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(`[${ZOOM_PAN_IGNORE_ATTR}]`) !== null;
 }
 
 /**
@@ -67,6 +68,30 @@ export function fitViewport(content: Size, container: Size): Viewport {
   return { scale, tx: (container.w - content.w * scale) / 2, ty: (container.h - content.h * scale) / 2 };
 }
 
+export interface FitRectOptions {
+  /** Screen pixels kept clear around the rect. */
+  padding?: number;
+  /** Never enlarge past this — a single card stays at its own size by default. */
+  maxScale?: number;
+}
+
+/** Centres `rect` in the container, scaled to fit inside `padding`, never past `maxScale`. */
+export function fitRectViewport(rect: Rect, container: Size, options: FitRectOptions = {}): Viewport {
+  const { padding = 40, maxScale = 1 } = options;
+  if (container.w <= 0 || container.h <= 0) {
+    return { scale: 1, tx: 0, ty: 0 };
+  }
+  const availW = Math.max(container.w - 2 * padding, 1);
+  const availH = Math.max(container.h - 2 * padding, 1);
+  const fitted = Math.min(rect.w > 0 ? availW / rect.w : maxScale, rect.h > 0 ? availH / rect.h : maxScale, maxScale);
+  const scale = clamp(fitted, MIN_SCALE, MAX_SCALE);
+  return {
+    scale,
+    tx: container.w / 2 - (rect.x + rect.w / 2) * scale,
+    ty: container.h / 2 - (rect.y + rect.h / 2) * scale,
+  };
+}
+
 export function oneToOneViewport(content: Size, container: Size): Viewport {
   return { scale: 1, tx: (container.w - content.w) / 2, ty: (container.h - content.h) / 2 };
 }
@@ -81,7 +106,9 @@ export interface ZoomPanApi {
   viewport: Viewport;
   dragging: boolean;
   percent: number;
+  /** Spread onto the pan/zoom host; `ref` registers the element the wheel listener binds to. */
   hostProps: {
+    ref: (el: HTMLElement | null) => void;
     onPointerDown: (e: ReactPointerEvent) => void;
     onPointerMove: (e: ReactPointerEvent) => void;
     onPointerUp: (e: ReactPointerEvent) => void;
@@ -92,6 +119,8 @@ export interface ZoomPanApi {
   fit: () => void;
   resetOne: () => void;
   setViewport: (v: Viewport) => void;
+  /** Frames a content-space rect against the current container (see `fitRectViewport`). */
+  fitToRect: (rect: Rect, options?: FitRectOptions) => void;
 }
 
 /**
@@ -99,10 +128,19 @@ export interface ZoomPanApi {
  * switch, a data refresh, a resize) never resets the viewport by itself — only an
  * explicit `setViewport` call (the caller's one-shot opening computation) or a control
  * action does that, per the "resize / mode / refresh preserve the viewport" requirement.
+ *
+ * The host element is owned here, through the callback ref in `hostProps`, and the wheel
+ * listener follows it. A `RefObject` would not do: the host only renders once the view's
+ * loading / empty gates have passed, and it unmounts and remounts whenever the body itself
+ * goes empty (a direction with no measurements, a threshold that hides every ribbon) with
+ * nothing else about the view changing — an effect keyed on the ref object or on the
+ * view's status ran once against `null`, or once against a host since detached, and wheel
+ * zoom was dead for the rest of the session while the closure kept the old element alive.
  */
-export function useZoomPan(wheelHostRef: RefObject<HTMLElement>, content: Size, container: Size): ZoomPanApi {
+export function useZoomPan(content: Size, container: Size): ZoomPanApi {
   const [viewport, setViewportState] = useState<Viewport>({ scale: 1, tx: 0, ty: 0 });
   const [dragging, setDragging] = useState(false);
+  const [host, setHost] = useState<HTMLElement | null>(null);
   const dragStart = useRef<{ x: number; y: number; tx: number; ty: number; captured: boolean } | null>(null);
   const contentRef = useRef(content);
   const containerRef = useRef(container);
@@ -110,22 +148,27 @@ export function useZoomPan(wheelHostRef: RefObject<HTMLElement>, content: Size, 
   containerRef.current = container;
 
   useEffect(() => {
-    const el = wheelHostRef.current;
-    if (el === null) {
+    if (host === null) {
       return;
     }
     const onWheel = (e: WheelEvent): void => {
+      if (insideIgnored(e.target)) {
+        return;
+      }
       e.preventDefault();
-      const rect = el.getBoundingClientRect();
+      const rect = host.getBoundingClientRect();
       const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const factor = WHEEL_STEP_FACTOR ** -e.deltaY;
       setViewportState((v) => zoomAroundPoint(v, anchor, factor));
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [wheelHostRef]);
+    host.addEventListener('wheel', onWheel, { passive: false });
+    return () => host.removeEventListener('wheel', onWheel);
+  }, [host]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
+    if (insideIgnored(e.target)) {
+      return;
+    }
     // No capture and no `dragging` yet — see DRAG_THRESHOLD_PX. Only the start point and
     // the viewport it started from are recorded.
     setViewportState((v) => {
@@ -165,15 +208,31 @@ export function useZoomPan(wheelHostRef: RefObject<HTMLElement>, content: Size, 
     setViewportState((v) => zoomAroundPoint(v, anchor, direction === 1 ? BUTTON_STEP_FACTOR : 1 / BUTTON_STEP_FACTOR));
   }, []);
 
+  const fitToRect = useCallback((rect: Rect, options?: FitRectOptions) => {
+    setViewportState(fitRectViewport(rect, containerRef.current, options));
+  }, []);
+
+  // Every action reads the refs, so each keeps one identity for the life of the chart: the
+  // keyboard handler and the control bar built on them are then stable across a pan drag.
+  const zoomIn = useCallback(() => zoomStep(1), [zoomStep]);
+  const zoomOut = useCallback(() => zoomStep(-1), [zoomStep]);
+  const fit = useCallback(() => setViewportState(fitViewport(contentRef.current, containerRef.current)), []);
+  const resetOne = useCallback(() => setViewportState(oneToOneViewport(contentRef.current, containerRef.current)), []);
+  const hostProps = useMemo(
+    () => ({ ref: setHost, onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerCancel: endDrag }),
+    [endDrag, onPointerDown, onPointerMove]
+  );
+
   return {
     viewport,
     dragging,
     percent: Math.round(viewport.scale * 100),
-    hostProps: { onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerCancel: endDrag },
-    zoomIn: () => zoomStep(1),
-    zoomOut: () => zoomStep(-1),
-    fit: () => setViewportState(fitViewport(contentRef.current, containerRef.current)),
-    resetOne: () => setViewportState(oneToOneViewport(contentRef.current, containerRef.current)),
+    hostProps,
+    zoomIn,
+    zoomOut,
+    fit,
+    resetOne,
     setViewport: setViewportState,
+    fitToRect,
   };
 }

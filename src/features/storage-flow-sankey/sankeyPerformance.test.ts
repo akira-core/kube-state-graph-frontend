@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { matchRecords } from '../graph-search';
+
 import { deriveSankey } from './deriveSankey';
 import { layoutSankey } from './layoutSankey';
+import { sankeyPathLit, sankeySearchRecords } from './sankeySearch';
 import { cutTopPods } from './topPods';
 
 function el(
@@ -142,5 +145,18 @@ describe('Sankey performance bound', () => {
     layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
     expect(performance.now() - t0).toBeLessThanOrEqual(300);
     expect(graph.nodes.filter((n) => n.kind === 'pod')).toHaveLength(10);
+  }, 15_000);
+
+  it('a search hitting every pod matches and lights all of their paths within 100 ms', () => {
+    const cut = cutTopPods(syntheticBody(), 'both', 1000);
+    const graph = deriveSankey(cut.elements, 'both');
+    const layout = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
+    const records = sankeySearchRecords(graph, layout);
+    const t0 = performance.now();
+    const hits = matchRecords(records, 'pod');
+    const lit = sankeyPathLit(graph, hits.hitIds);
+    expect(performance.now() - t0).toBeLessThanOrEqual(100);
+    expect(hits.hitIds.size).toBeGreaterThanOrEqual(1000);
+    expect(lit.keys.size).toBeGreaterThan(0);
   }, 15_000);
 });

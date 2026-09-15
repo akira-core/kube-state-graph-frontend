@@ -201,7 +201,10 @@ export function useGraphLoader({
       );
     } finally {
       if (abortRef.current === ac) {
+        // This request is the current one and it has settled: release it so `cancel`
+        // has nothing to abort and reads as the no-op it is until the next request.
         inflightRef.current = false;
+        abortRef.current = null;
       }
       // Count the next tick from this completed request, success or failure: a commit whose
       // first request fails must still auto-refresh. A cancelled (generation bumped) or
@@ -214,10 +217,25 @@ export function useGraphLoader({
 
   loadRemoteRef.current = loadRemote;
 
+  /**
+   * Drop whatever is in flight: abort it, retire its generation so a late response and
+   * its `finally` change nothing, and stop the timer that request would have restarted.
+   */
+  const supersede = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    generationRef.current += 1;
+    inflightRef.current = false;
+    clearTimer();
+  }, [clearTimer]);
+
   const run = useCallback(
     (makeUrl: MakeUrl) => {
+      // A commit while a request is in flight replaces it. The page has already written the
+      // new scope to the URL, so dropping the call here would leave the address bar on one
+      // selection and the drawn body — and every later auto-refresh — on another.
       if (inflightRef.current) {
-        return;
+        supersede();
       }
       makeUrlRef.current = makeUrl;
       if (demoModeRef.current) {
@@ -226,7 +244,7 @@ export function useGraphLoader({
       }
       void loadRemote();
     },
-    [loadDemo, loadRemote]
+    [loadDemo, loadRemote, supersede]
   );
 
   const reload = useCallback(() => {
@@ -244,11 +262,7 @@ export function useGraphLoader({
     if (!inflightRef.current && abortRef.current === null) {
       return;
     }
-    abortRef.current?.abort();
-    abortRef.current = null;
-    generationRef.current += 1;
-    inflightRef.current = false;
-    clearTimer();
+    supersede();
     setState((prev) => ({
       ...prev,
       status: prev.hasPayload ? 'ready' : 'idle',
@@ -256,7 +270,7 @@ export function useGraphLoader({
       error: undefined,
       cancelled: true,
     }));
-  }, [clearTimer]);
+  }, [supersede]);
 
   useEffect(() => {
     mountedRef.current = true;

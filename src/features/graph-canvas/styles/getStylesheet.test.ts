@@ -370,7 +370,12 @@ describe('getStylesheet', () => {
     cy.destroy();
   });
 
-  const SWITCH_FABRIC_SELECTOR = "edge[edgeType='switch-to-switch'], edge[edgeType='node-to-switch']";
+  // Derived from the edge-style map, like the stylesheet itself: every 'taxi'-routed type
+  // (the two fabric links plus the traced `network-flow` hop) shares this one selector.
+  const SWITCH_FABRIC_SELECTOR = Object.entries(EDGE_STYLE_BY_TYPE)
+    .filter(([, style]) => style.routing === 'taxi')
+    .map(([type]) => `edge[edgeType='${type}']`)
+    .join(', ');
 
   it('routes switch↔switch and node→switch orthogonally (taxi); other edges stay bezier (direct)', () => {
     const cy = cytoscape({

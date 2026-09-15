@@ -12,9 +12,10 @@ describe('drawnEdgeTypesForMode', () => {
         'pvc-to-netapp-aggr',
         'switch-to-switch',
         'node-to-switch',
+        'network-flow',
       ])
     );
-    expect(drawn).toHaveLength(7);
+    expect(drawn).toHaveLength(8);
     // pod-to-node is expressed as nesting in node mode, so it is never drawn there.
     expect(drawn).not.toContain('pod-to-node');
   });
@@ -31,14 +32,21 @@ describe('drawnEdgeTypesForMode', () => {
         'pvc-to-netapp-aggr',
         'switch-to-switch',
         'node-to-switch',
+        'network-flow',
       ])
     );
-    expect(drawn).toHaveLength(8);
+    expect(drawn).toHaveLength(9);
   });
 
   it('draws the physical switch fabric (switch-to-switch, node-to-switch) regardless of pod-parent mode', () => {
     for (const mode of ['node', 'controller'] as const) {
       expect(drawnEdgeTypesForMode(mode)).toEqual(expect.arrayContaining(['switch-to-switch', 'node-to-switch']));
+    }
+  });
+
+  it('draws the traced network-flow hop in both modes (it involves neither pods nor controllers)', () => {
+    for (const mode of ['node', 'controller'] as const) {
+      expect(drawnEdgeTypesForMode(mode)).toContain('network-flow');
     }
   });
 
@@ -51,6 +59,6 @@ describe('drawnEdgeTypesForMode', () => {
     const first = drawnEdgeTypesForMode('node');
     first.push('pod-to-node');
     expect(drawnEdgeTypesForMode('node')).not.toContain('pod-to-node');
-    expect(drawnEdgeTypesForMode('node')).toHaveLength(7);
+    expect(drawnEdgeTypesForMode('node')).toHaveLength(8);
   });
 });

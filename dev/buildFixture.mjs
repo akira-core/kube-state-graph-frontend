@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Serialize SHOWCASE_GRAPH and SHOWCASE_STORAGE_GRAPH to public/demo/*.json.
+ * Serialize SHOWCASE_GRAPH, SHOWCASE_STORAGE_GRAPH and SHOWCASE_TRACE to public/demo/*.json.
  * Usage:
  *   npm run fixture:build
  *   npm run fixture:check   (fails if a committed file drifted)
@@ -13,10 +13,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const graphUrl = pathToFileURL(path.join(root, 'src/shared/fixtures/showcaseGraph.ts')).href;
 const storageUrl = pathToFileURL(path.join(root, 'src/shared/fixtures/showcaseStorageGraph.ts')).href;
+const traceUrl = pathToFileURL(path.join(root, 'src/shared/fixtures/showcaseTrace.ts')).href;
 const check = process.argv.includes('--check');
 
 const { SHOWCASE_GRAPH } = await import(graphUrl);
 const { SHOWCASE_STORAGE_GRAPH } = await import(storageUrl);
+const { SHOWCASE_TRACE } = await import(traceUrl);
 
 function serialize(graph) {
   return `${JSON.stringify(graph, null, 2)}\n`;
@@ -25,6 +27,7 @@ function serialize(graph) {
 const targets = [
   { outPath: path.join(root, 'public/demo/graph.json'), next: serialize(SHOWCASE_GRAPH) },
   { outPath: path.join(root, 'public/demo/storage-graph.json'), next: serialize(SHOWCASE_STORAGE_GRAPH) },
+  { outPath: path.join(root, 'public/demo/trace.json'), next: serialize(SHOWCASE_TRACE) },
 ];
 
 async function readExisting(outPath) {

@@ -12,5 +12,9 @@ describe('cssVars', () => {
     expect(varNames).toEqual(expected);
     expect(varNames).toContain('--ksg-bg-canvas');
     expect(varNames).toContain('--ksg-sankey-read');
+    expect(varNames).toContain('--ksg-kind-host');
+    expect(varNames).toContain('--ksg-edge-network-flow');
+    expect(varNames).toContain('--ksg-sankey-traceFlow');
+    expect(varNames).toContain('--ksg-sankey-traceResidualOut');
   });
 });

@@ -17,6 +17,7 @@ export const CATEGORY_BY_KIND: Record<NodeKind, NodeCategory> = {
   cronjob: 'Workloads',
   service: 'Networking',
   switch: 'Networking',
+  router: 'Networking',
   network: 'Networking',
   pvc: 'Storage',
   'netapp-aggr': 'Storage',
@@ -24,6 +25,8 @@ export const CATEGORY_BY_KIND: Record<NodeKind, NodeCategory> = {
   'netapp-svm': 'Storage',
   node: 'Cluster',
   external: 'Other',
+  // A traced endpoint outside Kubernetes — like `external`, it belongs to no cluster.
+  host: 'Other',
 };
 
 const FALLBACK_CATEGORY: NodeCategory = 'Other';

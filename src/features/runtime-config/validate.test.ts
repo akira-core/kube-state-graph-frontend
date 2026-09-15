@@ -142,6 +142,36 @@ describe('validateConfig', () => {
     expect(result.ok && result.warnings).toEqual([]);
   });
 
+  it('treats a missing or empty trace endpoint as absent, not a config error', () => {
+    const missing = validateConfig({ endpoints: { graph: 'https://ksg.example/v1/graph' } });
+    expect(missing.ok && missing.config.endpoints.trace).toBeUndefined();
+    const empty = validateConfig({ endpoints: { graph: 'https://ksg.example/v1/graph', trace: '' } });
+    expect(empty.ok).toBe(true);
+    expect(empty.ok && empty.config.endpoints.trace).toBeUndefined();
+  });
+
+  it('accepts an absolute or root-relative trace URL', () => {
+    const abs = validateConfig({ endpoints: { graph: '/api/v1/graph', trace: 'https://ksg.example/v1/trace' } });
+    expect(abs.ok && abs.config.endpoints.trace).toBe('https://ksg.example/v1/trace');
+    const rel = validateConfig({ endpoints: { graph: '/api/v1/graph', trace: '/api/v1/trace' } });
+    expect(rel.ok && rel.config.endpoints.trace).toBe('/api/v1/trace');
+  });
+
+  it('rejects a non-http(s) or non-string trace endpoint', () => {
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', trace: 'ftp://ksg.example/v1/trace' } }).ok).toBe(
+      false
+    );
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', trace: '//ksg.example/trace' } }).ok).toBe(false);
+    expect(validateConfig({ endpoints: { graph: '/api/v1/graph', trace: 1 } }).ok).toBe(false);
+    const bad = validateConfig({ endpoints: { graph: '/api/v1/graph', trace: null } });
+    expect(!bad.ok && bad.error).toContain('endpoints.trace');
+  });
+
+  it('does not warn about trace as an unknown endpoint key', () => {
+    const result = validateConfig({ endpoints: { graph: '/api/v1/graph', trace: '/api/v1/trace' } });
+    expect(result.ok && result.warnings).toEqual([]);
+  });
+
   it('accepts a root-relative label-values base', () => {
     const result = validateConfig({
       endpoints: { graph: '/api/v1/graph', labelValues: '/metrics-api' },

@@ -186,4 +186,73 @@ describe('useRootCandidates', () => {
     expect(result.current.problems).toEqual([]);
     expect(fetchMock.mock.calls.filter((call) => isNamespace(urlOf(call[0]), 'shop'))).toHaveLength(2);
   });
+
+  it('requests every namespace at once rather than one after another', async () => {
+    const pending: Array<(value: Response) => void> = [];
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          pending.push(resolve);
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderHook(() =>
+      useRootCandidates({
+        labelValuesBase: '/prom',
+        kind: 'pod',
+        namespaces: ['shop', 'billing', 'search'],
+        drawn: EMPTY_SANKEY_ROOT_OPTIONS,
+      })
+    );
+    // All three are in flight before any of them has answered.
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+    expect(pending).toHaveLength(3);
+  });
+
+  it('does not serve one endpoint’s cached names for another', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = urlOf(input);
+      const data = url.startsWith('/prom-b') ? ['b-node'] : ['a-node'];
+      return Promise.resolve(jsonResponse({ status: 'success', data }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { result, rerender } = renderHook(
+      ({ base }: { base: string }) =>
+        useRootCandidates({ labelValuesBase: base, kind: 'node', namespaces: [], drawn: EMPTY_SANKEY_ROOT_OPTIONS }),
+      { initialProps: { base: '/prom-a' } }
+    );
+    await waitFor(() => {
+      expect(result.current.options.node).toEqual(['a-node']);
+    });
+    rerender({ base: '/prom-b' });
+    await waitFor(() => {
+      expect(result.current.options.node).toEqual(['b-node']);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts the requests a kind switch made obsolete', async () => {
+    const signals: AbortSignal[] = [];
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>(() => {
+          if (init?.signal !== undefined && init.signal !== null) {
+            signals.push(init.signal);
+          }
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { rerender } = renderHook(
+      ({ kind }: { kind: 'node' | 'pod' | 'aggr' }) =>
+        useRootCandidates({ labelValuesBase: '/prom', kind, namespaces: ['shop'], drawn: EMPTY_SANKEY_ROOT_OPTIONS }),
+      { initialProps: { kind: 'pod' as 'node' | 'pod' | 'aggr' } }
+    );
+    await waitFor(() => {
+      expect(signals).toHaveLength(1);
+    });
+    rerender({ kind: 'aggr' });
+    expect(signals[0]?.aborted).toBe(true);
+  });
 });

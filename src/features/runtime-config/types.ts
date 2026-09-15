@@ -10,6 +10,12 @@ export interface RuntimeEndpoints {
    */
   storageGraph?: string;
   /**
+   * Backend `GET /v1/trace`-style switch-trace endpoint (the Network category's single
+   * data source). Independent of `graph` / `storageGraph`: absence disables the Network
+   * category's fetch only. Never required, including when `demoMode` is false.
+   */
+  trace?: string;
+  /**
    * Base URL of a Prometheus-compatible HTTP API holding the pod inventory. The filter
    * controls read their options from `<base>/api/v1/label/<name>/values`, which is the
    * only shape the backend can act on: the graph response carries the COMPOSED

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { startTransition } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SHOWCASE_TRACE } from '../../shared/fixtures/showcaseTrace';
 import type { RuntimeConfig } from '../runtime-config';
 import { ThemeProvider } from '../theme';
 
@@ -758,5 +759,211 @@ describe('AppShell two data sources', () => {
     expect(
       urlOf(fetchMock.mock.calls.find((call) => callUrl(call).includes('storage-graph'))?.[0] as RequestInfo)
     ).toContain('aggr=aggr1');
+  });
+});
+
+// The Network category renders the REAL TraceView: what the shell tests assert on — the
+// request actually issued, the retained payload across a view switch, the fixture in
+// demo mode — is exactly what a stub would fake.
+describe('AppShell network category', () => {
+  beforeEach(() => {
+    window.history.pushState({}, '', '/');
+  });
+
+  afterEach(() => {
+    window.history.pushState({}, '', '/');
+    vi.unstubAllGlobals();
+  });
+
+  const liveNetwork: RuntimeConfig = {
+    ...DEMO,
+    demoMode: false,
+    endpoints: { graph: '/api/v1/graph', trace: '/demo/trace.json' },
+  };
+
+  function stubTraceFetch(): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      void input;
+      return Promise.resolve(jsonResponse(SHOWCASE_TRACE));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  function traceCalls(fetchMock: ReturnType<typeof vi.fn>): string[] {
+    return fetchMock.mock.calls
+      .map((call) => urlOf(call[0] as RequestInfo | URL))
+      .filter((u) => u.includes('/demo/trace.json'));
+  }
+
+  it('replaces /network with /network/graph keeping the query', async () => {
+    stubTraceFetch();
+    renderAt('/network?hostname=sw%2Fdist-a&from=now-1h&to=now', liveNetwork);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/network/graph');
+    });
+    expect(window.location.search).toContain('hostname=sw%2Fdist-a');
+    expect(window.location.search).toContain('from=now-1h');
+    expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-controls')).toBeInTheDocument();
+    expect(document.title).toBe('Kube State Graph — Network Graph');
+  });
+
+  it('issues 0 requests on mount and exactly one, with the seven parameters, on Query', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw%2Fdist-a&from=now-1h&to=now', liveNetwork);
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+    expect(screen.getByTestId('trace-hostname')).toHaveTextContent('sw/dist-a');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.title).toBe('Kube State Graph — Network Sankey');
+
+    pressQuery();
+    await waitFor(() => {
+      expect(traceCalls(fetchMock)).toHaveLength(1);
+    });
+    const url = traceCalls(fetchMock)[0] ?? '';
+    expect(url).toContain('/demo/trace.json?');
+    expect(url).toContain('hostname=sw%2Fdist-a');
+    expect(url).toContain('max_hops=7');
+    expect(url).toContain('top_n=3');
+    expect(url).toContain('threshold=10');
+    expect(url).toContain('track_dir=source');
+    expect(url).toMatch(/[?&]from_ts=\d{13}(&|$)/);
+    expect(url).toMatch(/[?&]to_ts=\d{13}(&|$)/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reload data' })).toBeEnabled();
+    });
+    // The query is committed to the URL; defaults are not written.
+    expect(window.location.search).toContain('hostname=sw%2Fdist-a');
+    expect(window.location.search).not.toContain('max_hops');
+  });
+
+  it('switching view issues no request and keeps the drawn body', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/graph?hostname=sw%2Fdist-a&track_dir=destination&from=now-1h&to=now', liveNetwork);
+    expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    pressQuery();
+    await waitFor(() => {
+      expect(traceCalls(fetchMock)).toHaveLength(1);
+    });
+    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/network/sankey');
+    });
+    expect(window.location.search).toContain('hostname=sw%2Fdist-a');
+    expect(window.location.search).toContain('track_dir=destination');
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    expect(screen.queryByTestId('graph-view')).not.toBeInTheDocument();
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it('renders Page not found for an unknown network view, with Reload disabled', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/foo?hostname=sw%2Fdist-a', liveNetwork);
+    expect(screen.getByText('Page not found')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Application' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+    expect(screen.queryByTestId('trace-controls')).not.toBeInTheDocument();
+    // The guard runs before any page hook: the 404 neither seeds `from` / `to` into its URL
+    // nor primes a loader.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.location.search).toBe('?hostname=sw%2Fdist-a');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('locates from the trace Sankey into the Network Graph, keeping the scope and the drawn body', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw%2Fdist-a&track_dir=destination&from=now-1h&to=now', liveNetwork);
+    pressQuery();
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    });
+    const search = window.location.search;
+
+    fireEvent.click(screen.getByTestId('trace-node-Core 1'));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/network/graph');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', 'dci-uturn/core-1');
+    });
+    // Unlike the Storage locate, the Network views share one loader: the query string rides
+    // along unchanged (no re-seeded `from` / `to`), the target is navigation state only,
+    // and nothing is refetched.
+    expect(window.location.search).toBe(search);
+    expect(window.location.search).not.toContain('locate');
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+    expect(screen.queryByTestId('sankey-svg')).not.toBeInTheDocument();
+
+    // Locate is a one-off: consumed once, and gone from the state behind the entry.
+    fireEvent.click(screen.getByRole('button', { name: 'consume-locate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+    });
+    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    });
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+  });
+
+  it('draws the fixture on mount in demo mode, with no Query button', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error('demo mode must not fetch')));
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/network/sankey', DEMO);
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-legend-back')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Query' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('trace-controls')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reload data' })).toBeEnabled();
+    });
+  });
+
+  it('shows an invalid URL value as a problem and disables Query', () => {
+    stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw%2Fdist-a&max_hops=abc&from=now-1h&to=now', liveNetwork);
+    expect(screen.getByRole('button', { name: 'Query' })).toBeDisabled();
+    expect(screen.getByTestId('query-disabled-reason')).toHaveTextContent('Max hops must be a positive integer');
+    // The offending value stays visible beside its message, never blanked or rewritten.
+    expect(screen.getByTestId('trace-max-hops')).toHaveValue('abc');
+    expect(screen.getByTestId('trace-empty-scope')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+
+    // Editing the draft into something valid lifts the complaint: the Query button and the
+    // chart's empty state consult the same list, so they change together.
+    fireEvent.change(screen.getByTestId('trace-max-hops'), { target: { value: '3' } });
+    expect(screen.getByRole('button', { name: 'Query' })).toBeEnabled();
+    expect(screen.queryByTestId('trace-empty-scope')).not.toBeInTheDocument();
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
+  });
+
+  it('shows unconfigured and keeps Reload disabled when endpoints.trace is absent', () => {
+    stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });
+    expect(screen.getByTestId('trace-empty-unconfigured')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
   });
 });

@@ -136,4 +136,48 @@ describe('buildNodeAttributes', () => {
   it('returns no rows for data carrying no promoted attrs (no empty rows)', () => {
     expect(buildNodeAttributes(data({}))).toEqual([]);
   });
+
+  describe('switch-trace fields', () => {
+    it('promotes the trace anchor as `<iface> +Δ <direction>`', () => {
+      expect(
+        buildNodeAttributes(
+          data({ kind: 'switch', investigation: { iface: 'Ethernet1/1', deltaBps: 8_500_000_000, direction: 'in' } })
+        )
+      ).toEqual([
+        { key: 'kind', value: 'switch' },
+        { key: 'trace start', value: 'Ethernet1/1 +8.5 Gbps in' },
+      ]);
+    });
+
+    it('omits the direction when the backend stated none (the request decides, not the tooltip)', () => {
+      expect(
+        buildNodeAttributes(data({ kind: 'switch', investigation: { iface: 'Ethernet1/1', deltaBps: 1500 } }))
+      ).toEqual([
+        { key: 'kind', value: 'switch' },
+        { key: 'trace start', value: 'Ethernet1/1 +1.5 kbps' },
+      ]);
+    });
+
+    it('summarises a host node’s clients as a count rather than listing them', () => {
+      expect(
+        buildNodeAttributes(
+          data({ kind: 'host', clients: [{ ip: '10.0.0.1' }, { hostname: 'db-01' }, { ip: '10.0.0.3', owner: 'ops' }] })
+        )
+      ).toEqual([
+        { key: 'kind', value: 'host' },
+        { key: 'clients', value: '3 clients' },
+      ]);
+      expect(buildNodeAttributes(data({ kind: 'host', clients: [{ ip: '10.0.0.1' }] }))).toEqual([
+        { key: 'kind', value: 'host' },
+        { key: 'clients', value: '1 client' },
+      ]);
+    });
+
+    it('emits neither row when the fields are absent or empty', () => {
+      expect(buildNodeAttributes(data({ kind: 'host', clients: [] }))).toEqual([{ key: 'kind', value: 'host' }]);
+      expect(buildNodeAttributes(data({ kind: 'switch', investigation: { iface: '' } }))).toEqual([
+        { key: 'kind', value: 'switch' },
+      ]);
+    });
+  });
 });

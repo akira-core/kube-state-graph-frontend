@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { fitViewport, MAX_SCALE, MIN_SCALE, oneToOneViewport, openingViewport, zoomAroundPoint } from './useZoomPan';
+import { unionRect } from './geometry';
+import {
+  fitRectViewport,
+  fitViewport,
+  MAX_SCALE,
+  MIN_SCALE,
+  oneToOneViewport,
+  openingViewport,
+  zoomAroundPoint,
+} from './useZoomPan';
 
 function screenPositionOf(contentPoint: { x: number; y: number }, v: { scale: number; tx: number; ty: number }) {
   return { x: v.tx + contentPoint.x * v.scale, y: v.ty + contentPoint.y * v.scale };
@@ -59,5 +68,42 @@ describe('fitViewport / oneToOneViewport / openingViewport', () => {
     const content = { w: 2000, h: 1000 };
     const container = { w: 800, h: 500 };
     expect(openingViewport(content, container)).toEqual(fitViewport(content, container));
+  });
+});
+
+describe('fitRectViewport', () => {
+  const container = { w: 800, h: 500 };
+
+  it('centres a small rect at 1:1 instead of enlarging it', () => {
+    const rect = { x: 100, y: 200, w: 208, h: 60 };
+    const v = fitRectViewport(rect, container);
+    expect(v.scale).toBe(1);
+    const centre = screenPositionOf({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, v);
+    expect(centre.x).toBeCloseTo(400, 6);
+    expect(centre.y).toBeCloseTo(250, 6);
+  });
+
+  it('scales a large rect down to fit inside the padding', () => {
+    const v = fitRectViewport({ x: 0, y: 0, w: 1440, h: 300 }, container, { padding: 40 });
+    expect(v.scale).toBeCloseTo(0.5, 6); // (800 - 80) / 1440
+    expect(v.tx).toBeCloseTo(40, 6);
+  });
+
+  it('clamps to MIN_SCALE and tolerates a zero-size rect or container', () => {
+    expect(fitRectViewport({ x: 0, y: 0, w: 1e6, h: 10 }, container).scale).toBe(MIN_SCALE);
+    expect(fitRectViewport({ x: 10, y: 10, w: 0, h: 0 }, container).scale).toBe(1);
+    expect(fitRectViewport({ x: 10, y: 10, w: 50, h: 50 }, { w: 0, h: 0 })).toEqual({ scale: 1, tx: 0, ty: 0 });
+  });
+});
+
+describe('unionRect', () => {
+  it('encloses every rect, or is null for none', () => {
+    expect(
+      unionRect([
+        { x: 10, y: 20, w: 5, h: 5 },
+        { x: -4, y: 30, w: 10, h: 40 },
+      ])
+    ).toEqual({ x: -4, y: 20, w: 19, h: 50 });
+    expect(unionRect([])).toBeNull();
   });
 });
