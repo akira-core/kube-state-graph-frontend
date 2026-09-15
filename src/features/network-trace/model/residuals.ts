@@ -2,7 +2,7 @@ import { worstStatus } from '../../../shared/constants/colorByStatus';
 import { formatBitsPerSec } from '../../../shared/format/measurements';
 
 import type { BuildCtx } from './ctx';
-import type { TraceNode } from './types';
+import type { TraceEdge, TraceNode } from './types';
 import { mustGet, sum, tracedEdges, upstreamOf } from './util';
 
 /** Residuals below the model's noise epsilon are neither drawn nor given space. */
@@ -95,17 +95,32 @@ export function computeResiduals(ctx: BuildCtx): void {
     }
     return out;
   };
+  // A trace-end pod or client: derived edges (to its application / namespace / owner)
+  // regroup the same traffic, so they are not traced amounts; other in / out is only
+  // what the wire states.
+  const measured = (edges: readonly TraceEdge[]): number => sum(edges.filter((e) => !e.derived));
   for (const id of ctx.order) {
     const n = mustGet(nodes, id, 'node');
     if (n.kind !== 'leaf') {
       continue;
     }
     n.bps = sum(tracedEdges(n, direction));
-    if (n.role === 'app') {
-      const pods = memberPods(n);
-      n.podCount = pods.length;
-      n.status = worstStatus(pods.map((p) => p.status));
+    if (n.role === 'pod' || n.role === 'leaf') {
+      n.tracedIn = measured(n.inEdges);
+      n.tracedOut = measured(n.outEdges);
+      n.otherIn = n.otherInBps ?? 0;
+      n.otherOut = n.otherOutBps ?? 0;
     }
+  }
+  for (const id of ctx.order) {
+    const n = mustGet(nodes, id, 'node');
+    if (n.kind !== 'leaf' || n.role !== 'app') {
+      continue;
+    }
+    const pods = memberPods(n);
+    n.podCount = pods.length;
+    n.status = worstStatus(pods.map((p) => p.status));
+    sumBalance(n, pods);
   }
   for (const id of ctx.order) {
     const n = mustGet(nodes, id, 'node');
@@ -114,11 +129,23 @@ export function computeResiduals(ctx: BuildCtx): void {
     }
     let count = 0;
     const statuses: Array<TraceNode['status']> = [];
-    for (const m of memberPods(n)) {
+    const members = memberPods(n);
+    for (const m of members) {
       count += m.role === 'app' ? m.podCount : 1;
       statuses.push(m.status);
     }
     n.podCount = count;
     n.status = worstStatus(statuses);
+    sumBalance(n, members);
+  }
+}
+
+function sumBalance(n: TraceNode, members: readonly TraceNode[]): void {
+  n.tracedIn = n.tracedOut = n.otherIn = n.otherOut = 0;
+  for (const m of members) {
+    n.tracedIn += m.tracedIn;
+    n.tracedOut += m.tracedOut;
+    n.otherIn += m.otherIn;
+    n.otherOut += m.otherOut;
   }
 }

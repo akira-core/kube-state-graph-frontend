@@ -63,7 +63,7 @@ export interface TraceNode {
   usage: NodeUsage | null;
   info: NodeInfo | null;
   clients: NodeClient[] | null;
-  // ── hop ──
+  // ── hop (traced / other also on pod, client, application and namespace leaves) ──
   otherInBps: number | null;
   otherOutBps: number | null;
   noFlow: boolean;

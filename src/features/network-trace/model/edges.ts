@@ -4,7 +4,7 @@ import { clientsOf, wireFacts } from './classify';
 import type { AggEdge, BuildCtx } from './ctx';
 import { APP_ID_PREFIX, NS_ID_PREFIX, OWNER_ID_PREFIX } from './ids';
 import { makeEdge, makeNode, type TraceEdge, type TraceNode } from './types';
-import { downstreamOf, fromTo, SEP } from './util';
+import { downstreamOf, fromTo, isFiniteNumber, SEP } from './util';
 
 interface OwnerGroup {
   owner: string | null;
@@ -238,6 +238,8 @@ export function buildEdges(ctx: BuildCtx): void {
       named,
       iface: own,
       localIface: local,
+      otherInBps: isFiniteNumber(d.otherInBps) ? d.otherInBps : null,
+      otherOutBps: isFiniteNumber(d.otherOutBps) ? d.otherOutBps : null,
       ...wireFacts(index, d, id, kind),
     });
     nodes.set(id, n);

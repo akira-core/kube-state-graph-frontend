@@ -56,10 +56,13 @@ export function bandTooltipLines(e: TraceEdge, model: TraceModelOk): string[] {
   return lines;
 }
 
+const BALANCED_LEAF_ROLES: readonly string[] = ['pod', 'leaf', 'app', 'ns'];
+
 /**
  * Node tooltip in the shared row order (see `nodeTooltipRows`), from the trace model's
- * fields. A hop splits what the trace followed from what it did not, each row painted like
- * its mark: `traced in / out` in the ribbon colour, `other in / out` in the residual colours.
+ * fields. A hop, pod, client, application or namespace splits what the trace followed from
+ * what it did not, each row painted like its mark: `traced in / out` in the ribbon colour,
+ * `other in / out` in the residual colours. Only an owner card keeps plain `in / out`.
  */
 export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: ThemeTokens): TooltipLine[] {
   if (n.kind === 'anchor') {
@@ -71,12 +74,13 @@ export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: Them
       ...(n.note !== '' ? [`note ${n.note}`] : []),
     ];
   }
+  const balanced = n.kind === 'node' || BALANCED_LEAF_ROLES.includes(n.role);
   const flow: TooltipLine[] = [];
   if (n.noFlow) {
     flow.push('no drawable flow edge (no flow)');
   } else if (n.role === 'owner' && !(n.bps > 0)) {
     flow.push('in — (metered at the port: the port also carries other owners)');
-  } else if (n.kind === 'node') {
+  } else if (balanced) {
     flow.push({ text: `traced in ${formatBitsPerSec(n.tracedIn)}`, color: tokens.sankey.traceFlow });
     flow.push({ text: `traced out ${formatBitsPerSec(n.tracedOut)}`, color: tokens.sankey.traceFlow });
   } else {
@@ -84,18 +88,17 @@ export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: Them
     flow.push(`out ${formatBitsPerSec(sum(n.outEdges))}`);
   }
   const membership: TooltipLine[] = [];
-  if (n.kind === 'node') {
-    if (!n.noFlow) {
-      membership.push({ text: `other in ${formatBitsPerSec(n.otherIn)}`, color: tokens.sankey.traceResidualIn });
-      membership.push({ text: `other out ${formatBitsPerSec(n.otherOut)}`, color: tokens.sankey.traceResidualOut });
-    }
-  } else if (n.role === 'owner') {
+  if (balanced && !n.noFlow) {
+    membership.push({ text: `other in ${formatBitsPerSec(n.otherIn)}`, color: tokens.sankey.traceResidualIn });
+    membership.push({ text: `other out ${formatBitsPerSec(n.otherOut)}`, color: tokens.sankey.traceResidualOut });
+  }
+  if (n.role === 'owner') {
     if (n.bps > 0) {
-      membership.push(`derived from port cards${n.meteredPorts < n.portCount ? ' (partial ports)' : ''}`);
+      membership.push(`derived from ports${n.meteredPorts < n.portCount ? ' (partial ports)' : ''}`);
     }
     membership.push(countWord(n.clientCount, 'client'));
     membership.push(countWord(n.portCount, 'port'));
-  } else if (n.role === 'ns' || n.role === 'app') {
+  } else if (n.kind === 'leaf' && (n.role === 'ns' || n.role === 'app')) {
     membership.push('derived from member pods');
     membership.push(countWord(n.podCount, 'pod'));
   }

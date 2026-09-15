@@ -138,7 +138,7 @@ describe('tooltip and card text', () => {
       expect(text.subtitle).toBe('owner');
       if (o.bps > 0) {
         expect(text.extraLines[0]).toMatch(/^\+/);
-        expect(nodeTip(o, m).some((l) => l.startsWith('derived from port cards'))).toBe(true);
+        expect(nodeTip(o, m).some((l) => l.startsWith('derived from ports'))).toBe(true);
       } else {
         expect(text.extraLines[0]).toBe('metered at port');
         expect(nodeTip(o, m).some((l) => l.startsWith('in — (metered at the port'))).toBe(true);
@@ -151,6 +151,62 @@ describe('tooltip and card text', () => {
     if (ns !== undefined) {
       expect(nodeTip(ns, k8s)).toContain('derived from member pods');
       expect(cardText(ns, k8s).extraLines[0]).toMatch(/pods?$/);
+    }
+  });
+
+  it('pods, clients and namespaces split traced from other; namespaces sum their member pods', () => {
+    const rows = (lines: string[]): string[] => lines.filter((l) => /^(traced|other) (in|out) /.test(l));
+    const k8s = model('k8s');
+    const pods = k8s.nodes.filter((n) => n.kind === 'leaf' && n.role === 'pod');
+    const ns = k8s.nodes.find((n) => n.role === 'ns');
+    expect(pods.length).toBeGreaterThan(0);
+    expect(ns).toBeDefined();
+    for (const p of pods) {
+      const lines = nodeTooltipLines(p, k8s, T);
+      expect(rows(plain(lines))).toHaveLength(4);
+      expect(plain(lines)).toContain('other in 0 bps');
+      expect(colorOf(lines, 'traced in')).toBe(T.sankey.traceFlow);
+      expect(colorOf(lines, 'other out')).toBe(T.sankey.traceResidualOut);
+    }
+    if (ns !== undefined) {
+      expect(rows(nodeTip(ns, k8s))).toHaveLength(4);
+      expect(nodeTip(ns, k8s).some((l) => /^in |^out /.test(l))).toBe(false);
+      const direct = k8s.edges
+        .filter((e) => e.toId === ns.id || e.fromId === ns.id)
+        .map((e) => (e.fromId === ns.id ? e.toId : e.fromId));
+      const members = direct.map((id) => k8s.nodeMap.get(id)).filter((m) => m !== undefined);
+      expect(ns.tracedIn + ns.tracedOut).toBe(members.reduce((s, m) => s + m.tracedIn + m.tracedOut, 0));
+      expect(ns.tracedIn + ns.tracedOut).toBeGreaterThan(0);
+    }
+
+    const client = model('client');
+    const leaf = client.nodes.find((n) => n.kind === 'leaf' && n.role === 'leaf');
+    expect(leaf).toBeDefined();
+    if (leaf !== undefined) {
+      expect(rows(nodeTip(leaf, client))).toHaveLength(4);
+    }
+    const owner = client.nodes.find((n) => n.role === 'owner');
+    if (owner !== undefined) {
+      expect(rows(nodeTip(owner, client))).toHaveLength(0);
+    }
+  });
+
+  it('a trace-end pod shows the other in / out its wire node states', () => {
+    const s = traceSample('k8s');
+    const wire = structuredClone(s.wire) as { elements: { nodes: Array<{ data: Record<string, unknown> }> } };
+    const pod = wire.elements.nodes.find((x) => x.data.type === 'pod');
+    expect(pod).toBeDefined();
+    if (pod === undefined) {
+      return;
+    }
+    pod.data.other_in_bps = 3e9;
+    const m = deriveTrace(normalizeGraph(wire).elements, { direction: s.direction, grouping: 'none' });
+    expect(m.ok).toBe(true);
+    const n = m.ok ? m.nodeMap.get(String(pod.data.id)) : undefined;
+    expect(n?.kind).toBe('leaf');
+    if (m.ok && n !== undefined) {
+      expect(nodeTip(n, m)).toContain('other in 3 Gbps');
+      expect(nodeTip(n, m)).toContain('other out 0 bps');
     }
   });
 
