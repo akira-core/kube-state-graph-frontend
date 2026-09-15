@@ -4,7 +4,7 @@ import type { TraceNode } from './types';
  * The three horizontal bands of the drawing, in trace order (the start hop's side first):
  *   switch  — the anchor and every switch hop, laid out by longest path with tier locking
  *   k8s     — the fixed chain k8s node → pod → application → namespace (upper partition)
- *   client  — every non-k8s trace stop (`host`, `router`, a neighbourless port …), drawn as
+ *   client  — every non-k8s trace stop (`host`, a neighbourless port …), drawn as
  *             the lower partition of the k8s band's last column
  *   owner   — the owner cards, one column after the k8s band
  * Storage hops (`netapp-*`, `pvc`) have no place in a network trace and fall into the switch

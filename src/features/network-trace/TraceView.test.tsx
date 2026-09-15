@@ -358,7 +358,7 @@ describe('TraceView Min Δ', () => {
     expect(first.props.onMinBpsChange).toHaveBeenCalledWith(0);
     first.unmount();
     const second = renderTrace({ minBps: 1e15 });
-    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 120 ribbons / 56 hops');
+    expect(screen.getByTestId('trace-filtered-pill')).toHaveTextContent('hidden 120 ribbons / 57 hops');
     second.unmount();
     renderTrace({ minBps: 0 });
     expect(screen.queryByTestId('trace-filtered-pill')).not.toBeInTheDocument();
@@ -489,7 +489,7 @@ describe('TraceView summary and warnings', () => {
     renderTrace();
     const toggle = screen.getByTestId('trace-summary-toggle');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(toggle).toHaveTextContent('57 hops · 3 namespaces');
+    expect(toggle).toHaveTextContent('58 hops · 3 namespaces');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     openSummary();
     expect(screen.getByTestId('trace-hop-table')).toHaveTextContent('Core 1');

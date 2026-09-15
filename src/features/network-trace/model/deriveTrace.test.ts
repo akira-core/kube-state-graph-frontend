@@ -442,6 +442,60 @@ describe('columns, backflow and lateral edges', () => {
   });
 });
 
+describe('hop kinds', () => {
+  it('a router is a hop like a switch: a box with slots and residuals in the switch band', () => {
+    const wire = {
+      elements: {
+        nodes: [
+          N({
+            id: 'sw-a',
+            type: 'switch',
+            name: 'A',
+            investigation: { iface: 'xe-0/0/1', delta_bps: 2e9, direction: 'in' },
+          }),
+          N({ id: 'rt-1', type: 'router', name: 'R1', labels: { tier: 'core' } }),
+          N({ id: 'sw-b', type: 'switch', name: 'B' }),
+          N({ id: 'srv', type: 'host' }),
+        ],
+        edges: [
+          E({
+            id: 'e1',
+            type: 'network-flow',
+            source: 'sw-a',
+            target: 'rt-1',
+            labels: { source_iface: 'et-1', target_iface: 'ge-0/0/0' },
+            metrics: { delta_bps: 2e9 },
+          }),
+          E({
+            id: 'e2',
+            type: 'network-flow',
+            source: 'rt-1',
+            target: 'sw-b',
+            labels: { source_iface: 'ge-0/0/1', target_iface: 'et-1' },
+            metrics: { delta_bps: 1.5e9 },
+          }),
+          E({ id: 'e3', type: 'network-flow', source: 'sw-b', target: 'srv', metrics: { delta_bps: 1.5e9 } }),
+        ],
+      },
+    };
+    const model = deriveTrace(elementsOf(wire), { direction: 'destination' });
+    expect(model.ok).toBe(true);
+    if (!model.ok) {
+      return;
+    }
+    const r = node(model, 'rt-1');
+    expect(r.kind).toBe('node');
+    expect(r.role).toBe('router');
+    expect(r.tier).toBe('core');
+    expect(bandOf(r)).toBe('switch');
+    expect(r.tracedIn).toBe(2e9);
+    expect(r.tracedOut).toBe(1.5e9);
+    expect(r.otherOut).toBe(0.5e9);
+    expect(r.col).toBe(node(model, 'sw-a').col + 1);
+    expect(model.edges.filter((e) => e.fromId === 'rt-1' || e.toId === 'rt-1')).toHaveLength(2);
+  });
+});
+
 describe('k8s node wrappers (layout: node)', () => {
   const wrapperWire = {
     elements: {

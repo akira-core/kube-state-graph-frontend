@@ -41,6 +41,11 @@ export const ICON_SVG_BY_KIND: Record<NodeKind, string> = {
   switch: icon(
     '<rect x="2.5" y="8" width="19" height="8" rx="1.5"/><rect x="5" y="10.4" width="2" height="3.2" rx="0.4"/><rect x="8" y="10.4" width="2" height="3.2" rx="0.4"/><rect x="11" y="10.4" width="2" height="3.2" rx="0.4"/><rect x="14" y="10.4" width="2" height="3.2" rx="0.4"/><circle cx="18.7" cy="12" r="0.9"/>'
   ),
+  // Router: a disc seen from above with two crossing arrows — the classic network-diagram
+  // router mark, so a routed hop reads apart from the switch chassis.
+  router: icon(
+    '<ellipse cx="12" cy="12" rx="9" ry="6"/><path d="M8 10.5h8M8 13.5h8"/><path d="M14 8.5l2 2-2 2M10 11.5l-2 2 2 2"/>'
+  ),
   // Cloud: "outside the cluster / internet". Plump rounded cloud (single stroke).
   external: icon(
     '<path d="M7 18C4.8 18 3 16.2 3 14C3 12.1 4.4 10.5 6.2 10.1C6.8 7.7 9.2 6 12 6C14.8 6 17.2 7.7 17.8 10.1C19.6 10.5 21 12.1 21 14C21 16.2 19.2 18 17 18Z"/>'

@@ -74,7 +74,7 @@ export interface TraceNode {
   /** Residuals below this are counter noise: not drawn, not reserved space. */
   resEps: number;
   // ── leaf ──
-  /** The wire kind of a trace-stop leaf (`host`, `router`, …). */
+  /** The wire kind of a trace-stop leaf (`host`, `external`, an unknown kind …). */
   type: string | null;
   /** The wire gave this leaf a name; a client-carrying leaf only draws a title then. */
   named: boolean;

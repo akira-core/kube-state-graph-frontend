@@ -41,11 +41,11 @@ describe('SHOWCASE_GRAPH', () => {
     // coverage and this fails — which is the point: an uncovered kind is one nobody would
     // notice the panel had stopped drawing.
     // `netapp-svm` is storage-graph-only (`/v1/graph` never emits it) and is covered by
-    // SHOWCASE_STORAGE_GRAPH instead; `host` is trace-only and covered by SHOWCASE_TRACE.
+    // SHOWCASE_STORAGE_GRAPH instead; `host` and `router` are trace-only and covered by
+    // SHOWCASE_TRACE.
     const drawn = new Set(nodes.map((data) => data.kind));
-    expect(
-      Object.keys(ICON_SVG_BY_KIND).filter((kind) => kind !== 'netapp-svm' && kind !== 'host' && !drawn.has(kind))
-    ).toEqual([]);
+    const elsewhere = new Set(['netapp-svm', 'host', 'router']);
+    expect(Object.keys(ICON_SVG_BY_KIND).filter((kind) => !elsewhere.has(kind) && !drawn.has(kind))).toEqual([]);
   });
 
   it('covers every edge type the panel can draw', () => {

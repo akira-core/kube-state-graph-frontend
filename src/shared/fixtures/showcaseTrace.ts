@@ -19,7 +19,7 @@ import type { WireGraph } from '../types/wire';
  * - **Islands** drawn beside the backbone, every one running top-down (core → … → ToR →
  *   servers): `classic` (core → edge), `dual-uplink` (parallel links between one pair; the
  *   edge takes more than its agg sends, so it shows a derived "other in"), `campus` (untraced
- *   exits on the agg and the dorm access switch; a router leaf reached from two hops),
+ *   exits on the agg and the dorm access switch; a router hop reached from two hops),
  *   `pruned` (explicit `other_out_bps` for truncated ports), `dci-tier` (same-tier
  *   interconnect chain) and `k8s-source` (pods → node → ToR, drawn as upstream feeders). A
  *   body carries one trace start, so each island's top switch holds what its sample fed it

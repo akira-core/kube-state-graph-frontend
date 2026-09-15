@@ -43,7 +43,10 @@ export type NodeKind =
   // other than a K8s node — a bare-metal client, an external port, a management host.
   // Leaf kind; carries `clients` (see NodeDataDefinition) rather than status/alerts.
   // `/v1/graph` and `/v1/storage-graph` never emit it.
-  | 'host';
+  | 'host'
+  // A routed hop on `/v1/trace`: the trace follows traffic through it exactly as through a
+  // `switch` (a box with ports and residuals, tierable), it is not a trace stop.
+  | 'router';
 
 // Full wire contract: every edge type the backend's core graph can carry (D6 — all
 // backend-emitted, no panel synthetics). `pod-to-node` (pod→node) replaced the retired

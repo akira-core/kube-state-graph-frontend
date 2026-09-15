@@ -11,6 +11,7 @@ import { isFiniteNumber, isNonEmptyString } from './util';
 /** Hop kinds: drawn as boxes with slots and residuals. `role` keeps the wire kind. */
 export const HOP_KINDS: readonly string[] = [
   'switch',
+  'router',
   'node',
   'pod',
   'netapp-node',
@@ -36,6 +37,7 @@ export const KIND_LABEL: Record<string, string> = {
   ...STORAGE_KIND_CAPTION,
   pod: 'pod',
   node: 'k8s node',
+  router: 'router',
 };
 
 export type NodeClass = 'hop' | 'group' | 'leaf';

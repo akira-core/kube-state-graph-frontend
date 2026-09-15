@@ -7,7 +7,7 @@ import type { TraceModelOk } from './model/types';
 /**
  * One search record per DRAWN card: every placed node (hop, leaf, anchor) and every
  * `node`-layout frame. A hop's `role` is its wire kind; a leaf reads better by the wire
- * type it stopped at (`host`, `router`, …) than by the role `leaf`. A leaf's clients are
+ * type it stopped at (`host`, `external`, …) than by the role `leaf`. A leaf's clients are
  * searchable one value at a time, so a hit on an address names that address.
  */
 export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): SearchRecord[] {

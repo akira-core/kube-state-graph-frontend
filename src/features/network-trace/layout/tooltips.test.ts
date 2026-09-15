@@ -8,7 +8,7 @@ import type { TraceModelOk } from '../model/types';
 import { traceSample } from '../testing/samples';
 
 import { cardText, clientTableLines, clip } from './text';
-import { bandTooltipLines, nodeTooltipLines, residualTooltipLines } from './tooltips';
+import { bandTooltipLines, colCaption, nodeTooltipLines, residualTooltipLines } from './tooltips';
 
 function model(key: string, layout: 'flat' | 'node' = 'flat'): TraceModelOk {
   const s = traceSample(key);
@@ -188,6 +188,42 @@ describe('tooltip and card text', () => {
         'id k',
       ]);
     }
+  });
+
+  it('a column of routers is captioned as such, and a router card prints its kind', () => {
+    const N = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({ data });
+    const E = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({ data });
+    const wire = {
+      elements: {
+        nodes: [
+          N({
+            id: 'sw',
+            type: 'switch',
+            name: 'A',
+            investigation: { iface: 'xe-0/0/1', delta_bps: 1e9, direction: 'in' },
+          }),
+          N({ id: 'rt', type: 'router', name: 'R1' }),
+          N({ id: 'srv', type: 'host' }),
+        ],
+        edges: [
+          E({ id: 'e1', type: 'network-flow', source: 'sw', target: 'rt', metrics: { delta_bps: 1e9 } }),
+          E({ id: 'e2', type: 'network-flow', source: 'rt', target: 'srv', metrics: { delta_bps: 1e9 } }),
+        ],
+      },
+    };
+    const m = deriveTrace(normalizeGraph(wire).elements, { direction: 'destination' });
+    expect(m.ok).toBe(true);
+    if (!m.ok) {
+      return;
+    }
+    const rt = m.nodeMap.get('rt');
+    expect(rt).toBeDefined();
+    if (rt === undefined) {
+      return;
+    }
+    expect(cardText(rt, m).subtitle).toBe('router');
+    expect(nodeTip(rt, m)[0]).toBe('router / R1');
+    expect(colCaption([rt], 'destination', 0)).toBe(`Hop ${String(rt.col)} · router`);
   });
 
   it('clip counts CJK as two cells', () => {

@@ -95,8 +95,13 @@ describe('SHOWCASE_TRACE', () => {
     // dual-uplink / pruned / campus: explicit and derived residuals on both sides.
     expect(m.nodes.some((n) => n.kind === 'node' && n.otherInBps === null && n.otherIn > n.resEps)).toBe(true);
     expect(m.nodes.some((n) => n.kind === 'node' && n.otherOutBps !== null && n.otherOut > n.resEps)).toBe(true);
-    // campus: a leaf reached from two hops.
-    expect(m.nodes.some((n) => n.kind === 'leaf' && n.role === 'leaf' && n.inEdges.length > 1)).toBe(true);
+    // campus: a router hop reached from two hops, with no onward edge — its traffic leaves
+    // the trace as "other out".
+    const router = m.nodes.find((n) => n.role === 'router');
+    expect(router?.kind).toBe('node');
+    expect(router?.inEdges.length).toBe(2);
+    expect(router?.outEdges.length).toBe(0);
+    expect((router?.otherOut ?? 0) > (router?.resEps ?? 0)).toBe(true);
 
     for (const n of m.nodes) {
       // A hop with no inbound edge is a source and draws no "other in" by design
