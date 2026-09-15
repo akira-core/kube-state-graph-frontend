@@ -7,7 +7,7 @@ import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet } from '../model/util';
 
 import { TraceBand, TraceBandLabel } from './TraceBand';
-import { Residual, TraceCard, TraceWrapperBox } from './TraceCards';
+import { Residual, TraceCard } from './TraceCards';
 import { TraceDefs } from './TraceDefs';
 
 export interface TraceChartProps {
@@ -32,8 +32,8 @@ export interface TraceChartProps {
 }
 
 /**
- * The trace drawing inside the shared canvas. z-order: ribbons, their amounts, k8s node
- * frames, cards, residuals last (they hang outside the cards and must not be covered).
+ * The trace drawing inside the shared canvas. z-order: ribbons, their amounts, cards,
+ * residuals last (they hang outside the cards and must not be covered).
  */
 export function TraceChart({
   model,
@@ -80,19 +80,6 @@ export function TraceChart({
       ))}
       {model.edges.map((e) => (
         <TraceBandLabel key={`label-${e.id}`} e={e} g={E(e)} tokens={tokens} />
-      ))}
-      {geo.wrappers.map((wg) => (
-        <TraceWrapperBox
-          key={wg.wrapper.id}
-          wg={wg}
-          tokens={tokens}
-          faded={
-            lit !== null && !lit.nodeIds.has(wg.wrapper.id) && !wg.wrapper.podIds.some((id) => lit.nodeIds.has(id))
-          }
-          onEnter={onNodeEnter}
-          onLeave={onNodeLeave}
-          onClick={onNodeClick}
-        />
       ))}
       {model.nodes.map((n) => (
         <TraceCard

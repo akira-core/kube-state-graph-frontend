@@ -1,5 +1,5 @@
 import type { ColumnHeader } from '../../sankey-canvas';
-import type { TraceEdge, TraceNode, TraceWrapper } from '../model/types';
+import type { TraceEdge, TraceNode } from '../model/types';
 
 import type { CardText } from './text';
 
@@ -66,26 +66,13 @@ export interface EdgeGeom {
   backXU?: number;
 }
 
-/** A k8s node frame's placement; the model's wrapper is untouched. */
-export interface WrapperGeom {
-  wrapper: TraceWrapper;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 export interface TraceGeometry {
   width: number;
   height: number;
-  /** Nodes per column, in drawing order (the pod column partitioned by frame under `node`). */
+  /** Nodes per column, in drawing order. */
   cols: TraceNode[][];
   colX: number[];
   columns: ColumnHeader[];
-  /** Frames (ordered); empty under `flat`. */
-  wrappers: WrapperGeom[];
-  /** The column holding the frames; -1 when there are none. */
-  podCol: number;
   nodes: Map<string, NodeGeom>;
   edges: Map<string, EdgeGeom>;
 }

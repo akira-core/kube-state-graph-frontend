@@ -24,13 +24,9 @@ export function scanEdges(ctx: BuildCtx): void {
       continue;
     }
     if (isPlacementEdge(d)) {
-      // Placement only, never a ribbon: it identifies the k8s nodes touched by nothing
-      // else, and under the `node` layout which pod sits on which node.
+      // Placement only, never a ribbon: it identifies the k8s nodes touched by nothing else.
       placementTouch.add(d.source);
       placementTouch.add(d.target);
-      const pods = ctx.k8sPods.get(d.target) ?? [];
-      pods.push(d.source);
-      ctx.k8sPods.set(d.target, pods);
       continue;
     }
     if (d.edgeType === undefined || !FLOW_EDGE_TYPES.includes(d.edgeType)) {
@@ -129,19 +125,15 @@ export function scanNodes(ctx: BuildCtx): string | null {
     if (kind === 'pod' && !isProxyPod(d.id)) {
       continue; // a leaf pod: created by its first surviving edge
     }
-    // A k8s node touched only by placement edges is the reference panel's Node-layout
-    // wrapper: not drawn under `flat`; under `node` it becomes a frame once pods exist.
+    // A k8s node touched only by placement edges carries no traffic: not drawn.
     if (kind === 'node' && !flowTouch.has(d.id) && placementTouch.has(d.id)) {
-      if (ctx.layout === 'node') {
-        ctx.k8sRaw.push(d);
-      }
       continue;
     }
     const n = makeHop(ctx, d, d.id);
     nodes.set(d.id, n);
     order.push(d.id);
   }
-  if (order.length === 0 && ctx.k8sRaw.length === 0) {
+  if (order.length === 0) {
     return 'The response has no drawable node.';
   }
   return null;

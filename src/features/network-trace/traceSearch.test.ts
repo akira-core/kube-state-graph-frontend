@@ -11,8 +11,8 @@ import type { TraceModelOk } from './model/types';
 import { TRACE_SAMPLES } from './testing/samples';
 import { traceCardRects, traceSearchRecords } from './traceSearch';
 
-function derive(wire: unknown, direction: 'destination' | 'source', layout: 'flat' | 'node' = 'flat'): TraceModelOk {
-  const model = deriveTrace(normalizeGraph(wire).elements, { direction, layout });
+function derive(wire: unknown, direction: 'destination' | 'source'): TraceModelOk {
+  const model = deriveTrace(normalizeGraph(wire).elements, { direction });
   if (!model.ok) {
     throw new Error(model.errors.join(' / '));
   }
@@ -21,17 +21,15 @@ function derive(wire: unknown, direction: 'destination' | 'source', layout: 'fla
 
 describe('hoverPathMany', () => {
   it.each(TRACE_SAMPLES.map((s) => [s.key, s] as const))('%s: equals the union of every card’s own path', (_, s) => {
-    for (const layout of ['flat', 'node'] as const) {
-      const model = derive(s.wire, s.direction, layout);
-      const ids = [...model.nodes.map((n) => n.id), ...model.wrappers.map((w) => w.id)];
-      const union = { edgeIds: new Set<string>(), nodeIds: new Set<string>() };
-      for (const id of ids) {
-        const p = hoverPath(model, id);
-        p.edgeIds.forEach((e) => union.edgeIds.add(e));
-        p.nodeIds.forEach((n) => union.nodeIds.add(n));
-      }
-      expect(hoverPathMany(model, ids)).toEqual(union);
+    const model = derive(s.wire, s.direction);
+    const ids = model.nodes.map((n) => n.id);
+    const union = { edgeIds: new Set<string>(), nodeIds: new Set<string>() };
+    for (const id of ids) {
+      const p = hoverPath(model, id);
+      p.edgeIds.forEach((e) => union.edgeIds.add(e));
+      p.nodeIds.forEach((n) => union.nodeIds.add(n));
     }
+    expect(hoverPathMany(model, ids)).toEqual(union);
   });
 });
 
@@ -42,7 +40,7 @@ describe('traceSearchRecords', () => {
 
   it('has one record per placed card, each with a frame to locate', () => {
     const rects = traceCardRects(geo);
-    expect(records.length).toBe(geo.nodes.size + geo.wrappers.length);
+    expect(records.length).toBe(geo.nodes.size);
     expect(records.every((r) => rects.has(r.id))).toBe(true);
   });
 

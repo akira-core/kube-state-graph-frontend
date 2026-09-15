@@ -10,9 +10,9 @@ import { traceSample } from '../testing/samples';
 import { cardText, clientTableLines, clip } from './text';
 import { bandTooltipLines, colCaption, nodeTooltipLines, residualTooltipLines } from './tooltips';
 
-function model(key: string, layout: 'flat' | 'node' = 'flat'): TraceModelOk {
+function model(key: string): TraceModelOk {
   const s = traceSample(key);
-  const m = deriveTrace(normalizeGraph(s.wire).elements, { direction: s.direction, layout });
+  const m = deriveTrace(normalizeGraph(s.wire).elements, { direction: s.direction });
   if (!m.ok) {
     throw new Error(m.errors.join(' / '));
   }
@@ -151,42 +151,6 @@ describe('tooltip and card text', () => {
     if (ns !== undefined) {
       expect(nodeTip(ns, k8s)).toContain('derived from member pods');
       expect(cardText(ns, k8s).extraLines[0]).toMatch(/pods?$/);
-    }
-  });
-
-  it('a wrapper folds status and counts its pods', () => {
-    const N = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({ data });
-    const E = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({ data });
-    const wire = {
-      elements: {
-        nodes: [
-          N({ id: 'sw', type: 'switch' }),
-          N({ id: 'k', type: 'node', name: 'worker-1', status: 'warning' }),
-          N({ id: 'p', type: 'pod', name: 'p', labels: { namespace: 'shop' } }),
-        ],
-        edges: [
-          E({ id: 'e1', type: 'network-flow', source: 'sw', target: 'p', metrics: { delta_bps: 1e9 } }),
-          E({ id: 'e2', type: 'pod-to-node', source: 'p', target: 'k' }),
-        ],
-      },
-    };
-    const m = deriveTrace(normalizeGraph(wire).elements, { direction: 'destination', layout: 'node' });
-    expect(m.ok).toBe(true);
-    if (!m.ok) {
-      return;
-    }
-    const w = m.wrappers[0];
-    expect(w).toBeDefined();
-    if (w !== undefined) {
-      expect(nodeTip(w, m)).toEqual([
-        'node / worker-1',
-        'in 1 Gbps',
-        'out 1 Gbps', // the pod's derived edge to its namespace card
-        'derived from member pods',
-        '1 pod',
-        'status warning (worst of node and member pods)',
-        'id k',
-      ]);
     }
   });
 

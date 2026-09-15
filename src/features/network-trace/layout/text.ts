@@ -1,7 +1,7 @@
 import { countWord } from '../../../shared/format/countWord';
 import { formatDeltaBps, formatUsage } from '../../../shared/format/measurements';
 import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, HEADER_H, LEAF_W } from '../../sankey-canvas';
-import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
+import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode } from '../model/types';
 import { sum } from '../model/util';
 
 import { CLIENT_CELL_W, CLIENT_COL_GAP, CLIENT_COLS, CLIENT_PAD, type ClientCol } from './constants';
@@ -85,7 +85,7 @@ export function leafCardW(n: TraceNode, table?: readonly string[]): number {
   return Math.max(LEAF_W, CLIENT_PAD * 2 + cells * CLIENT_CELL_W);
 }
 
-export function hasUsage(n: TraceNode | TraceWrapper): boolean {
+export function hasUsage(n: TraceNode): boolean {
   return n.usage !== null && n.usage.usedBytes !== undefined && n.usage.capacityBytes !== undefined;
 }
 
@@ -98,10 +98,7 @@ export function usageText(u: NodeUsage | null): string {
 }
 
 /** The subtitle word for a card: the wire kind, or the role of a synthesised card. */
-export function typeWord(n: TraceNode | TraceWrapper): string {
-  if (n.kind === 'wrapper') {
-    return 'node';
-  }
+export function typeWord(n: TraceNode): string {
   if (n.kind === 'anchor') {
     return 'trace start';
   }

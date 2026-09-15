@@ -10,7 +10,7 @@ import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples
 import { layoutTrace, type TraceNodeOrder } from './layoutTrace';
 import { traceFlowOf } from './text';
 
-function model(sample: TraceSample, opts: { minBps?: number; layout?: 'flat' | 'node' } = {}): TraceModelOk {
+function model(sample: TraceSample, opts: { minBps?: number } = {}): TraceModelOk {
   const m = deriveTrace(normalizeGraph(sample.wire).elements, { direction: sample.direction, ...opts });
   if (!m.ok) {
     throw new Error(m.errors.join(' / '));
@@ -24,10 +24,6 @@ const CORPUS: Array<{ name: string; model: TraceModelOk }> = TRACE_SAMPLES.flatM
   const cut = deriveTrace(normalizeGraph(s.wire).elements, { direction: s.direction, minBps: 5e8 });
   if (cut.ok) {
     out.push({ name: `${s.key}@5e8`, model: cut });
-  }
-  const node = model(s, { layout: 'node' });
-  if (node.wrappers.length > 0) {
-    out.push({ name: `${s.key}@node`, model: node });
   }
   return out;
 });
@@ -80,10 +76,7 @@ describe('layoutTrace geometry', () => {
           expect(eg.chevron).toContain(` L${String(eg.x2 - dir * 2)},${String(eg.y2)} `);
         }
       }
-      expect(geo.columns.length).toBe(
-        geo.cols.filter((c) => c.length > 0).length +
-          (geo.podCol >= 0 && (geo.cols[geo.podCol]?.length ?? 0) === 0 ? 1 : 0)
-      );
+      expect(geo.columns.length).toBe(geo.cols.filter((c) => c.length > 0).length);
     }
   );
 
@@ -250,56 +243,6 @@ describe('in-column order (flow)', () => {
     expect(down).toBeGreaterThanOrEqual(0);
     expect(up).toBeLessThan(dci);
     expect(dci).toBeLessThan(down);
-  });
-
-  it('frames order by member flow under flow, by name under barycenter', () => {
-    const N = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({ data });
-    const E = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({ data });
-    const wire = {
-      elements: {
-        nodes: [
-          N({
-            id: 'sw1',
-            type: 'switch',
-            name: 'SW 1',
-            investigation: { iface: 'xe-0/0/1', delta_bps: 3e9, direction: 'in' },
-          }),
-          N({ id: 'aaa-node', type: 'node', name: 'aaa-node' }),
-          N({ id: 'zzz-node', type: 'node', name: 'zzz-node' }),
-          N({ id: 'ns1', type: 'namespace', name: 'ns1' }),
-          N({ id: 'p-small', type: 'pod', name: 'p-small', parent: 'ns1' }),
-          N({ id: 'p-big', type: 'pod', name: 'p-big', parent: 'ns1' }),
-        ],
-        edges: [
-          E({ id: 'e1', type: 'network-flow', source: 'sw1', target: 'p-small', metrics: { delta_bps: 1e9 } }),
-          E({ id: 'e2', type: 'network-flow', source: 'sw1', target: 'p-big', metrics: { delta_bps: 2e9 } }),
-          E({ id: 'e3', type: 'network-flow', source: 'p-small', target: 'aaa-node', labels: { tier: 'pod-node' } }),
-          E({ id: 'e4', type: 'network-flow', source: 'p-big', target: 'zzz-node', labels: { tier: 'pod-node' } }),
-        ],
-      },
-    };
-    const m = deriveTrace(normalizeGraph(wire).elements, { direction: 'destination', layout: 'node' });
-    expect(m.ok).toBe(true);
-    if (!m.ok) {
-      return;
-    }
-    expect(m.wrappers).toHaveLength(2);
-    const labels = (order: TraceNodeOrder): string[] => layoutTrace(m, { order }).wrappers.map((g) => g.wrapper.label);
-    expect(labels('barycenter')).toEqual(['aaa-node', 'zzz-node']);
-    expect(labels('flow')).toEqual(['zzz-node', 'aaa-node']);
-    const geo = layoutTrace(m, { order: 'flow' });
-    for (const wg of geo.wrappers) {
-      for (const pid of wg.wrapper.podIds) {
-        const g = geo.nodes.get(pid);
-        expect(g).toBeDefined();
-        if (g !== undefined) {
-          expect(g.x).toBeGreaterThan(wg.x);
-          expect(g.y).toBeGreaterThan(wg.y);
-          expect(g.y + g.h).toBeLessThanOrEqual(wg.y + wg.h);
-        }
-      }
-    }
-    expect(geo.columns.some((c) => c.label.includes('node / pod'))).toBe(true);
   });
 
   it('the order option really changes at least one layout', () => {

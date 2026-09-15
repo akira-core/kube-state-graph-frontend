@@ -162,11 +162,6 @@ test('demo mode draws the trace fixture on both Network views without a Query co
   await expect(page.getByTestId('trace-node-kafka-2')).toBeVisible();
   await expect(page.getByTestId('trace-node-網管部 王小明')).toBeVisible();
 
-  // No sample places pods on k8s nodes, so the Node layout draws no frame and the chart stays.
-  await page.getByTestId('trace-layout').getByText('Node', { exact: true }).click();
-  await expect(page.getByTestId('sankey-svg')).toBeVisible();
-  await expect(page.locator('[data-testid^="trace-wrapper-"]')).toHaveCount(0);
-
   await page.getByTestId('nav-view').getByRole('link', { name: 'Graph' }).click();
   await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
   expect(urls.trace).toHaveLength(0);

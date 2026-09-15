@@ -36,36 +36,6 @@ function withoutKafka2(): cytoscape.ElementDefinition[] {
   });
 }
 
-/**
- * Pods placed on k8s nodes by `pod-node` edges — the `Node` layout's frames. None of the
- * merged samples carries placement edges, so the frames get a body of their own.
- */
-const placedPods = normalizeGraph({
-  elements: {
-    nodes: [
-      {
-        data: {
-          id: 'sw-1',
-          name: 'SW 1',
-          type: 'switch',
-          investigation: { iface: 'xe-0/0/1', delta_bps: 3e9, direction: 'in' },
-        },
-      },
-      { data: { id: 'worker-0', name: 'worker-0', type: 'node' } },
-      { data: { id: 'worker-1', name: 'worker-1', type: 'node', status: 'warning' } },
-      { data: { id: 'ns1', name: 'ns1', type: 'namespace' } },
-      { data: { id: 'p-a', name: 'p-a', type: 'pod', parent: 'ns1' } },
-      { data: { id: 'p-b', name: 'p-b', type: 'pod', parent: 'ns1' } },
-    ],
-    edges: [
-      { data: { id: 'e1', type: 'network-flow', source: 'sw-1', target: 'p-a', metrics: { delta_bps: 1e9 } } },
-      { data: { id: 'e2', type: 'network-flow', source: 'sw-1', target: 'p-b', metrics: { delta_bps: 2e9 } } },
-      { data: { id: 'e3', type: 'network-flow', source: 'p-a', target: 'worker-0', labels: { tier: 'pod-node' } } },
-      { data: { id: 'e4', type: 'network-flow', source: 'p-b', target: 'worker-1', labels: { tier: 'pod-node' } } },
-    ],
-  },
-}).elements;
-
 /** Two switches; the start reports the delta on its inbound side. */
 const twoSwitches = normalizeGraph({
   elements: {
@@ -275,33 +245,9 @@ describe('TraceView chart', () => {
     expect(screen.queryByTestId('trace-status-legend')).not.toBeInTheDocument();
   });
 
-  it('draws k8s node frames under the Node layout and remounts back to Flat', () => {
-    const { unmount } = renderTrace({ elements: placedPods });
-    expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
-    expect(screen.queryByTestId('trace-wrapper-worker-0')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
-    expect(screen.getByTestId('trace-wrapper-worker-0')).toBeInTheDocument();
-    expect(screen.getByTestId('trace-wrapper-worker-1')).toHaveAttribute('data-status', 'warning');
-    expect(screen.getByTestId('trace-wrapper-title-worker-0')).toHaveAttribute('data-locatable', 'true');
-    unmount();
-    renderTrace({ elements: placedPods });
-    expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
-    expect(screen.queryByTestId('trace-wrapper-worker-0')).not.toBeInTheDocument();
-  });
-
-  it('reports a controlled layout upward without owning it', () => {
-    const onLayoutChange = vi.fn();
-    renderTrace({ layout: 'flat', onLayoutChange });
-    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
-    expect(onLayoutChange).toHaveBeenCalledWith('node');
-    expect(screen.getByRole('radio', { name: /^flat$/i })).toBeChecked();
-  });
-
-  it('preserves the zoom readout across a layout and an order switch', () => {
+  it('preserves the zoom readout across an order switch', () => {
     renderTrace();
     fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '1' });
-    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
-    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
     expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
     fireEvent.click(screen.getByRole('radio', { name: /^barycenter$/i }));
     expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
@@ -551,13 +497,5 @@ describe('TraceView card search', () => {
     expect(screen.getByTestId('sankey-search-input')).toHaveValue('');
     expect(opacityOf('trace-node-網管部 王小明')).toBe('1');
     expect(props.onLocateNode).not.toHaveBeenCalled();
-  });
-
-  it('matches k8s node frames under the Node layout and lights their member pods', () => {
-    renderTrace({ elements: placedPods });
-    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
-    type('worker-0');
-    expect(opacityOf('trace-node-p-a')).toBe('1');
-    expect(opacityOf('trace-node-p-b')).toBe('0.3');
   });
 });

@@ -1,7 +1,6 @@
 import type { NodeStatus } from '../../../shared/constants/types';
 
 export type TraceDirection = 'destination' | 'source';
-export type TraceLayout = 'flat' | 'node';
 
 /** A client resolved behind a port with no LLDP neighbour (ARP / MAC table / DHCP / CMDB). */
 export interface NodeClient {
@@ -58,8 +57,6 @@ export interface TraceNode {
   usage: NodeUsage | null;
   info: NodeInfo | null;
   clients: NodeClient[] | null;
-  /** Under the `node` layout: the k8s node wrapper this leaf pod sits in. */
-  k8sNode: string | null;
   // ── hop ──
   otherInBps: number | null;
   otherOutBps: number | null;
@@ -119,24 +116,10 @@ export interface TraceEdge {
   lateral: boolean;
 }
 
-/** A k8s node frame under the `node` layout. Not a graph node: no edges, no column, no residual. */
-export interface TraceWrapper {
-  id: string;
-  label: string;
-  kind: 'wrapper';
-  status: NodeStatus | null;
-  podIds: string[];
-  noFlow: boolean;
-  info: NodeInfo | null;
-  usage: NodeUsage | null;
-}
-
 export interface TraceModelOk {
   ok: true;
   direction: TraceDirection;
   investigation: TraceInvestigation | null;
-  layout: TraceLayout;
-  wrappers: TraceWrapper[];
   minBps: number;
   /** Ribbons hidden by the display threshold and their total. */
   filtered: { edges: number; bps: number };
@@ -162,7 +145,6 @@ export interface DeriveTraceOptions {
   direction: TraceDirection;
   /** Display threshold: only ribbons strictly above it are kept; 0 = off. */
   minBps?: number;
-  layout?: TraceLayout;
 }
 
 export function makeNode(init: Pick<TraceNode, 'id' | 'label' | 'kind' | 'role'> & Partial<TraceNode>): TraceNode {
@@ -178,7 +160,6 @@ export function makeNode(init: Pick<TraceNode, 'id' | 'label' | 'kind' | 'role'>
     usage: null,
     info: null,
     clients: null,
-    k8sNode: null,
     otherInBps: null,
     otherOutBps: null,
     noFlow: false,

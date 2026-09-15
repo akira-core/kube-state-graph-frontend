@@ -24,16 +24,11 @@ import { bandTooltipLines, nodeTooltipLines, residualTooltipLines } from './layo
 import { hopBalanceRows, namespaceAggs } from './model/aggregates';
 import { deriveTrace, directionFor } from './model/deriveTrace';
 import { hoverPath, hoverPathMany } from './model/hoverPath';
-import type { TraceDirection, TraceEdge, TraceLayout, TraceNode } from './model/types';
+import type { TraceDirection, TraceEdge, TraceNode } from './model/types';
 import { TraceLegend } from './TraceLegend';
 import { traceCardRects, traceSearchRecords } from './traceSearch';
 import { TraceSummary } from './TraceSummary';
 import { cleanMinBps } from './traceUrlScope';
-
-const LAYOUT_OPTIONS: ReadonlyArray<SegmentedOption<TraceLayout>> = [
-  { value: 'flat', label: 'Flat' },
-  { value: 'node', label: 'Node' },
-];
 
 const ORDER_OPTIONS: ReadonlyArray<SegmentedOption<TraceNodeOrder>> = [
   { value: 'flow', label: 'Flow' },
@@ -65,9 +60,6 @@ export interface TraceViewProps {
   minBps: number;
   onMinBpsChange: (next: number) => void;
   onLocateNode: (id: string) => void;
-  /** Page-transient. Omitted = local default `flat`, reset on remount. */
-  layout?: TraceLayout;
-  onLayoutChange?: (next: TraceLayout) => void;
 }
 
 type EmptyKind = ShellEmptyKind | 'response' | 'model-error' | 'filtered';
@@ -122,18 +114,8 @@ export function TraceView({
   minBps,
   onMinBpsChange,
   onLocateNode,
-  layout: layoutProp,
-  onLayoutChange,
 }: Readonly<TraceViewProps>): JSX.Element {
   const tokens = useThemeTokens();
-  const [localLayout, setLocalLayout] = useState<TraceLayout>(layoutProp ?? 'flat');
-  const layout = layoutProp ?? localLayout;
-  const setLayout = (next: TraceLayout): void => {
-    if (layoutProp === undefined) {
-      setLocalLayout(next);
-    }
-    onLayoutChange?.(next);
-  };
   const [order, setOrder] = useState<TraceNodeOrder>('flow');
   // The threshold box holds raw text; the applied value follows after a short pause so
   // typing "500000000" does not redraw nine times. Blur normalises the text to the value.
@@ -157,15 +139,12 @@ export function TraceView({
 
   const direction = useMemo(() => directionFor(elements, trackDir), [elements, trackDir]);
   const model = useMemo(
-    () => deriveTrace(elements, { direction: direction.direction, minBps, layout }, direction.indexed),
-    [direction.direction, direction.indexed, elements, layout, minBps]
+    () => deriveTrace(elements, { direction: direction.direction, minBps }, direction.indexed),
+    [direction.direction, direction.indexed, elements, minBps]
   );
   const geo = useMemo(() => (model.ok ? layoutTrace(model, { order }) : null), [model, order]);
   const content = useMemo(() => ({ w: geo?.width ?? 0, h: geo?.height ?? 0 }), [geo]);
-  const hasCard = useCallback(
-    (id: string) => model.ok && (model.nodeMap.has(id) || model.wrappers.some((w) => w.id === id)),
-    [model]
-  );
+  const hasCard = useCallback((id: string) => model.ok && model.nodeMap.has(id), [model]);
   const hoverLit = useCallback(
     (id: string): HoverLit => {
       if (!model.ok) {
@@ -192,7 +171,7 @@ export function TraceView({
     status,
     hasPayload,
     content,
-    hasContent: model.ok && (model.nodes.length > 0 || model.wrappers.length > 0),
+    hasContent: model.ok && model.nodes.length > 0,
     focusMode,
     onFocusModeChange,
     hasCard,
@@ -232,7 +211,7 @@ export function TraceView({
     if (!model.ok) {
       return 'model-error';
     }
-    if (model.nodes.length === 0 && model.wrappers.length === 0) {
+    if (model.nodes.length === 0) {
       return 'filtered';
     }
     return null;
@@ -245,7 +224,7 @@ export function TraceView({
       return;
     }
     setHoverId(id);
-    const target = model.nodeMap.get(id) ?? model.wrappers.find((w) => w.id === id);
+    const target = model.nodeMap.get(id);
     if (target !== undefined) {
       tooltip.show(evt.clientX, evt.clientY, nodeTooltipLines(target, model, tokens));
     }
@@ -269,15 +248,6 @@ export function TraceView({
       {!focusMode && (
         <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-3 border-b border-hairline bg-rail px-3 py-1.5">
           <span className={eyebrowClass}>Network trace</span>
-          <span className={eyebrowClass}>Layout</span>
-          <Segmented
-            name="trace-layout"
-            aria-label="Layout"
-            value={layout}
-            options={LAYOUT_OPTIONS}
-            onChange={setLayout}
-            data-testid="trace-layout"
-          />
           <span className={eyebrowClass}>Order</span>
           <Segmented
             name="trace-order"

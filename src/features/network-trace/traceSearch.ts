@@ -5,8 +5,8 @@ import type { TraceGeometry } from './layout/types';
 import type { TraceModelOk } from './model/types';
 
 /**
- * One search record per DRAWN card: every placed node (hop, leaf, anchor) and every
- * `node`-layout frame. A hop's `role` is its wire kind; a leaf reads better by the wire
+ * One search record per DRAWN card: every placed node (hop, leaf, anchor). A hop's `role`
+ * is its wire kind; a leaf reads better by the wire
  * type it stopped at (`host`, `external`, …) than by the role `leaf`. A leaf's clients are
  * searchable one value at a time, so a hit on an address names that address.
  */
@@ -36,7 +36,6 @@ export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): Sea
           ['namespace', n.namespace],
           ['ontapCluster', n.ontapCluster],
           ['tier', n.tier],
-          ['k8sNode', n.k8sNode],
           ['owner', n.owner],
         ]),
         ...(n.clients ?? []).flatMap((c) =>
@@ -49,29 +48,14 @@ export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): Sea
       ],
     });
   }
-  for (const wg of geo.wrappers) {
-    const w = wg.wrapper;
-    records.push({
-      id: w.id,
-      label: w.label.length > 0 ? w.label : w.id,
-      kind: 'node',
-      fields: searchFields([
-        ['label', w.label],
-        ['kind', 'node'],
-      ]),
-    });
-  }
   return records;
 }
 
-/** Content-space frame of every placed card and frame, by id. */
+/** Content-space frame of every placed card, by id. */
 export function traceCardRects(geo: TraceGeometry): Map<string, Rect> {
   const rects = new Map<string, Rect>();
   for (const [id, g] of geo.nodes) {
     rects.set(id, { x: g.x, y: g.y, w: g.w, h: g.h });
-  }
-  for (const wg of geo.wrappers) {
-    rects.set(wg.wrapper.id, { x: wg.x, y: wg.y, w: wg.w, h: wg.h });
   }
   return rects;
 }

@@ -9,8 +9,6 @@ import {
   stackHeight,
   thicknessScale,
   V_GAP,
-  WRAPPER_HEADER_H,
-  WRAPPER_PAD,
   type ColumnHeader,
 } from '../../sankey-canvas';
 import { bandOf, isClientPartition, type TraceBand } from '../model/bands';
@@ -30,8 +28,8 @@ import {
   resOut,
   traceFlowOf,
 } from './text';
-import { colCaption, wrapperColCaption } from './tooltips';
-import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry, WrapperGeom } from './types';
+import { colCaption } from './tooltips';
+import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry } from './types';
 
 /** In-column order: `flow` (larger flow on top, default) or `barycenter` (fewest crossings). */
 export type TraceNodeOrder = 'flow' | 'barycenter';
@@ -305,39 +303,15 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     gn.set(n.id, { x: 0, y: 0, w, h, cy: 0, leftSlots, rightSlots, text });
   }
 
-  // Column x. Under the `node` layout the frames live in the pod column (the column holding
-  // leaf pods); if every pod was filtered away they get a column of their own.
+  // Column x.
   const cols: TraceNode[][] = [];
   for (const n of nodes) {
     const list = cols[n.col] ?? [];
     list.push(n);
     cols[n.col] = list;
   }
-  const wFlow = new Map<string, number>(
-    model.wrappers.map((w) => [
-      w.id,
-      w.podIds.reduce((t, id) => t + traceFlowOf(mustGet(model.nodeMap, id, 'pod'), model.direction), 0),
-    ])
-  );
-  const wrappers: WrapperGeom[] = [...model.wrappers]
-    .sort(
-      order === 'flow'
-        ? (a, b) => (wFlow.get(b.id) ?? 0) - (wFlow.get(a.id) ?? 0) || a.label.localeCompare(b.label)
-        : (a, b) => a.label.localeCompare(b.label)
-    )
-    .map((w) => ({ wrapper: w, x: 0, y: 0, w: 0, h: 0 }));
-  let podCol = -1;
-  for (const n of nodes) {
-    if (n.kind === 'leaf' && n.role === 'pod' && podCol < 0) {
-      podCol = n.col;
-    }
-  }
-  if (podCol < 0 && wrappers.length > 0) {
-    podCol = cols.length;
-    cols[podCol] = [];
-  }
   // The band a column belongs to: its first card's (the client partition shares the k8s
-  // band's last column); a frames-only column is the pod column, so k8s.
+  // band's last column).
   const colBand = (ci: number): TraceBand => {
     const first = (cols[ci] ?? [])[0];
     if (first === undefined) {
@@ -354,95 +328,24 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     if (c > 0 && colBand(c) !== colBand(c - 1)) {
       x += BAND_COL_GAP;
     }
-    let w = list.reduce((m, n) => Math.max(m, N(n.id).w), CARD_W);
-    if (c === podCol && wrappers.length > 0) {
-      const iw = list.reduce((m, n) => (n.k8sNode !== null ? Math.max(m, N(n.id).w) : m), 0);
-      w = Math.max(w, iw + WRAPPER_PAD * 2, CARD_W);
-    }
+    const w = list.reduce((m, n) => Math.max(m, N(n.id).w), CARD_W);
     colX[c] = x;
     colW[c] = w;
     for (const n of list) {
-      N(n.id).x = n.k8sNode !== null ? x + WRAPPER_PAD : x;
+      N(n.id).x = x;
     }
     x += w + COL_GAP;
   }
   const totalW = x - COL_GAP + PAD_SIDE;
 
-  // The pod column under the `node` layout stacks frames first: pods by their frame, then
-  // the frameless ones. (A pod naming a frame that is not drawn is dropped, not stacked.)
-  const framed = (
-    list: readonly TraceNode[],
-    ci: number
-  ): { byW: Map<string, TraceNode[]>; loose: TraceNode[] } | null => {
-    if (ci !== podCol || wrappers.length === 0) {
-      return null;
-    }
-    const byW = new Map<string, TraceNode[]>();
-    const loose: TraceNode[] = [];
-    for (const n of list) {
-      if (n.k8sNode !== null) {
-        const l = byW.get(n.k8sNode) ?? [];
-        l.push(n);
-        byW.set(n.k8sNode, l);
-      } else {
-        loose.push(n);
-      }
-    }
-    return { byW, loose };
-  };
-  const frameH = (pods: readonly TraceNode[], y: number): number => {
-    if (pods.length === 0) {
-      return WRAPPER_HEADER_H + WRAPPER_PAD;
-    }
-    let yy = y + WRAPPER_HEADER_H;
-    for (const n of pods) {
-      yy += N(n.id).h + V_GAP;
-    }
-    return yy - V_GAP + WRAPPER_PAD - y;
-  };
-
   // The height a stack of cards would take from y0 — `stack` with the writes left out, so
   // the k8s band can size itself before anything is placed. Same arithmetic, same order.
-  const partitionHeight = (list: readonly TraceNode[], ci: number): number => {
-    const parts = framed(list, ci);
-    if (parts === null) {
-      return list.reduce((y, n) => y + N(n.id).h + V_GAP, 0);
-    }
-    let y = 0;
-    for (const wg of wrappers) {
-      y += frameH(parts.byW.get(wg.wrapper.id) ?? [], y) + V_GAP;
-    }
-    return parts.loose.reduce((yy, n) => yy + N(n.id).h + V_GAP, y);
-  };
+  const partitionHeight = (list: readonly TraceNode[]): number => list.reduce((y, n) => y + N(n.id).h + V_GAP, 0);
 
-  // Stack a list of cards from y0 (frames first in the pod column), appending them to `out`
-  // in drawing order; returns the y below the last card plus one gap.
-  const stack = (list: readonly TraceNode[], y0: number, ci: number, out: TraceNode[]): number => {
+  // Stack a list of cards from y0, appending them to `out` in drawing order; returns the y
+  // below the last card plus one gap.
+  const stack = (list: readonly TraceNode[], y0: number, out: TraceNode[]): number => {
     let y = y0;
-    const parts = framed(list, ci);
-    if (parts !== null) {
-      const { byW, loose } = parts;
-      for (const wg of wrappers) {
-        const pods = byW.get(wg.wrapper.id) ?? [];
-        wg.x = colX[ci] ?? PAD_SIDE;
-        wg.w = colW[ci] ?? CARD_W;
-        wg.y = y;
-        let yy = y + WRAPPER_HEADER_H;
-        for (const n of pods) {
-          N(n.id).y = yy;
-          yy += N(n.id).h + V_GAP;
-          out.push(n);
-        }
-        wg.h = frameH(pods, y);
-        y += wg.h + V_GAP;
-      }
-      for (const n of loose) {
-        N(n.id).y = y;
-        y += N(n.id).h + V_GAP;
-        out.push(n);
-      }
-      return y;
-    }
     for (const n of list) {
       N(n.id).y = y;
       y += N(n.id).h + V_GAP;
@@ -457,7 +360,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   for (let ci = 0; ci < cols.length; ci += 1) {
     if (colBand(ci) === 'k8s') {
       const upper = (cols[ci] ?? []).filter((n) => !isClientPartition(n));
-      maxK8sH = Math.max(maxK8sH, partitionHeight(upper, ci) - V_GAP);
+      maxK8sH = Math.max(maxK8sH, partitionHeight(upper) - V_GAP);
     }
   }
 
@@ -506,12 +409,12 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     const band = colBand(ci);
     const top = band === 'k8s' ? lastSwitchTop : 0;
     col.length = 0;
-    let y = stack(upper, top, ci, col);
+    let y = stack(upper, top, col);
     if (lower.length > 0) {
       if (band === 'k8s') {
         y = top + maxK8sH + (maxK8sH > 0 ? BAND_GAP : 0);
       }
-      y = stack(lower, y, ci, col);
+      y = stack(lower, y, col);
     }
     const blockH = Math.max(0, y - V_GAP - top);
     const prefAvg = col.reduce((s, n) => s + K(n).pref, 0) / (col.length || 1);
@@ -521,18 +424,13 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
       g.y += shift;
       cyOf.set(n.id, g.y + g.h / 2);
     }
-    if (ci === podCol) {
-      for (const wg of wrappers) {
-        wg.y += shift;
-      }
-    }
     if (band === 'switch' && col.length > 0) {
       lastSwitchTop = Math.min(...col.map((n) => N(n.id).y));
     }
   }
 
-  // Normalise y so the top is PAD_TOP; frames count toward the height.
-  const any = nodes.length > 0 || wrappers.length > 0;
+  // Normalise y so the top is PAD_TOP.
+  const any = nodes.length > 0;
   let minY = any ? Number.POSITIVE_INFINITY : 0;
   let maxY = any ? Number.NEGATIVE_INFINITY : 0;
   for (const n of nodes) {
@@ -540,18 +438,11 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     minY = Math.min(minY, g.y);
     maxY = Math.max(maxY, g.y + g.h);
   }
-  for (const wg of wrappers) {
-    minY = Math.min(minY, wg.y);
-    maxY = Math.max(maxY, wg.y + wg.h);
-  }
   const dy = PAD_TOP - minY;
   for (const n of nodes) {
     const g = N(n.id);
     g.y += dy;
     g.cy = g.y + g.h / 2;
-  }
-  for (const wg of wrappers) {
-    wg.y += dy;
   }
   let totalH = maxY + dy + PAD_BOTTOM;
 
@@ -723,8 +614,6 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     const cx = colX[ci] ?? PAD_SIDE;
     if (col.length > 0) {
       columns.push({ x: cx, label: colCaption(col, model.direction, startCol) });
-    } else if (ci === podCol && wrappers.length > 0) {
-      columns.push({ x: cx, label: wrapperColCaption() });
     }
   });
 
@@ -736,7 +625,5 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     height: Math.max(totalH, 220),
     nodes: gn,
     edges: ge,
-    wrappers,
-    podCol,
   };
 }

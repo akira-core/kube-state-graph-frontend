@@ -6,7 +6,7 @@ import { normalizeGraph } from '../../graph-data';
 import { layoutTrace } from '../layout/layoutTrace';
 import { cardText } from '../layout/text';
 import { deriveTrace } from '../model/deriveTrace';
-import type { TraceLayout, TraceModelOk } from '../model/types';
+import type { TraceModelOk } from '../model/types';
 import { TRACE_SAMPLES } from '../testing/samples';
 
 import { TraceChart } from './TraceChart';
@@ -61,15 +61,14 @@ interface Case {
 
 function cases(): Case[] {
   const out: Case[] = [];
-  const variants: Array<{ tag: string; minBps: number; layout: TraceLayout }> = [
-    { tag: '', minBps: 0, layout: 'flat' },
-    { tag: '@5e8', minBps: 5e8, layout: 'flat' },
-    { tag: '@node', minBps: 0, layout: 'node' },
+  const variants: Array<{ tag: string; minBps: number }> = [
+    { tag: '', minBps: 0 },
+    { tag: '@5e8', minBps: 5e8 },
   ];
   for (const sample of TRACE_SAMPLES) {
     const elements = normalizeGraph(sample.wire).elements;
     for (const v of variants) {
-      const model = deriveTrace(elements, { direction: sample.direction, minBps: v.minBps, layout: v.layout });
+      const model = deriveTrace(elements, { direction: sample.direction, minBps: v.minBps });
       expect(model.ok, `${sample.key}${v.tag}`).toBe(true);
       if (model.ok) {
         out.push({ name: `${sample.key}${v.tag}`, model });
@@ -129,7 +128,7 @@ describe('TraceCards', () => {
   });
 
   it('labels a hop card with data-kind, data-status and data-locatable', () => {
-    const k8s = cases().find((c) => c.name === 'k8s@node');
+    const k8s = cases().find((c) => c.name === 'k8s');
     expect(k8s).toBeDefined();
     if (k8s === undefined) {
       return;
@@ -142,7 +141,6 @@ describe('TraceCards', () => {
     const ns = cards.find((c) => c.getAttribute('data-kind') === 'ns');
     expect(ns?.getAttribute('data-locatable')).toBe('false');
     const doc = new DOMParser().parseFromString(markup, 'text/html');
-    expect(doc.querySelectorAll('g[data-testid^="trace-wrapper-"]').length).toBe(k8s.model.wrappers.length);
     expect(doc.querySelectorAll('[data-testid="trace-residual-out"]').length).toBeGreaterThan(0);
   });
 

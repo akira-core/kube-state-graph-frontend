@@ -13,7 +13,6 @@ import {
   useHostnameCandidates,
   type TraceDirection,
   type TraceDraft,
-  type TraceLayout,
 } from '../network-trace';
 
 import { NotFoundPage } from './NotFoundPage';
@@ -68,7 +67,6 @@ function NetworkPageBody({ view }: Readonly<{ view: View }>): JSX.Element {
     [applied.problems, built, dirty]
   );
   const [demoMinBps, setDemoMinBps] = useState(0);
-  const [layout, setLayout] = useState<TraceLayout>('flat');
   const minBps = config.demoMode ? demoMinBps : applied.minBps;
 
   const onQuery = useCallback(() => {
@@ -163,8 +161,6 @@ function NetworkPageBody({ view }: Readonly<{ view: View }>): JSX.Element {
             minBps={minBps}
             onMinBpsChange={onMinBpsChange}
             onLocateNode={onLocateNode}
-            layout={layout}
-            onLayoutChange={setLayout}
           />
         )}
       </main>

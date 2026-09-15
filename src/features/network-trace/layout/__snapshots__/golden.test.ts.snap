@@ -334,7 +334,6 @@ exports[`golden corpus > campus > geometry barycenter 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -672,7 +671,6 @@ exports[`golden corpus > campus > geometry flow 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -900,7 +898,6 @@ exports[`golden corpus > campus > model 1`] = `
       "bps": 4000000000,
       "col": 5,
       "id": "srv-nas-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-nas-01",
       "namespace": null,
@@ -914,7 +911,6 @@ exports[`golden corpus > campus > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -927,7 +923,6 @@ exports[`golden corpus > campus > model 1`] = `
   ],
   "root": "sw-dorm-b3",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -1265,7 +1260,6 @@ exports[`golden corpus > campus@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -1493,7 +1487,6 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "bps": 4000000000,
       "col": 5,
       "id": "srv-nas-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-nas-01",
       "namespace": null,
@@ -1507,7 +1500,6 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -1520,7 +1512,6 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
   ],
   "root": "sw-dorm-b3",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -1675,7 +1666,6 @@ exports[`golden corpus > classic > geometry barycenter 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -1830,7 +1820,6 @@ exports[`golden corpus > classic > geometry flow 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -1924,7 +1913,6 @@ exports[`golden corpus > classic > model 1`] = `
       "bps": 20000000000,
       "col": 3,
       "id": "srv-db-07",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-db-07",
       "namespace": null,
@@ -1938,7 +1926,6 @@ exports[`golden corpus > classic > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -1951,7 +1938,6 @@ exports[`golden corpus > classic > model 1`] = `
   ],
   "root": "sw-edge-a",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -2106,7 +2092,6 @@ exports[`golden corpus > classic@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -2200,7 +2185,6 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
       "bps": 20000000000,
       "col": 3,
       "id": "srv-db-07",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-db-07",
       "namespace": null,
@@ -2214,7 +2198,6 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -2227,7 +2210,6 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
   ],
   "root": "sw-edge-a",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -2741,7 +2723,6 @@ exports[`golden corpus > client > geometry barycenter 1`] = `
     },
   ],
   "width": 1835.7,
-  "wrappers": [],
 }
 `;
 
@@ -3255,7 +3236,6 @@ exports[`golden corpus > client > geometry flow 1`] = `
     },
   ],
   "width": 1835.7,
-  "wrappers": [],
 }
 `;
 
@@ -3501,7 +3481,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 12000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/12",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-gpu-01",
       "namespace": null,
@@ -3515,7 +3494,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 12000000000,
       "col": 3,
       "id": "trace:owner:1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "網管部 王小明",
       "namespace": null,
@@ -3529,7 +3507,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 8000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/13",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "10.42.7.32",
       "namespace": "lab",
@@ -3543,7 +3520,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 10000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/14",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "未管理小 switch",
       "namespace": null,
@@ -3557,7 +3533,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:owner:2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "總務處 李美華",
       "namespace": null,
@@ -3571,7 +3546,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 6000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/15",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-workstation-rendering-farm-node-42.corp.example.internal",
       "namespace": null,
@@ -3585,7 +3559,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 6000000000,
       "col": 3,
       "id": "trace:owner:3",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "研究發展二部 平台工程組 陳大文（分機 4721）",
       "namespace": null,
@@ -3599,7 +3572,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 4000000000,
       "col": 2,
       "id": "srv-legacy-09",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-legacy-09",
       "namespace": null,
@@ -3613,7 +3585,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 7000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/17",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "sw-tor-1:xe-0/0/17",
       "namespace": null,
@@ -3627,7 +3598,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:owner:4",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "設計部 張三",
       "namespace": null,
@@ -3641,7 +3611,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:owner:5",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "設計部 李四",
       "namespace": null,
@@ -3655,7 +3624,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 3000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/18",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "sw-tor-1:xe-0/0/18",
       "namespace": null,
@@ -3669,7 +3637,6 @@ exports[`golden corpus > client > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -3682,7 +3649,6 @@ exports[`golden corpus > client > model 1`] = `
   ],
   "root": "sw-tor-1",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -4196,7 +4162,6 @@ exports[`golden corpus > client@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 1835.7,
-  "wrappers": [],
 }
 `;
 
@@ -4442,7 +4407,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 12000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/12",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-gpu-01",
       "namespace": null,
@@ -4456,7 +4420,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 12000000000,
       "col": 3,
       "id": "trace:owner:1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "網管部 王小明",
       "namespace": null,
@@ -4470,7 +4433,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 8000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/13",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "10.42.7.32",
       "namespace": "lab",
@@ -4484,7 +4446,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 10000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/14",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "未管理小 switch",
       "namespace": null,
@@ -4498,7 +4459,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:owner:2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "總務處 李美華",
       "namespace": null,
@@ -4512,7 +4472,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/15",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-workstation-rendering-farm-node-42.corp.example.internal",
       "namespace": null,
@@ -4526,7 +4485,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 3,
       "id": "trace:owner:3",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "研究發展二部 平台工程組 陳大文（分機 4721）",
       "namespace": null,
@@ -4540,7 +4498,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 4000000000,
       "col": 2,
       "id": "srv-legacy-09",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-legacy-09",
       "namespace": null,
@@ -4554,7 +4511,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 7000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/17",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "sw-tor-1:xe-0/0/17",
       "namespace": null,
@@ -4568,7 +4524,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:owner:4",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "設計部 張三",
       "namespace": null,
@@ -4582,7 +4537,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:owner:5",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "設計部 李四",
       "namespace": null,
@@ -4596,7 +4550,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 3000000000,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/18",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "sw-tor-1:xe-0/0/18",
       "namespace": null,
@@ -4610,7 +4563,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -4623,7 +4575,6 @@ exports[`golden corpus > client@5e8 > model 1`] = `
   ],
   "root": "sw-tor-1",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -5919,7 +5870,6 @@ exports[`golden corpus > dci-tier > geometry barycenter 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -7215,7 +7165,6 @@ exports[`golden corpus > dci-tier > geometry flow 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -8149,7 +8098,6 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-01",
       "namespace": null,
@@ -8163,7 +8111,6 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-02",
       "namespace": null,
@@ -8177,7 +8124,6 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-03",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-03",
       "namespace": null,
@@ -8191,7 +8137,6 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-04",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-04",
       "namespace": null,
@@ -8205,7 +8150,6 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -8218,7 +8162,6 @@ exports[`golden corpus > dci-tier > model 1`] = `
   ],
   "root": "core-1",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -9514,7 +9457,6 @@ exports[`golden corpus > dci-tier@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -10448,7 +10390,6 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-01",
       "namespace": null,
@@ -10462,7 +10403,6 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-02",
       "namespace": null,
@@ -10476,7 +10416,6 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-03",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-03",
       "namespace": null,
@@ -10490,7 +10429,6 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-a-04",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-a-04",
       "namespace": null,
@@ -10504,7 +10442,6 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -10517,7 +10454,6 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
   ],
   "root": "core-1",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -11560,7 +11496,6 @@ exports[`golden corpus > dci-uturn > geometry barycenter 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -12603,7 +12538,6 @@ exports[`golden corpus > dci-uturn > geometry flow 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -13385,7 +13319,6 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-1",
       "namespace": null,
@@ -13399,7 +13332,6 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-2",
       "namespace": null,
@@ -13413,7 +13345,6 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-3",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-3",
       "namespace": null,
@@ -13427,7 +13358,6 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-4",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-4",
       "namespace": null,
@@ -13441,7 +13371,6 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -13456,7 +13385,6 @@ exports[`golden corpus > dci-uturn > model 1`] = `
   "warnings": [
     "tier "dci-spn" → tier "bdr" runs against the majority direction (6 Gbps vs 30 Gbps); drawn as backflow, not used for column order.",
   ],
-  "wrappers": [],
 }
 `;
 
@@ -14499,7 +14427,6 @@ exports[`golden corpus > dci-uturn@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 2380,
-  "wrappers": [],
 }
 `;
 
@@ -15281,7 +15208,6 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-1",
       "namespace": null,
@@ -15295,7 +15221,6 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-2",
       "namespace": null,
@@ -15309,7 +15234,6 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-3",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-3",
       "namespace": null,
@@ -15323,7 +15247,6 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 5,
       "id": "srv-4",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-4",
       "namespace": null,
@@ -15337,7 +15260,6 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -15352,7 +15274,6 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
   "warnings": [
     "tier "dci-spn" → tier "bdr" runs against the majority direction (6 Gbps vs 30 Gbps); drawn as backflow, not used for column order.",
   ],
-  "wrappers": [],
 }
 `;
 
@@ -15599,7 +15520,6 @@ exports[`golden corpus > dual-uplink > geometry barycenter 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -15846,7 +15766,6 @@ exports[`golden corpus > dual-uplink > geometry flow 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -15998,7 +15917,6 @@ exports[`golden corpus > dual-uplink > model 1`] = `
       "bps": 11000000000,
       "col": 4,
       "id": "srv-cache-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-cache-02",
       "namespace": null,
@@ -16012,7 +15930,6 @@ exports[`golden corpus > dual-uplink > model 1`] = `
       "bps": 5000000000,
       "col": 4,
       "id": "srv-cache-03",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-cache-03",
       "namespace": null,
@@ -16026,7 +15943,6 @@ exports[`golden corpus > dual-uplink > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -16039,7 +15955,6 @@ exports[`golden corpus > dual-uplink > model 1`] = `
   ],
   "root": "sw-edge-a",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -16286,7 +16201,6 @@ exports[`golden corpus > dual-uplink@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -16438,7 +16352,6 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
       "bps": 11000000000,
       "col": 4,
       "id": "srv-cache-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-cache-02",
       "namespace": null,
@@ -16452,7 +16365,6 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
       "bps": 5000000000,
       "col": 4,
       "id": "srv-cache-03",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-cache-03",
       "namespace": null,
@@ -16466,7 +16378,6 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -16479,7 +16390,6 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
   ],
   "root": "sw-edge-a",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -16961,7 +16871,6 @@ exports[`golden corpus > k8s > geometry barycenter 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -17443,7 +17352,6 @@ exports[`golden corpus > k8s > geometry flow 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -17709,7 +17617,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 3000000000,
       "col": 4,
       "id": "srv-log-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-log-01",
       "namespace": null,
@@ -17723,7 +17630,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 8000000000,
       "col": 3,
       "id": "ingest-7d9c",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "ingest-7d9c",
       "namespace": "telemetry",
@@ -17737,7 +17643,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 13500000000,
       "col": 4,
       "id": "trace:ns:1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "telemetry",
       "namespace": "telemetry",
@@ -17751,7 +17656,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 3500000000,
       "col": 3,
       "id": "kafka-2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "kafka-2",
       "namespace": "stream",
@@ -17765,7 +17669,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 3500000000,
       "col": 4,
       "id": "trace:ns:2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "stream",
       "namespace": "stream",
@@ -17779,7 +17682,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 5500000000,
       "col": 3,
       "id": "ingest-4f11",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "ingest-4f11",
       "namespace": "telemetry",
@@ -17793,7 +17695,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 2500000000,
       "col": 3,
       "id": "debug-shell",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "debug-shell",
       "namespace": "debug",
@@ -17807,7 +17708,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 2500000000,
       "col": 4,
       "id": "trace:ns:3",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "debug",
       "namespace": "debug",
@@ -17821,7 +17721,6 @@ exports[`golden corpus > k8s > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -17834,7 +17733,6 @@ exports[`golden corpus > k8s > model 1`] = `
   ],
   "root": "sw-tor-k8s",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -18316,7 +18214,6 @@ exports[`golden corpus > k8s@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -18582,7 +18479,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 3000000000,
       "col": 4,
       "id": "srv-log-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-log-01",
       "namespace": null,
@@ -18596,7 +18492,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 8000000000,
       "col": 3,
       "id": "ingest-7d9c",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "ingest-7d9c",
       "namespace": "telemetry",
@@ -18610,7 +18505,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 13500000000,
       "col": 4,
       "id": "trace:ns:1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "telemetry",
       "namespace": "telemetry",
@@ -18624,7 +18518,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 3500000000,
       "col": 3,
       "id": "kafka-2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "kafka-2",
       "namespace": "stream",
@@ -18638,7 +18531,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 3500000000,
       "col": 4,
       "id": "trace:ns:2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "stream",
       "namespace": "stream",
@@ -18652,7 +18544,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 5500000000,
       "col": 3,
       "id": "ingest-4f11",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "ingest-4f11",
       "namespace": "telemetry",
@@ -18666,7 +18557,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 2500000000,
       "col": 3,
       "id": "debug-shell",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "debug-shell",
       "namespace": "debug",
@@ -18680,7 +18570,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 2500000000,
       "col": 4,
       "id": "trace:ns:3",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "debug",
       "namespace": "debug",
@@ -18694,7 +18583,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -18707,7 +18595,6 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
   ],
   "root": "sw-tor-k8s",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -19101,7 +18988,6 @@ exports[`golden corpus > k8s-source > geometry barycenter 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -19495,7 +19381,6 @@ exports[`golden corpus > k8s-source > geometry flow 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -19717,7 +19602,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 7000000000,
       "col": 1,
       "id": "web-6f8d",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "web-6f8d",
       "namespace": "frontend",
@@ -19731,7 +19615,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 10000000000,
       "col": 0,
       "id": "trace:ns:1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "frontend",
       "namespace": "frontend",
@@ -19745,7 +19628,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 3000000000,
       "col": 1,
       "id": "cache-1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "cache-1",
       "namespace": "frontend",
@@ -19759,7 +19641,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 2000000000,
       "col": 1,
       "id": "batch-9k",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "batch-9k",
       "namespace": "batch",
@@ -19773,7 +19654,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 8000000000,
       "col": 0,
       "id": "trace:ns:2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "batch",
       "namespace": "batch",
@@ -19787,7 +19667,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 6000000000,
       "col": 1,
       "id": "job-runner-5c",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "job-runner-5c",
       "namespace": "batch",
@@ -19801,7 +19680,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "bps": 0,
       "col": 4,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -19814,7 +19692,6 @@ exports[`golden corpus > k8s-source > model 1`] = `
   ],
   "root": "sw-tor-k8s",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -20208,7 +20085,6 @@ exports[`golden corpus > k8s-source@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 2004,
-  "wrappers": [],
 }
 `;
 
@@ -20430,7 +20306,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 7000000000,
       "col": 1,
       "id": "web-6f8d",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "web-6f8d",
       "namespace": "frontend",
@@ -20444,7 +20319,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 10000000000,
       "col": 0,
       "id": "trace:ns:1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "frontend",
       "namespace": "frontend",
@@ -20458,7 +20332,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 3000000000,
       "col": 1,
       "id": "cache-1",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "cache-1",
       "namespace": "frontend",
@@ -20472,7 +20345,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 2000000000,
       "col": 1,
       "id": "batch-9k",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "batch-9k",
       "namespace": "batch",
@@ -20486,7 +20358,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 8000000000,
       "col": 0,
       "id": "trace:ns:2",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "batch",
       "namespace": "batch",
@@ -20500,7 +20371,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 1,
       "id": "job-runner-5c",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "job-runner-5c",
       "namespace": "batch",
@@ -20514,7 +20384,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "bps": 0,
       "col": 4,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -20527,7 +20396,6 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
   ],
   "root": "sw-tor-k8s",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -20790,7 +20658,6 @@ exports[`golden corpus > pruned > geometry barycenter 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -21053,7 +20920,6 @@ exports[`golden corpus > pruned > geometry flow 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -21189,7 +21055,6 @@ exports[`golden corpus > pruned > model 1`] = `
       "bps": 9000000000,
       "col": 3,
       "id": "srv-app-11",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-app-11",
       "namespace": null,
@@ -21203,7 +21068,6 @@ exports[`golden corpus > pruned > model 1`] = `
       "bps": 6000000000,
       "col": 3,
       "id": "srv-app-12",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-app-12",
       "namespace": null,
@@ -21217,7 +21081,6 @@ exports[`golden corpus > pruned > model 1`] = `
       "bps": 10000000000,
       "col": 3,
       "id": "srv-log-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-log-01",
       "namespace": null,
@@ -21231,7 +21094,6 @@ exports[`golden corpus > pruned > model 1`] = `
       "bps": 5000000000,
       "col": 3,
       "id": "srv-log-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-log-02",
       "namespace": null,
@@ -21245,7 +21107,6 @@ exports[`golden corpus > pruned > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -21258,7 +21119,6 @@ exports[`golden corpus > pruned > model 1`] = `
   ],
   "root": "sw-tor-14",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -21521,7 +21381,6 @@ exports[`golden corpus > pruned@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -21657,7 +21516,6 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
       "bps": 9000000000,
       "col": 3,
       "id": "srv-app-11",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-app-11",
       "namespace": null,
@@ -21671,7 +21529,6 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
       "bps": 6000000000,
       "col": 3,
       "id": "srv-app-12",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-app-12",
       "namespace": null,
@@ -21685,7 +21542,6 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
       "bps": 10000000000,
       "col": 3,
       "id": "srv-log-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-log-01",
       "namespace": null,
@@ -21699,7 +21555,6 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
       "bps": 5000000000,
       "col": 3,
       "id": "srv-log-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "srv-log-02",
       "namespace": null,
@@ -21713,7 +21568,6 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
       "bps": 0,
       "col": 0,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -21726,7 +21580,6 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
   ],
   "root": "sw-tor-14",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -21990,7 +21843,6 @@ exports[`golden corpus > source > geometry barycenter 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -22254,7 +22106,6 @@ exports[`golden corpus > source > geometry flow 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -22406,7 +22257,6 @@ exports[`golden corpus > source > model 1`] = `
       "bps": 7000000000,
       "col": 0,
       "id": "lab-gpu-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-gpu-01",
       "namespace": null,
@@ -22420,7 +22270,6 @@ exports[`golden corpus > source > model 1`] = `
       "bps": 3000000000,
       "col": 0,
       "id": "lab-gpu-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-gpu-02",
       "namespace": null,
@@ -22434,7 +22283,6 @@ exports[`golden corpus > source > model 1`] = `
       "bps": 4000000000,
       "col": 0,
       "id": "backup-relay",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "backup-relay",
       "namespace": null,
@@ -22448,7 +22296,6 @@ exports[`golden corpus > source > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -22461,7 +22308,6 @@ exports[`golden corpus > source > model 1`] = `
   ],
   "root": "sw-core-1",
   "warnings": [],
-  "wrappers": [],
 }
 `;
 
@@ -22725,7 +22571,6 @@ exports[`golden corpus > source@5e8 > geometry flow 1`] = `
     },
   ],
   "width": 1628,
-  "wrappers": [],
 }
 `;
 
@@ -22877,7 +22722,6 @@ exports[`golden corpus > source@5e8 > model 1`] = `
       "bps": 7000000000,
       "col": 0,
       "id": "lab-gpu-01",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-gpu-01",
       "namespace": null,
@@ -22891,7 +22735,6 @@ exports[`golden corpus > source@5e8 > model 1`] = `
       "bps": 3000000000,
       "col": 0,
       "id": "lab-gpu-02",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "lab-gpu-02",
       "namespace": null,
@@ -22905,7 +22748,6 @@ exports[`golden corpus > source@5e8 > model 1`] = `
       "bps": 4000000000,
       "col": 0,
       "id": "backup-relay",
-      "k8sNode": null,
       "kind": "leaf",
       "label": "backup-relay",
       "namespace": null,
@@ -22919,7 +22761,6 @@ exports[`golden corpus > source@5e8 > model 1`] = `
       "bps": 0,
       "col": 3,
       "id": "trace:anchor",
-      "k8sNode": null,
       "kind": "anchor",
       "label": "Trace start",
       "namespace": null,
@@ -22932,6 +22773,5 @@ exports[`golden corpus > source@5e8 > model 1`] = `
   ],
   "root": "sw-core-1",
   "warnings": [],
-  "wrappers": [],
 }
 `;

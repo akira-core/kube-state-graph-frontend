@@ -8,7 +8,6 @@ import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples
 import { hopBalanceRows, namespaceAggs } from './aggregates';
 import { bandOf, isClientPartition, k8sSubcol } from './bands';
 import { deriveTrace, directionFor, indexTrace, resolveTraceDirection } from './deriveTrace';
-import { hoverPath } from './hoverPath';
 import type { TraceModelOk, TraceNode } from './types';
 
 function elementsOf(wire: unknown): cytoscape.ElementDefinition[] {
@@ -17,7 +16,7 @@ function elementsOf(wire: unknown): cytoscape.ElementDefinition[] {
   return elements;
 }
 
-function derive(sample: TraceSample, opts: { minBps?: number; layout?: 'flat' | 'node' } = {}): TraceModelOk {
+function derive(sample: TraceSample, opts: { minBps?: number } = {}): TraceModelOk {
   const model = deriveTrace(elementsOf(sample.wire), { direction: sample.direction, ...opts });
   if (!model.ok) {
     throw new Error(`${sample.key}: ${model.errors.join(' / ')}`);
@@ -71,7 +70,7 @@ describe('deriveTrace on the sample corpus', () => {
   it('never mutates the input elements', () => {
     const elements = elementsOf(traceSample('client').wire);
     const before = JSON.stringify(elements);
-    deriveTrace(elements, { direction: 'destination', minBps: 5e8, layout: 'node' });
+    deriveTrace(elements, { direction: 'destination', minBps: 5e8 });
     expect(JSON.stringify(elements)).toBe(before);
   });
 
@@ -493,98 +492,6 @@ describe('hop kinds', () => {
     expect(r.otherOut).toBe(0.5e9);
     expect(r.col).toBe(node(model, 'sw-a').col + 1);
     expect(model.edges.filter((e) => e.fromId === 'rt-1' || e.toId === 'rt-1')).toHaveLength(2);
-  });
-});
-
-describe('k8s node wrappers (layout: node)', () => {
-  const wrapperWire = {
-    elements: {
-      nodes: [
-        N({
-          id: 'sw1',
-          type: 'switch',
-          name: 'SW 1',
-          investigation: { iface: 'xe-0/0/1', delta_bps: 3e9, direction: 'in' },
-        }),
-        N({ id: 'aaa-node', type: 'node', name: 'aaa-node', status: 'critical' }),
-        N({ id: 'zzz-node', type: 'node', name: 'zzz-node' }),
-        N({ id: 'ns1', type: 'namespace', name: 'ns1' }),
-        N({ id: 'p-small', type: 'pod', name: 'p-small', parent: 'ns1' }),
-        N({ id: 'p-big', type: 'pod', name: 'p-big', parent: 'ns1' }),
-      ],
-      edges: [
-        E({
-          id: 'e1',
-          type: 'network-flow',
-          source: 'sw1',
-          target: 'p-small',
-          labels: { source_iface: 'xe-0/0/1' },
-          metrics: { delta_bps: 1e9 },
-        }),
-        E({
-          id: 'e2',
-          type: 'network-flow',
-          source: 'sw1',
-          target: 'p-big',
-          labels: { source_iface: 'xe-0/0/2' },
-          metrics: { delta_bps: 2e9 },
-        }),
-        E({
-          id: 'e3',
-          type: 'network-flow',
-          source: 'p-small',
-          target: 'aaa-node',
-          labels: { tier: 'pod-node' },
-          metrics: { delta_bps: 1e9 },
-        }),
-        E({ id: 'e4', type: 'pod-to-node', source: 'p-big', target: 'zzz-node' }),
-      ],
-    },
-  };
-
-  it('flat: k8s nodes touched only by placement edges are not drawn', () => {
-    const m = deriveTrace(elementsOf(wrapperWire), { direction: 'destination' });
-    expect(m.ok).toBe(true);
-    if (!m.ok) {
-      return;
-    }
-    expect(m.wrappers).toEqual([]);
-    expect(m.nodeMap.has('aaa-node')).toBe(false);
-    expect(m.edges.filter((e) => !e.derived && !e.isAnchor)).toHaveLength(2);
-  });
-
-  it('node: each k8s node becomes a frame around its surviving pods, folding status', () => {
-    const m = deriveTrace(elementsOf(wrapperWire), { direction: 'destination', layout: 'node' });
-    expect(m.ok).toBe(true);
-    if (!m.ok) {
-      return;
-    }
-    expect(m.wrappers.map((w) => w.id).sort()).toEqual(['aaa-node', 'zzz-node']);
-    const aaa = m.wrappers.find((w) => w.id === 'aaa-node');
-    expect(aaa?.podIds).toEqual(['p-small']);
-    expect(aaa?.status).toBe('critical');
-    expect(node(m, 'p-small').k8sNode).toBe('aaa-node');
-    expect(m.nodeMap.has('aaa-node')).toBe(false);
-    // A threshold that removes the pod removes the frame with it.
-    const cut = deriveTrace(elementsOf(wrapperWire), { direction: 'destination', layout: 'node', minBps: 1.5e9 });
-    expect(cut.ok).toBe(true);
-    if (cut.ok) {
-      expect(cut.wrappers.map((w) => w.id)).toEqual(['zzz-node']);
-    }
-  });
-
-  it('hoverPath through a wrapper is the union of its pods and reaches the namespace card', () => {
-    const m = deriveTrace(elementsOf(wrapperWire), { direction: 'destination', layout: 'node' });
-    expect(m.ok).toBe(true);
-    if (!m.ok) {
-      return;
-    }
-    const path = hoverPath(m, 'aaa-node');
-    expect(path.nodeIds.has('aaa-node')).toBe(true);
-    expect(path.nodeIds.has('p-small')).toBe(true);
-    expect(path.nodeIds.has('sw1')).toBe(true);
-    expect([...path.nodeIds].some((id) => m.nodeMap.get(id)?.role === 'ns')).toBe(true);
-    expect(path.nodeIds.has('p-big')).toBe(false);
   });
 });
 

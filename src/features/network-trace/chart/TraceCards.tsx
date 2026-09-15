@@ -1,11 +1,10 @@
 import type { JSX, MouseEvent } from 'react';
 
-import { countWord } from '../../../shared/format/countWord';
 import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
-import { haloStyle, SankeyCard, SankeyWrapperBox, type SlotLabel } from '../../sankey-canvas';
+import { haloStyle, SankeyCard, type SlotLabel } from '../../sankey-canvas';
 import { DEVICE_KINDS, RES_GAP, RES_LEN } from '../layout/constants';
-import type { NodeGeom, Slot, WrapperGeom } from '../layout/types';
+import type { NodeGeom, Slot } from '../layout/types';
 import { locatable } from '../model/locatable';
 import type { TraceNode } from '../model/types';
 
@@ -61,48 +60,6 @@ export function TraceCard({ n, g, tokens, faded, onEnter, onLeave, onClick }: Re
       {...(isHop ? { slotLabels: slotLabels(g) } : {})}
       {...(text.cornerLabel !== undefined ? { cornerLabel: text.cornerLabel } : {})}
       testId={`trace-node-${text.label !== '' ? text.label : n.id}`}
-      onEnter={onEnter}
-      onLeave={onLeave}
-      onClick={onClick}
-    />
-  );
-}
-
-export interface TraceWrapperProps {
-  wg: WrapperGeom;
-  tokens: ThemeTokens;
-  faded: boolean;
-  onEnter: (id: string, evt: MouseEvent) => void;
-  onLeave: () => void;
-  onClick: (id: string) => void;
-}
-
-export function TraceWrapperBox({
-  wg,
-  tokens,
-  faded,
-  onEnter,
-  onLeave,
-  onClick,
-}: Readonly<TraceWrapperProps>): JSX.Element {
-  const w = wg.wrapper;
-  const count = w.podIds.length;
-  return (
-    <SankeyWrapperBox
-      id={w.id}
-      label={w.label}
-      subtitle={w.noFlow ? 'node · no flow' : `node · ${countWord(count, 'pod')}`}
-      kind="node"
-      x={wg.x}
-      y={wg.y}
-      width={wg.w}
-      height={wg.h}
-      tokens={tokens}
-      {...(w.status !== null ? { status: w.status } : {})}
-      locatable={locatable(w)}
-      faded={faded}
-      testId={`trace-wrapper-${w.label}`}
-      titleTestId={`trace-wrapper-title-${w.label}`}
       onEnter={onEnter}
       onLeave={onLeave}
       onClick={onClick}

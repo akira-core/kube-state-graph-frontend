@@ -1,7 +1,7 @@
 import type cytoscape from 'cytoscape';
 
 import type { NodeIndex } from './nodeIndex';
-import type { TraceDirection, TraceEdge, TraceInvestigation, TraceLayout, TraceNode, TraceWrapper } from './types';
+import type { TraceDirection, TraceEdge, TraceInvestigation, TraceNode } from './types';
 
 /** One aggregated ribbon (same source / target / ifaces) before it becomes an edge. */
 export interface AggEdge {
@@ -24,7 +24,6 @@ export interface BuildCtx {
   direction: TraceDirection;
   inv: TraceInvestigation | null;
   minBps: number;
-  layout: TraceLayout;
   warnings: string[];
   index: NodeIndex;
   // step 1a
@@ -34,16 +33,12 @@ export interface BuildCtx {
   contOut: Map<string, number>;
   contIn: Map<string, number>;
   agg: Map<string, AggEdge>;
-  /** k8s node id → pod ids placed on it (placement-edge order). */
-  k8sPods: Map<string, string[]>;
   // step 1b / 2
   nodes: Map<string, TraceNode>;
   order: string[];
   edges: TraceEdge[];
   dropIn: Map<string, number>;
   dropOut: Map<string, number>;
-  /** k8s nodes touched only by placement edges — wrappers under the `node` layout. */
-  k8sRaw: cytoscape.NodeDataDefinition[];
   filteredCount: number;
   filteredBps: number;
   // step 3
@@ -51,6 +46,4 @@ export interface BuildCtx {
   anchorEdge: TraceEdge | null;
   // step 4b
   filteredNodes: string[];
-  // step 6b
-  wrappers: TraceWrapper[];
 }

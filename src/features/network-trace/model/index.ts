@@ -19,11 +19,9 @@ export type {
   TraceDirection,
   TraceEdge,
   TraceInvestigation,
-  TraceLayout,
   TraceModel,
   TraceModelError,
   TraceModelOk,
   TraceNode,
   TraceNodeKind,
-  TraceWrapper,
 } from './types';

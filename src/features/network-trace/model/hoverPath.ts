@@ -7,8 +7,7 @@ export interface HoverPath {
 
 /**
  * The whole path through a card: upstream along `inEdges`, downstream along `outEdges`,
- * through derived edges and ownership lines to the ends. A wrapper lights the union of its
- * member pods' paths (plus itself). An empty wrapper has no path.
+ * through derived edges and ownership lines to the ends.
  */
 export function hoverPath(model: TraceModelOk, id: string): HoverPath {
   return hoverPathMany(model, [id]);
@@ -20,7 +19,6 @@ export function hoverPath(model: TraceModelOk, id: string): HoverPath {
  * direction: the union is exact and costs one pass however many ids there are.
  */
 export function hoverPathMany(model: TraceModelOk, ids: Iterable<string>): HoverPath {
-  const wrappersById = new Map(model.wrappers.map((w) => [w.id, w]));
   const edgeIds = new Set<string>();
   const nodeIds = new Set<string>();
   const walk = (
@@ -57,14 +55,8 @@ export function hoverPathMany(model: TraceModelOk, ids: Iterable<string>): Hover
   const seenUp = new Set<string>();
   const seenDown = new Set<string>();
   for (const id of ids) {
-    const wrapper = wrappersById.get(id);
-    if (wrapper !== undefined) {
-      nodeIds.add(id);
-    }
-    for (const s of wrapper !== undefined ? wrapper.podIds : [id]) {
-      walk(s, 'inEdges', (e) => e.fromId, seenUp);
-      walk(s, 'outEdges', (e) => e.toId, seenDown);
-    }
+    walk(id, 'inEdges', (e) => e.fromId, seenUp);
+    walk(id, 'outEdges', (e) => e.toId, seenDown);
   }
   return { edgeIds, nodeIds };
 }

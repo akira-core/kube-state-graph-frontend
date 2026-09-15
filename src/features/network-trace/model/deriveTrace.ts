@@ -11,7 +11,6 @@ import { computeResiduals } from './residuals';
 import { scanEdges, scanNodes } from './scan';
 import type { DeriveTraceOptions, TraceDirection, TraceInvestigation, TraceModel } from './types';
 import { validateTraceSemantics } from './validate';
-import { buildWrappers } from './wrappers';
 
 export { resolveInvestigation, resolveTraceDirection } from './investigation';
 
@@ -55,7 +54,6 @@ export function directionFor(
  *   4  prune          attach edges; 4b ★ drop hops left with no edge
  *   5  columns        tier super-nodes, majority vote, SCC, longest path, backward / lateral
  *   6  residuals      ★ hidden amounts fold into residuals; every hop balances
- *   6b wrappers       k8s node frames under the `node` layout
  *   7  assemble       columns from 0, the result object
  * The input is never mutated.
  */
@@ -90,7 +88,6 @@ function derive(
     direction: opts.direction,
     inv: resolved.inv,
     minBps: Math.max(0, opts.minBps ?? 0),
-    layout: opts.layout ?? 'flat',
     warnings: [],
     index,
     flowTouch: new Set(),
@@ -99,19 +96,16 @@ function derive(
     contOut: new Map(),
     contIn: new Map(),
     agg: new Map(),
-    k8sPods: new Map(),
     nodes: new Map(),
     order: [],
     edges: [],
     dropIn: new Map(),
     dropOut: new Map(),
-    k8sRaw: [],
     filteredCount: 0,
     filteredBps: 0,
     root: null,
     anchorEdge: null,
     filteredNodes: [],
-    wrappers: [],
   };
   scanEdges(ctx);
   const e1 = scanNodes(ctx);
@@ -126,7 +120,6 @@ function derive(
   attachAndPrune(ctx);
   assignColumns(ctx);
   computeResiduals(ctx);
-  buildWrappers(ctx);
   normalizeColumns(ctx);
   return assemble(ctx);
 }

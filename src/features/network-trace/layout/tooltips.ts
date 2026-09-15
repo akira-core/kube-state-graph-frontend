@@ -4,7 +4,7 @@ import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { nodeTooltipRows, type TooltipLine } from '../../sankey-canvas';
 import { bandOf, isClientPartition, k8sSubcol, type K8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
-import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
+import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, sum } from '../model/util';
 
 import { typeWord, usageText } from './text';
@@ -56,23 +56,12 @@ export function bandTooltipLines(e: TraceEdge, model: TraceModelOk): string[] {
   return lines;
 }
 
-function wrapperEdges(w: TraceWrapper, model: TraceModelOk): { inb: TraceEdge[]; outb: TraceEdge[] } {
-  let inb: TraceEdge[] = [];
-  let outb: TraceEdge[] = [];
-  for (const id of w.podIds) {
-    const p = mustGet(model.nodeMap, id, 'pod');
-    inb = inb.concat(p.inEdges);
-    outb = outb.concat(p.outEdges);
-  }
-  return { inb, outb };
-}
-
 /**
  * Node tooltip in the shared row order (see `nodeTooltipRows`), from the trace model's
  * fields. A hop splits what the trace followed from what it did not, each row painted like
  * its mark: `traced in / out` in the ribbon colour, `other in / out` in the residual colours.
  */
-export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelOk, tokens: ThemeTokens): TooltipLine[] {
+export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: ThemeTokens): TooltipLine[] {
   if (n.kind === 'anchor') {
     const inv = model.investigation;
     return [
@@ -82,25 +71,20 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
       ...(n.note !== '' ? [`note ${n.note}`] : []),
     ];
   }
-  const isW = n.kind === 'wrapper';
-  const { inb, outb } = n.kind === 'wrapper' ? wrapperEdges(n, model) : { inb: n.inEdges, outb: n.outEdges };
   const flow: TooltipLine[] = [];
-  if (n.kind !== 'wrapper' && n.noFlow) {
+  if (n.noFlow) {
     flow.push('no drawable flow edge (no flow)');
-  } else if (n.kind !== 'wrapper' && n.role === 'owner' && !(n.bps > 0)) {
+  } else if (n.role === 'owner' && !(n.bps > 0)) {
     flow.push('in — (metered at the port: the port also carries other owners)');
   } else if (n.kind === 'node') {
     flow.push({ text: `traced in ${formatBitsPerSec(n.tracedIn)}`, color: tokens.sankey.traceFlow });
     flow.push({ text: `traced out ${formatBitsPerSec(n.tracedOut)}`, color: tokens.sankey.traceFlow });
   } else {
-    flow.push(`in ${formatBitsPerSec(sum(inb))}`);
-    flow.push(`out ${formatBitsPerSec(sum(outb))}`);
+    flow.push(`in ${formatBitsPerSec(sum(n.inEdges))}`);
+    flow.push(`out ${formatBitsPerSec(sum(n.outEdges))}`);
   }
   const membership: TooltipLine[] = [];
-  if (isW) {
-    membership.push('derived from member pods');
-    membership.push(countWord(n.podIds.length, 'pod'));
-  } else if (n.kind === 'node') {
+  if (n.kind === 'node') {
     if (!n.noFlow) {
       membership.push({ text: `other in ${formatBitsPerSec(n.otherIn)}`, color: tokens.sankey.traceResidualIn });
       membership.push({ text: `other out ${formatBitsPerSec(n.otherOut)}`, color: tokens.sankey.traceResidualOut });
@@ -115,12 +99,7 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
     membership.push('derived from member pods');
     membership.push(countWord(n.podCount, 'pod'));
   }
-  let fold = '';
-  if (isW) {
-    fold = ' (worst of node and member pods)';
-  } else if (n.role === 'ns' || n.role === 'app') {
-    fold = ' (worst of member pods)';
-  }
+  const fold = n.role === 'ns' || n.role === 'app' ? ' (worst of member pods)' : '';
   const info = n.info;
   const perf =
     info?.perf === undefined
@@ -128,12 +107,12 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
       : Object.entries(info.perf).map(
           ([k, v]) => `${k} ${k === 'total_bytes_per_sec' ? `${formatBytes(v)}/s` : String(v)} (raw)`
         );
-  const clients = isW ? null : n.clients;
-  const synthetic = !isW && (n.role === 'ns' || n.role === 'app' || n.role === 'owner');
+  const clients = n.clients;
+  const synthetic = n.role === 'ns' || n.role === 'app' || n.role === 'owner';
   return nodeTooltipRows({
     head: `${typeWord(n)} / ${n.label}`,
-    ...(!isW && n.namespace !== null && n.role !== 'ns' ? { namespace: n.namespace } : {}),
-    ...(!isW && n.ontapCluster !== null ? { ontapCluster: n.ontapCluster } : {}),
+    ...(n.namespace !== null && n.role !== 'ns' ? { namespace: n.namespace } : {}),
+    ...(n.ontapCluster !== null ? { ontapCluster: n.ontapCluster } : {}),
     flow,
     membership,
     ...(n.usage !== null ? { usage: `usage ${usageText(n.usage)}` } : {}),
@@ -167,12 +146,7 @@ export function residualTooltipLines(n: TraceNode, side: 'in' | 'out', tokens: T
   ];
 }
 
-/** The caption of a column holding only frames (every pod hidden but the root's). */
-export function wrapperColCaption(): string {
-  return 'node / pod';
-}
-
-/** The k8s sub-column word; a pod column that also holds k8s nodes reads `node / pod`. */
+/** The k8s sub-column word. */
 const K8S_SUBCOL_WORD: Record<K8sSubcol, string> = {
   node: 'k8s node',
   pod: 'pod',
@@ -212,11 +186,6 @@ export function colCaption(col: readonly TraceNode[], direction: TraceDirection,
   if (k8s === undefined) {
     return 'client';
   }
-  const sub = k8sSubcol(k8s);
-  let word = K8S_SUBCOL_WORD[sub ?? 'ns'];
-
-  if (sub === 'pod' && col.some((n) => n.k8sNode !== null)) {
-    word = 'node / pod';
-  }
+  const word = K8S_SUBCOL_WORD[k8sSubcol(k8s) ?? 'ns'];
   return hasClient ? `${word} / client` : word;
 }
