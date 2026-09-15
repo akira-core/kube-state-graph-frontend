@@ -26,7 +26,7 @@ export function TraceLegend({ model, tokens }: Readonly<{ model: TraceModelOk; t
     <div className="flex flex-wrap items-center gap-3" data-testid="trace-legend">
       <Row testId="trace-legend-flow">
         <Swatch color={tokens.sankey.traceFlow} />
-        traced Δ (width = rate increase)
+        traced Δ (width = rate increase, chevron = direction)
       </Row>
       {hasLateral && (
         <Row testId="trace-legend-lateral">

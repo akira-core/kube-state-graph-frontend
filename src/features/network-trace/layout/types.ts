@@ -47,6 +47,8 @@ export interface EdgeGeom {
   d: string;
   /** A lateral arc's arrow head; absent for every other kind. */
   arrow?: string;
+  /** The direction chevron inside the target end of every amount ribbon; absent on an ownership line. */
+  chevron?: string;
 
   x1: number;
   y1: number;

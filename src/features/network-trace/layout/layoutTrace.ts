@@ -18,7 +18,7 @@ import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, SEP } from '../model/util';
 
 import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, LATERAL_BULGE_MIN, OWN_T, PAD_SIDE } from './constants';
-import { bandKind, edgePath, lateralArrow } from './paths';
+import { bandKind, chevronDir, edgePath, endChevron, lateralArrow } from './paths';
 import {
   ANCHOR_MIN_H,
   cardText,
@@ -702,6 +702,9 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     eg.d = edgePath(eg);
     if (eg.kind === 'lateral') {
       eg.arrow = lateralArrow(eg);
+    }
+    if (eg.kind !== 'own') {
+      eg.chevron = endChevron(eg, chevronDir(eg));
     }
   }
 

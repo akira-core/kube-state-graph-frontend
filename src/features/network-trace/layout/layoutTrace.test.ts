@@ -70,6 +70,15 @@ describe('layoutTrace geometry', () => {
         if (e.lateral) {
           expect(eg.bulge).toBeDefined();
         }
+        // Every amount ribbon ends in a chevron whose tip sits just inside its target end;
+        // an ownership line carries no amount and no direction mark.
+        if (e.owns) {
+          expect(eg.chevron).toBeUndefined();
+        } else {
+          const dir = eg.kind === 'back-loop' || eg.x2 >= eg.x1 ? 1 : -1;
+          expect(eg.chevron).toBeDefined();
+          expect(eg.chevron).toContain(` L${String(eg.x2 - dir * 2)},${String(eg.y2)} `);
+        }
       }
       expect(geo.columns.length).toBe(
         geo.cols.filter((c) => c.length > 0).length +

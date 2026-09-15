@@ -39,6 +39,24 @@ export function lateralArrow(g: EdgeGeom): string {
 }
 
 /**
+ * The direction mark of an amount ribbon: an open chevron just inside the ribbon's target
+ * end, pointing the way the traffic goes (`dir` +1 = rightward). Stroked, not filled, so it
+ * reads on the gradient's end colour; sized to the ribbon but never below a legible 3 px.
+ */
+export function endChevron(g: EdgeGeom, dir: 1 | -1): string {
+  const s = Math.max(3, Math.min(7, g.t / 2 - 1));
+  const n = (v: number): string => String(v);
+  const tip = g.x2 - dir * 2;
+  const tail = g.x2 - dir * (2 + s * 2);
+  return `M${n(tail)},${n(g.y2 - s)} L${n(tip)},${n(g.y2)} L${n(tail)},${n(g.y2 + s)}`;
+}
+
+/** Which way a ribbon enters its target: a near backflow comes in from the right, every other ribbon from the left. */
+export function chevronDir(g: EdgeGeom): 1 | -1 {
+  return g.kind === 'back-loop' || g.x2 >= g.x1 ? 1 : -1;
+}
+
+/**
  * Ownership line: the centre line of a ribbon, stroked rather than filled — a filled band
  * cannot be dashed, and the dash IS the "carries no amount" mark.
  */

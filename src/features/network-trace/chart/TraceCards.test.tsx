@@ -145,4 +145,13 @@ describe('TraceCards', () => {
     expect(doc.querySelectorAll('g[data-testid^="trace-wrapper-"]').length).toBe(k8s.model.wrappers.length);
     expect(doc.querySelectorAll('[data-testid="trace-residual-out"]').length).toBeGreaterThan(0);
   });
+
+  it('draws one direction chevron per amount ribbon, none on an ownership line', () => {
+    for (const c of cases().filter((x) => x.name === 'client' || x.name === 'dci-uturn')) {
+      const doc = new DOMParser().parseFromString(renderChart(c.model), 'text/html');
+      expect(doc.querySelectorAll('[data-testid="trace-band-chevron"]').length).toBe(
+        c.model.edges.filter((e) => !e.owns).length
+      );
+    }
+  });
 });
