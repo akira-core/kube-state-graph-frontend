@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { fetchLabelValues, podInventorySelector } from '../graph-filters/labelValues';
 
@@ -42,10 +42,8 @@ export function useRootCandidates({ labelValuesBase, kind, namespaces, drawn }: 
   options: SankeyRootOptions;
   problems: string[];
 } {
-  const cache = useRef<Map<string, string[]> | null>(null);
-  if (cache.current === null) {
-    cache.current = new Map();
-  }
+  // One Map for the mount, never replaced: the state is the cache's identity, not its contents.
+  const [store] = useState(() => new Map<string, string[]>());
   const [remote, setRemote] = useState<{ node: string[]; pod: string[]; problems: string[] }>({
     node: [],
     pod: [],
@@ -62,7 +60,6 @@ export function useRootCandidates({ labelValuesBase, kind, namespaces, drawn }: 
       return;
     }
     const base = labelValuesBase;
-    const store = cache.current as Map<string, string[]>;
     const nsList = nsKey.length === 0 ? [] : nsKey.split(SEP);
     const controller = new AbortController();
     const { signal } = controller;
@@ -132,7 +129,7 @@ export function useRootCandidates({ labelValuesBase, kind, namespaces, drawn }: 
     return () => {
       controller.abort();
     };
-  }, [kind, labelValuesBase, nsKey]);
+  }, [kind, labelValuesBase, nsKey, store]);
 
   const options = useMemo<SankeyRootOptions>(() => {
     return {

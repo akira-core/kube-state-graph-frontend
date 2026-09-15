@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
+import { CARD_W, LEAF_W, MIN_THICKNESS, ROW_MIN_H } from '../sankey-canvas';
 
 import { deriveSankey } from './deriveSankey';
-import { layoutSankey, LEAF_W, CARD_W, MIN_THICKNESS, ROW_MIN_H } from './layoutSankey';
+import { layoutSankey } from './layoutSankey';
 
 const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 const PALETTE = ['#111111', '#222222', '#333333'];

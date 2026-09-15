@@ -1,3 +1,5 @@
+import type { LoadStatus } from './loadGate';
+
 /**
  * The four empty states every Sankey page shares, decided in one place so the two views
  * cannot drift on the one rule that matters: a failed or unsent request and an empty but
@@ -12,7 +14,7 @@ export interface ShellEmptyInputs {
   endpointConfigured: boolean;
   /** The DRAFT can be queried. Only consulted while nothing has been drawn. */
   scopeReady: boolean;
-  status: 'idle' | 'loading' | 'ready' | 'error';
+  status: LoadStatus;
   hasPayload: boolean;
   cancelled: boolean;
 }

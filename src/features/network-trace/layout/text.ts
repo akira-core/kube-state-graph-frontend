@@ -2,7 +2,7 @@ import { countWord } from '../../../shared/format/countWord';
 import { formatDeltaBps, formatUsage } from '../../../shared/format/measurements';
 import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, HEADER_H, LEAF_W } from '../../sankey-canvas';
 import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode } from '../model/types';
-import { sum } from '../model/util';
+import { sum, tracedEdges } from '../model/util';
 
 import { CLIENT_CELL_W, CLIENT_COL_GAP, CLIENT_COLS, CLIENT_PAD, type ClientCol } from './constants';
 
@@ -42,7 +42,7 @@ function padCell(v: string, cells: number): string {
   return v + ' '.repeat(Math.max(0, cells - cellWidth(v)));
 }
 
-export function clientCols(n: TraceNode): ClientCol[] {
+function clientCols(n: TraceNode): ClientCol[] {
   const cs = n.clients;
   if (cs === null || cs.length === 0) {
     return [];
@@ -85,7 +85,7 @@ export function leafCardW(n: TraceNode, table?: readonly string[]): number {
   return Math.max(LEAF_W, CLIENT_PAD * 2 + cells * CLIENT_CELL_W);
 }
 
-export function hasUsage(n: TraceNode): boolean {
+function hasUsage(n: TraceNode): boolean {
   return n.usage !== null && n.usage.usedBytes !== undefined && n.usage.capacityBytes !== undefined;
 }
 
@@ -217,9 +217,9 @@ export function cardText(n: TraceNode, model: TraceModelOk, table?: readonly str
   return { label: n.label, subtitle: n.type ?? 'host', extraLines: leafLines(n), ...corner };
 }
 
-/** Header height of a hop box: title + subtitle, then one line per attribute. */
-export function hopHeaderH(n: TraceNode): number {
-  return HEADER_H + CARD_LINE_H * hopLines(n).length;
+/** Header height of a hop box: title + subtitle, then one line per attribute (its `cardText` lines). */
+export function hopHeaderH(text: CardText): number {
+  return HEADER_H + CARD_LINE_H * text.extraLines.length;
 }
 
 /** Natural height of a leaf-style card from its text alone (slots may make it taller). */
@@ -229,14 +229,6 @@ export function leafCardH(text: CardText): number {
 
 export const ANCHOR_MIN_H = HEADER_H + CARD_LINE_H + BODY_MIN;
 
-/** Residuals below the model's noise epsilon are neither drawn nor given space. */
-export function resIn(n: TraceNode): number {
-  return n.kind === 'node' && n.otherIn > n.resEps ? n.otherIn : 0;
-}
-export function resOut(n: TraceNode): number {
-  return n.kind === 'node' && n.otherOut > n.resEps ? n.otherOut : 0;
-}
-
 /**
  * A node's flow for in-column ordering: the amount on the traced side — what arrives from
  * the start under a destination trace (sum in), what leaves toward it under a source trace
@@ -245,5 +237,5 @@ export function resOut(n: TraceNode): number {
  * O(edges): never call inside a comparator; precompute into a Map.
  */
 export function traceFlowOf(n: TraceNode, direction: TraceDirection): number {
-  return sum(direction === 'destination' ? n.inEdges : n.outEdges);
+  return sum(tracedEdges(n, direction));
 }

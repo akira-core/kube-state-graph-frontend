@@ -399,6 +399,23 @@ describe('SankeyView', () => {
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
   });
 
+  it('clears the tooltip and highlight when the layout stops drawing the hovered wrapper', () => {
+    // The derived graph keeps every Kubernetes node whichever pod layout is on; only the
+    // layout decides whether a wrapper is a card. Switching back to Flat removes the hovered
+    // wrapper with no mouseleave, exactly like a refresh removing a node.
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-worker-0'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('0.3');
+
+    fireEvent.click(screen.getByRole('radio', { name: /^flat$/i }));
+
+    expect(screen.queryByTestId('sankey-wrapper-title-worker-0')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('1');
+  });
+
   it('renders nodes as box cards with a title and a subtitle line, not a bare thin rect', () => {
     renderSankey();
     const card = screen.getByTestId('sankey-node-aggr1');
@@ -862,6 +879,21 @@ describe('SankeyView', () => {
     // mongo-1 sits on worker-1, not a member of this wrapper — faded.
     expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('0.3');
     expect(mongo0.querySelector('rect')?.getAttribute('x')).toBe(rectXBefore);
+  });
+
+  it("describes a wrapper in the shared row order: count, the members' flow, then its status", () => {
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-worker-0'));
+    const text = screen.getByRole('tooltip').textContent ?? '';
+    expect(text).toContain('node / worker-0');
+    expect(text).toContain('2 pods');
+    // Flow before status, as on every other card (see `nodeTooltipRows`).
+    const flowAt = text.indexOf('(derived from member pods)');
+    const statusAt = text.indexOf('status ');
+    expect(flowAt).toBeGreaterThan(text.indexOf('2 pods'));
+    expect(statusAt).toBeGreaterThan(flowAt);
+    expect(text).toContain('(worst of node and member pods)');
   });
 
   it('reverts to normal display, with layout coordinates unchanged, after the mouse leaves', () => {

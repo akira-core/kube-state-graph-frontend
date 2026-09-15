@@ -13,8 +13,6 @@ import { scanEdges, scanNodes } from './scan';
 import type { DeriveTraceOptions, TraceDirection, TraceInvestigation, TraceModel } from './types';
 import { validateTraceSemantics } from './validate';
 
-export { resolveInvestigation, resolveTraceDirection } from './investigation';
-
 /**
  * Step 0 of a derive, kept apart so the direction can be resolved from the same pass:
  * the id index and the trace start. Tied to the `elements` it was built from — `deriveTrace`

@@ -1,3 +1,4 @@
+import { countWord } from '../format/countWord';
 import { formatDeltaBps, formatUsage } from '../format/measurements';
 import { isPlainObject } from '../guards/isPlainObject';
 
@@ -126,8 +127,7 @@ export function buildNodeAttributes(data: Readonly<Record<string, unknown>>): No
   // How many endpoints a host node stands for. The list itself is the Sankey leaf card's
   // job; the tooltip only says there is one, and how big.
   if (Array.isArray(data.clients) && data.clients.length > 0) {
-    const count = data.clients.length;
-    attrs.push({ key: 'clients', value: `${String(count)} ${count === 1 ? 'client' : 'clients'}` });
+    attrs.push({ key: 'clients', value: countWord(data.clients.length, 'client') });
   }
   return attrs;
 }

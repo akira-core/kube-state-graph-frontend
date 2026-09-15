@@ -27,8 +27,12 @@ export function indexNodes(elements: readonly cytoscape.ElementDefinition[]): No
     }
   }
   const get = (id: string): cytoscape.NodeDataDefinition | null => byId.get(id) ?? null;
-  const labelOf = (d: cytoscape.NodeDataDefinition): string =>
-    isNonEmptyString(d.label) ? d.label : typeof d.id === 'string' ? d.id : '';
+  const labelOf = (d: cytoscape.NodeDataDefinition): string => {
+    if (isNonEmptyString(d.label)) {
+      return d.label;
+    }
+    return typeof d.id === 'string' ? d.id : '';
+  };
   const ancestorOf = (id: string, kind: string): cytoscape.NodeDataDefinition | null => {
     const seen = new Set<string>();
     let cur = get(id);

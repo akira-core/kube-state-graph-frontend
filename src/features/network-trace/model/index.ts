@@ -1,29 +1,4 @@
-export { deriveTrace, directionFor, indexTrace, resolveInvestigation, resolveTraceDirection } from './deriveTrace';
-export type { TraceIndexed } from './deriveTrace';
-export { hoverPath, hoverPathMany } from './hoverPath';
-export type { HoverPath } from './hoverPath';
-export { locatable } from './locatable';
-export { hopBalanceRows, namespaceAggs } from './aggregates';
-export type { HopBalanceRow, NamespaceAgg } from './aggregates';
-export { bandOf, isClientPartition, K8S_SUBCOLS, k8sSubcol } from './bands';
-export type { K8sSubcol, TraceBand } from './bands';
-export { classOf, HOP_KINDS, KIND_LABEL } from './classify';
-export { recKind } from '../../graph-data';
-export { ANCHOR_ID, ANCHOR_LABEL } from './investigation';
-export { sum } from './util';
-export type {
-  DeriveTraceOptions,
-  NodeClient,
-  NodeInfo,
-  NodeUsage,
-  TraceCluster,
-  TraceDirection,
-  TraceEdge,
-  TraceGrouping,
-  TraceInvestigation,
-  TraceModel,
-  TraceModelError,
-  TraceModelOk,
-  TraceNode,
-  TraceNodeKind,
-} from './types';
+// The feature's public surface (what `network-trace/index.ts` re-exports); everything else
+// is imported from its own file.
+export { deriveTrace, directionFor } from './deriveTrace';
+export type { TraceDirection, TraceGrouping, TraceModel, TraceModelOk } from './types';

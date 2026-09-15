@@ -1,6 +1,7 @@
 import type cytoscape from 'cytoscape';
 import { useCallback, useMemo, useState, type JSX, type MouseEvent } from 'react';
 
+import { countWord } from '../../shared/format/countWord';
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
@@ -17,6 +18,7 @@ import {
   shellEmptyKind,
   Swatch,
   type HoverLit,
+  type LoadStatus,
   type ShellEmptyKind,
   type TooltipLine,
 } from '../sankey-canvas';
@@ -69,7 +71,7 @@ const svmOptions = (available: boolean): ReadonlyArray<SegmentedOption<SankeySvm
 
 export interface SankeyViewProps {
   elements: cytoscape.ElementDefinition[];
-  status: 'idle' | 'loading' | 'ready' | 'error';
+  status: LoadStatus;
   error: string | undefined;
   hasPayload: boolean;
   demoMode: boolean;
@@ -194,13 +196,28 @@ function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): Too
   return nodeTooltipRows({
     head: `${node.kind} / ${node.label}`,
     ...(node.kind === 'application' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
-    identity:
-      node.memberPodCount !== undefined
-        ? [node.memberPodCount === 1 ? '1 pod' : `${String(node.memberPodCount)} pods`]
-        : [],
+    identity: node.memberPodCount !== undefined ? [countWord(node.memberPodCount, 'pod')] : [],
     // Derived cards carry no status: they are synthesised columns.
     flow: flowLines.map((line) => `${line} (derived from member pods)`),
     trailer: node.noFlow === true ? ['Selected root with no flow in this time range.'] : [],
+  });
+}
+
+/** A Kubernetes node wrapper's title-row tooltip under the `Node` pod layout: its pod count,
+ *  the members' flow, and the status the backend folded over the node and its pods. */
+function wrapperTooltip(
+  label: string,
+  podCount: number,
+  flowLines: readonly string[],
+  status: string | undefined,
+  noFlow: boolean
+): TooltipLine[] {
+  return nodeTooltipRows({
+    head: `node / ${label}`,
+    identity: [countWord(podCount, 'pod')],
+    flow: flowLines.map((line) => `${line} (derived from member pods)`),
+    ...(status !== undefined ? { status: `${status} (worst of node and member pods)` } : {}),
+    trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
   });
 }
 
@@ -216,7 +233,7 @@ function frameTooltip(
   return nodeTooltipRows({
     head: `netapp-svm / ${label}`,
     ...(ontapCluster !== undefined ? { ontapCluster } : {}),
-    identity: [pvcCount === 1 ? '1 PVC' : `${String(pvcCount)} PVCs`],
+    identity: [countWord(pvcCount, 'PVC')],
     flow: flowLines.map((line) => `${line} (derived from member PVCs)`),
     trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
   });
@@ -324,18 +341,14 @@ export function SankeyView({
   );
 
   const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
-  // A gone hovered node would leave the tooltip describing it and `lit` fading everything
-  // against zero surviving links; the stage clears the hover when this says the card left.
-  const hasCard = useCallback(
-    (id: string) =>
-      graph.nodes.some((n) => n.id === id) ||
-      graph.k8sNodes.some((n) => n.id === id) ||
-      graph.svmFrames.some((f) => f.id === id),
-    [graph]
-  );
   const hoverLit = useCallback((id: string): HoverLit => sankeyPathLit(graph, [id]), [graph]);
   const searchRecords = useMemo(() => sankeySearchRecords(graph, layout), [graph, layout]);
   const cardRects = useMemo(() => sankeyCardRects(layout), [layout]);
+  // A gone hovered card would leave the tooltip describing it and `lit` fading everything
+  // against zero surviving links; the stage clears the hover when this says the card left.
+  // Answered off the LAYOUT, not the derived graph: a wrapper the graph still carries is
+  // no card once the pod layout stops drawing it.
+  const hasCard = useCallback((id: string) => cardRects.has(id), [cardRects]);
   const searchPathLit = useCallback((ids: ReadonlySet<string>) => sankeyPathLit(graph, ids), [graph]);
   const { boxRef, zoom, tooltip, handleKeyDown, setHoverId, search, lit } = useSankeyStage({
     status,
@@ -476,13 +489,11 @@ export function SankeyView({
           ]
         : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
     if (wrapper !== undefined) {
-      setTip(evt.clientX, evt.clientY, [
-        `node / ${wrapper.label}`,
-        wrapper.podIds.length === 1 ? '1 pod' : `${String(wrapper.podIds.length)} pods`,
-        ...(wrapper.status !== undefined ? [`status ${wrapper.status} (worst of node and member pods)`] : []),
-        ...flowLines.map((line) => `${line} (derived from member pods)`),
-        ...(wrapper.noFlow === true ? ['Selected root with no flow in this time range.'] : []),
-      ]);
+      setTip(
+        evt.clientX,
+        evt.clientY,
+        wrapperTooltip(wrapper.label, wrapper.podIds.length, flowLines, wrapper.status, wrapper.noFlow === true)
+      );
       return;
     }
     if (frame !== undefined) {

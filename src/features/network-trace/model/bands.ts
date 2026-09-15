@@ -43,7 +43,14 @@ export function k8sSubcol(n: TraceNode): K8sSubcol | null {
   if (n.kind === 'node') {
     return n.role === 'node' ? 'node' : 'pod';
   }
-  return n.role === 'app' ? 'app' : n.role === 'ns' ? 'ns' : 'pod';
+  switch (n.role) {
+    case 'app':
+      return 'app';
+    case 'ns':
+      return 'ns';
+    default:
+      return 'pod';
+  }
 }
 
 /** Lower partition of a k8s-band column: the non-k8s trace stops. */

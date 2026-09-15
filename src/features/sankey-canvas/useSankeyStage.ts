@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 
 import type { SearchRecord } from '../graph-search';
 
 import type { Rect } from './geometry';
+import type { LoadStatus } from './loadGate';
 import type { HoverLit } from './SankeyCanvas';
 import { useContainerSize } from './useContainerSize';
 import { UNMEASURED_CONTAINER, useOpeningViewport } from './useOpeningViewport';
@@ -12,7 +13,7 @@ import { useSankeyTooltip, type SankeyTooltipApi } from './useSankeyTooltip';
 import { useZoomPan, type Size, type ZoomPanApi } from './useZoomPan';
 
 export interface SankeyStageOptions {
-  status: 'idle' | 'loading' | 'ready' | 'error';
+  status: LoadStatus;
   hasPayload: boolean;
   /** Intrinsic size of the current layout; `{0, 0}` while there is nothing to draw. */
   content: Size;
@@ -91,7 +92,6 @@ export function useSankeyStage({
 
   const hovered = useMemo(() => (hoverId === null ? null : hoverLit(hoverId)), [hoverId, hoverLit]);
   const search = useSankeySearch({ records, rects, pathLit, fitToRect: zoom.fitToRect });
-  const setHover = useCallback((id: string | null) => setHoverId(id), []);
 
   return {
     boxRef,
@@ -100,7 +100,7 @@ export function useSankeyStage({
     tooltip,
     handleKeyDown,
     hoverId,
-    setHoverId: setHover,
+    setHoverId,
     search,
     lit: hovered ?? search.lit,
   };

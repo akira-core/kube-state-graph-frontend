@@ -7,6 +7,7 @@ import type { BuildCtx } from './ctx';
 import { ANCHOR_ID } from './ids';
 import type { NodeIndex } from './nodeIndex';
 import { makeEdge, makeNode, type TraceDirection, type TraceInvestigation } from './types';
+import { fromTo } from './util';
 
 export { ANCHOR_ID } from './ids';
 export const ANCHOR_LABEL = 'Trace start';
@@ -120,10 +121,8 @@ export function addAnchor(ctx: BuildCtx): string | null {
   });
   nodes.set(anchor.id, anchor);
   order.push(anchor.id);
-  const anchorEdge =
-    direction === 'destination'
-      ? makeEdge(anchor, root, inv.iface, inv.iface, inv.deltaBps, { isAnchor: true })
-      : makeEdge(root, anchor, inv.iface, inv.iface, inv.deltaBps, { isAnchor: true });
+  const [from, to] = fromTo(direction, anchor, root);
+  const anchorEdge = makeEdge(from, to, inv.iface, inv.iface, inv.deltaBps, { isAnchor: true });
   edges.push(anchorEdge);
   ctx.root = root;
   ctx.anchorEdge = anchorEdge;

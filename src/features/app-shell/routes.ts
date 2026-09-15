@@ -48,9 +48,25 @@ export function categoryOf(pathname: string): Category {
     : 'storage';
 }
 
+/** The category's Graph row; a category without one is a broken table, not a missing route. */
+function graphRouteOf(category: Category): RouteEntry {
+  const entry = ROUTES.find((r) => r.category === category && r.view === 'graph');
+  if (entry === undefined) {
+    throw new Error(`ROUTES has no Graph route for the ${category} category`);
+  }
+  return entry;
+}
+
+// Resolved once: the `Record` makes a new category without a home a compile error, and
+// the throw above makes a row that went missing a load-time one.
+const CATEGORY_HOME: Record<Category, string> = {
+  storage: graphRouteOf('storage').path,
+  network: graphRouteOf('network').path,
+};
+
 /** The route a category lands on when chosen from the nav. */
 export function categoryHome(category: Category): string {
-  return (ROUTES.find((r) => r.category === category && r.view === 'graph') as RouteEntry).path;
+  return CATEGORY_HOME[category];
 }
 
 export const HOME_PATH = categoryHome('storage');

@@ -4,7 +4,7 @@ import { clientsOf, wireFacts } from './classify';
 import type { AggEdge, BuildCtx } from './ctx';
 import { APP_ID_PREFIX, NS_ID_PREFIX, OWNER_ID_PREFIX } from './ids';
 import { makeEdge, makeNode, type TraceEdge, type TraceNode } from './types';
-import { SEP } from './util';
+import { downstreamOf, fromTo, SEP } from './util';
 
 interface OwnerGroup {
   owner: string | null;
@@ -71,10 +71,13 @@ export function buildEdges(ctx: BuildCtx): void {
     }
     return app;
   };
-  // Derived edges carry the reference panel's column-pair tiers so a tooltip can say
-  // they are not a backend hop.
-  const derived = (a: TraceNode, b: TraceNode, ns: string | null, tier: string | null = null): TraceEdge =>
-    makeEdge(a, b, '', '', 0, { namespace: ns, derived: true, tier });
+  // Derived edges run `up → down` along the trace (a pod's card chain grows away from the
+  // start) and carry the reference panel's column-pair tiers so a tooltip can say they are
+  // not a backend hop.
+  const derived = (up: TraceNode, down: TraceNode, ns: string | null, tier: string | null = null): TraceEdge => {
+    const [a, b] = fromTo(direction, up, down);
+    return makeEdge(a, b, '', '', 0, { namespace: ns, derived: true, tier });
+  };
 
   // The first time a pod is seen its whole pod → app → ns chain is created, right after
   // the hop → pod edge (edge order = z-order); later edges into the same pod only add.
@@ -87,29 +90,20 @@ export function buildEdges(ctx: BuildCtx): void {
       const nsName = pod.namespace;
       if (appD !== null) {
         const app = appFor(index.labelOf(appD), nsName, pod.cluster);
-        const e1 =
-          direction === 'destination'
-            ? derived(pod, app, nsName, 'pod-application')
-            : derived(app, pod, nsName, 'pod-application');
+        const e1 = derived(pod, app, nsName, 'pod-application');
         edges.push(e1);
         links.push(e1);
         if (nsName !== null) {
           const ns = nsFor(nsName, pod.cluster);
           if (app.nsEdge === null) {
-            app.nsEdge =
-              direction === 'destination'
-                ? derived(app, ns, nsName, 'application-namespace')
-                : derived(ns, app, nsName, 'application-namespace');
+            app.nsEdge = derived(app, ns, nsName, 'application-namespace');
             edges.push(app.nsEdge);
           }
           links.push(app.nsEdge);
         }
       } else if (nsName !== null) {
         const ns = nsFor(nsName, pod.cluster);
-        const e2 =
-          direction === 'destination'
-            ? derived(pod, ns, nsName, 'pod-namespace')
-            : derived(ns, pod, nsName, 'pod-namespace');
+        const e2 = derived(pod, ns, nsName, 'pod-namespace');
         edges.push(e2);
         links.push(e2);
       }
@@ -165,8 +159,10 @@ export function buildEdges(ctx: BuildCtx): void {
     }
     return out;
   };
-  const ownEdge = (a: TraceNode, b: TraceNode, metered: boolean): TraceEdge =>
-    makeEdge(a, b, '', '', 0, { derived: true, owns: !metered });
+  const ownEdge = (leaf: TraceNode, owner: TraceNode, metered: boolean): TraceEdge => {
+    const [a, b] = fromTo(direction, leaf, owner);
+    return makeEdge(a, b, '', '', 0, { derived: true, owns: !metered });
+  };
   const linkOwner = (leaf: TraceNode, bps: number): void => {
     let links = ownerLinks.get(leaf.id);
     if (links === undefined) {
@@ -187,7 +183,7 @@ export function buildEdges(ctx: BuildCtx): void {
         if (metered) {
           o.meteredPorts += 1;
         }
-        const e = direction === 'destination' ? ownEdge(leaf, o, metered) : ownEdge(o, leaf, metered);
+        const e = ownEdge(leaf, o, metered);
         edges.push(e);
         if (metered) {
           links.push(e);
@@ -274,7 +270,7 @@ export function buildEdges(ctx: BuildCtx): void {
     edges.push(e);
     // The downstream leaf (packet direction for a destination trace, the reverse for a
     // source trace) grows its derived cards: a pod its ns chain, a client leaf its owners.
-    const downLeaf = direction === 'destination' ? to : from;
+    const downLeaf = downstreamOf(direction, from, to);
     if (downLeaf.kind === 'leaf' && downLeaf.role === 'pod') {
       linkPod(downLeaf, a.bps);
     }

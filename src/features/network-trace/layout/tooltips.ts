@@ -4,8 +4,8 @@ import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { nodeTooltipRows, type TooltipLine } from '../../sankey-canvas';
 import { bandOf, isClientPartition, k8sSubcol, type K8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
-import type { TraceCluster, TraceDirection, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
-import { mustGet, sum } from '../model/util';
+import type { NodeClient, TraceCluster, TraceDirection, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
+import { downstreamOf, mustGet, sum, upstreamOf } from '../model/util';
 
 import { typeWord, usageText } from './text';
 
@@ -14,8 +14,8 @@ function clientsOnRibbon(e: TraceEdge, model: TraceModelOk): string[] | null {
   const from = mustGet(model.nodeMap, e.fromId, 'node');
   const to = mustGet(model.nodeMap, e.toId, 'node');
   const toOwner = to.role === 'owner' || from.role === 'owner';
-  const down = model.direction === 'destination' ? to : from;
-  const up = model.direction === 'destination' ? from : to;
+  const down = downstreamOf(model.direction, from, to);
+  const up = upstreamOf(model.direction, from, to);
   const far = toOwner ? up : down;
   if (far.clients === null) {
     return null;
@@ -101,13 +101,6 @@ export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: Them
   }
   const fold = n.role === 'ns' || n.role === 'app' ? ' (worst of member pods)' : '';
   const info = n.info;
-  const perf =
-    info?.perf === undefined
-      ? []
-      : Object.entries(info.perf).map(
-          ([k, v]) => `${k} ${k === 'total_bytes_per_sec' ? `${formatBytes(v)}/s` : String(v)} (raw)`
-        );
-  const clients = n.clients;
   const synthetic = n.role === 'ns' || n.role === 'app' || n.role === 'owner';
   return nodeTooltipRows({
     head: `${typeWord(n)} / ${n.label}`,
@@ -119,16 +112,32 @@ export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: Them
     ...(n.status !== null ? { status: `${n.status}${fold}` } : {}),
     ...(info?.health !== undefined ? { health: info.health } : {}),
     ...(info?.model !== undefined ? { model: info.model } : {}),
-    perf,
+    perf: perfLines(info?.perf),
     alerts: (info?.alerts ?? []).map((a) => `alert ${a}`),
-    clients:
-      clients === null
-        ? []
-        : clients.map(
-            (c, i) =>
-              `${clients.length === 1 ? 'client' : `client ${String(i + 1)}`} ${[c.ip, c.hostname, c.owner].filter((v) => v !== null).join(' · ')}`
-          ),
+    clients: clientLines(n.clients),
     ...(!synthetic && n.id !== n.label ? { id: n.id } : {}),
+  });
+}
+
+/** Raw perf readings, one per line; the byte rate is the one with a unit worth formatting. */
+function perfLines(perf: Record<string, number> | undefined): string[] {
+  if (perf === undefined) {
+    return [];
+  }
+  return Object.entries(perf).map(([k, v]) => {
+    const value = k === 'total_bytes_per_sec' ? `${formatBytes(v)}/s` : String(v);
+    return `${k} ${value} (raw)`;
+  });
+}
+
+/** One line per client (numbered when there are several), the known facts joined. */
+function clientLines(clients: NodeClient[] | null): string[] {
+  if (clients === null) {
+    return [];
+  }
+  return clients.map((c, i) => {
+    const word = clients.length === 1 ? 'client' : `client ${String(i + 1)}`;
+    return `${word} ${[c.ip, c.hostname, c.owner].filter((v) => v !== null).join(' · ')}`;
   });
 }
 

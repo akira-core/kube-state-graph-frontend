@@ -28,6 +28,8 @@ export interface NodeGeom {
   h: number;
   /** Vertical centre (y + h / 2). */
   cy: number;
+  /** Where the slot stacks start below the top: a hop's header (title, subtitle, attribute lines); 0 on every other card. */
+  headerH: number;
   leftSlots: Slot[];
   rightSlots: Slot[];
   /** What the card prints — built once here, so the chart never formats per render. */

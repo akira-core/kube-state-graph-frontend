@@ -1,6 +1,7 @@
 import { ribbonPath } from '../../sankey-canvas';
 import type { TraceEdge } from '../model/types';
 
+import { LATERAL_CROWN_K } from './constants';
 import type { BandKind, EdgeGeom } from './types';
 
 export function bandKind(e: TraceEdge, g: Pick<EdgeGeom, 'backNear'>): BandKind {
@@ -60,7 +61,7 @@ export function chevronDir(g: EdgeGeom): 1 | -1 {
  * Ownership line: the centre line of a ribbon, stroked rather than filled — a filled band
  * cannot be dashed, and the dash IS the "carries no amount" mark.
  */
-export function ownLine(e: EdgeGeom): string {
+function ownLine(e: EdgeGeom): string {
   const mx = (e.x1 + e.x2) / 2;
   return `M${String(e.x1)},${String(e.y1)} C${String(mx)},${String(e.y1)} ${String(mx)},${String(e.y2)} ${String(e.x2)},${String(e.y2)}`;
 }
@@ -70,11 +71,11 @@ export function ownLine(e: EdgeGeom): string {
  * right. The outer edge joins the two ends' far sides and the inner edge the near sides,
  * so the arc's crown is about as wide as the average ribbon.
  */
-export function lateralRibbon(e: EdgeGeom, B: number): string {
+function lateralRibbon(e: EdgeGeom, B: number): string {
   const a = e.t1 / 2;
   const b = e.t2 / 2;
   const s = e.y2 >= e.y1 ? 1 : -1;
-  const k = (a + b) * 0.67;
+  const k = (a + b) * LATERAL_CROWN_K;
   const Bo = B + k;
   const Bi = Math.max(8, B - k);
   const n = (v: number): string => String(v);
@@ -91,7 +92,7 @@ export function lateralRibbon(e: EdgeGeom, B: number): string {
  * along a lane under the chart, up the target's left corridor, into its left edge. A
  * constant-width stroked path with rounded turns.
  */
-export function backwardRibbon(e: EdgeGeom): string {
+function backwardRibbon(e: EdgeGeom): string {
   const backT = e.backT ?? e.t;
   const yB = e.backY ?? Math.max(e.y1, e.y2) + 60;
   const xD = e.backXD ?? e.x1 + 40;

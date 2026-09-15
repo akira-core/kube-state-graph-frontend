@@ -3,7 +3,15 @@ import { formatBitsPerSec } from '../../../shared/format/measurements';
 
 import type { BuildCtx } from './ctx';
 import type { TraceNode } from './types';
-import { mustGet, sum } from './util';
+import { mustGet, sum, tracedEdges, upstreamOf } from './util';
+
+/** Residuals below the model's noise epsilon are neither drawn nor given space. */
+export function resIn(n: TraceNode): number {
+  return n.kind === 'node' && n.otherIn > n.resEps ? n.otherIn : 0;
+}
+export function resOut(n: TraceNode): number {
+  return n.kind === 'node' && n.otherOut > n.resEps ? n.otherOut : 0;
+}
 
 /**
  * Step 6: per-hop conservation and residuals; leaf totals; pod counts and status of the
@@ -76,11 +84,10 @@ export function computeResiduals(ctx: BuildCtx): void {
   // whose pod counts pass through the application cards. Members are deduplicated per
   // node so a pod with two edges counts once.
   const memberPods = (n: TraceNode): TraceNode[] => {
-    const list = direction === 'destination' ? n.inEdges : n.outEdges;
     const seen = new Set<string>();
     const out: TraceNode[] = [];
-    for (const e of list) {
-      const m = mustGet(nodes, direction === 'destination' ? e.fromId : e.toId, 'node');
+    for (const e of tracedEdges(n, direction)) {
+      const m = mustGet(nodes, upstreamOf(direction, e.fromId, e.toId), 'node');
       if (!seen.has(m.id)) {
         seen.add(m.id);
         out.push(m);
@@ -93,7 +100,7 @@ export function computeResiduals(ctx: BuildCtx): void {
     if (n.kind !== 'leaf') {
       continue;
     }
-    n.bps = sum(direction === 'destination' ? n.inEdges : n.outEdges);
+    n.bps = sum(tracedEdges(n, direction));
     if (n.role === 'app') {
       const pods = memberPods(n);
       n.podCount = pods.length;

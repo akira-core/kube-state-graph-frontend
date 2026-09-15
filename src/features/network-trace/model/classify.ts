@@ -20,7 +20,7 @@ export const HOP_KINDS: readonly string[] = [
   'pvc',
 ];
 /** Group kinds: never drawn; only reached through a pod's parent chain. */
-export const GROUP_KINDS: readonly string[] = ['namespace', 'application', 'cluster', 'storage-cluster', 'controller'];
+const GROUP_KINDS: readonly string[] = ['namespace', 'application', 'cluster', 'storage-cluster', 'controller'];
 /** The only edge type the trace draws. A `storage-flow` body derives to no-flow hops, never a crash. */
 export const FLOW_EDGE_TYPES: readonly string[] = ['network-flow'];
 /**
@@ -52,7 +52,7 @@ export function classOf(kind: string): NodeClass {
   return 'leaf';
 }
 
-export function statusOf(v: unknown): NodeStatus | null {
+function statusOf(v: unknown): NodeStatus | null {
   return isNodeStatus(v) ? v : null;
 }
 
@@ -73,7 +73,7 @@ export function isPlacementEdge(d: cytoscape.EdgeDataDefinition): boolean {
   return d.labels?.tier === 'pod-node' || d.edgeType === 'pod-to-node';
 }
 
-export function usageOf(d: cytoscape.NodeDataDefinition): NodeUsage | null {
+function usageOf(d: cytoscape.NodeDataDefinition): NodeUsage | null {
   const u = d.usage;
   if (u === undefined) {
     return null;
@@ -85,7 +85,7 @@ export function usageOf(d: cytoscape.NodeDataDefinition): NodeUsage | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
-export function infoOf(d: cytoscape.NodeDataDefinition): NodeInfo | null {
+function infoOf(d: cytoscape.NodeDataDefinition): NodeInfo | null {
   const out: NodeInfo = {};
   if (isNonEmptyString(d.health)) {
     out.health = d.health;
@@ -138,7 +138,7 @@ export function clientsOf(d: cytoscape.NodeDataDefinition): NodeClient[] | null 
 }
 
 /** The card facts a hop box and a leaf card both read straight off the wire node. */
-export interface WireFacts {
+interface WireFacts {
   namespace: string | null;
   ontapCluster: string | null;
   cluster: string | null;

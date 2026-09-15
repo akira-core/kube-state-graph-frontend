@@ -1,7 +1,14 @@
 import type { JSX } from 'react';
 
+/**
+ * The loader's request state as the Sankey views read it — the same four words as
+ * `graph-data`'s `GraphStatus`, spelled here once so the stage, the gate and the empty
+ * states cannot drift on them.
+ */
+export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 export interface LoadGateInputs {
-  status: 'idle' | 'loading' | 'ready' | 'error';
+  status: LoadStatus;
   hasPayload: boolean;
   error: string | undefined;
 }

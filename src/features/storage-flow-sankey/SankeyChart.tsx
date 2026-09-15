@@ -14,8 +14,6 @@ import {
 import { formatBytesPerSec } from './deriveSankey';
 import type { LayoutLink, SankeyLayout } from './layoutSankey';
 
-export type { HoverLit } from '../sankey-canvas';
-
 export interface SankeyChartProps {
   layout: SankeyLayout;
   tokens: ThemeTokens;

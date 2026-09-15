@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { memo, type JSX } from 'react';
 
 import type { ThemeTokens } from '../../shared/theme/tokens';
 import { StatusLegend, Swatch } from '../sankey-canvas';
@@ -16,8 +16,13 @@ function Row({ children, testId }: Readonly<{ children: React.ReactNode; testId:
 /**
  * What the chart's marks mean, listed only for marks actually on the chart: a legend row
  * for a backflow that is not drawn claims a ribbon kind the reader will look for in vain.
+ * Memoised on the derived model and the theme, so the scans below sit out the pan and
+ * hover renders.
  */
-export function TraceLegend({ model, tokens }: Readonly<{ model: TraceModelOk; tokens: ThemeTokens }>): JSX.Element {
+export const TraceLegend = memo(function TraceLegend({
+  model,
+  tokens,
+}: Readonly<{ model: TraceModelOk; tokens: ThemeTokens }>): JSX.Element {
   const hasLateral = model.edges.some((e) => e.lateral);
   const hasBack = model.edges.some((e) => e.backward);
   const hasOwns = model.edges.some((e) => e.owns);
@@ -62,4 +67,4 @@ export function TraceLegend({ model, tokens }: Readonly<{ model: TraceModelOk; t
       )}
     </div>
   );
-}
+});

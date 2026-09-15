@@ -44,13 +44,15 @@ const MIN_BPS_DEBOUNCE_MS = 200;
 /** One identity while there is no geometry, so the search's callbacks do not churn on it. */
 const EMPTY_RECTS: ReadonlyMap<string, Rect> = new Map();
 const NO_LIT: HoverLit = { keys: new Set(), nodeIds: new Set() };
+/** One identity when the parent passes no errors, so the warnings memo does not churn on it. */
+const NO_ERRORS: readonly string[] = [];
 
 export interface TraceViewProps {
   elements: cytoscape.ElementDefinition[];
   status: 'idle' | 'loading' | 'ready' | 'error';
   error: string | undefined;
   /** normalize's partial-parse messages for the drawn body. */
-  errors?: string[];
+  errors?: readonly string[];
   hasPayload: boolean;
   cancelled?: boolean;
   demoMode: boolean;
@@ -110,7 +112,7 @@ export function TraceView({
   elements,
   status,
   error,
-  errors = [],
+  errors = NO_ERRORS,
   hasPayload,
   cancelled = false,
   demoMode,
@@ -215,6 +217,56 @@ export function TraceView({
     [direction.warning, errors, model]
   );
 
+  // The hover handlers reach the drawing, which is memoised so a pan drag does not
+  // reconcile every card and ribbon; they must therefore keep their identity across pan
+  // frames. `dragging` flips on every drag, so they read it through a ref instead of
+  // depending on it. `tooltip` itself is a fresh object per render — only its `show` and
+  // `hide` are stable, so those are the dependencies.
+  const draggingRef = useRef(zoom.dragging);
+  draggingRef.current = zoom.dragging;
+  const showTip = tooltip.show;
+  const hideTip = tooltip.hide;
+  const onNodeEnter = useCallback(
+    (id: string, evt: MouseEvent): void => {
+      if (draggingRef.current || !model.ok) {
+        return;
+      }
+      setHoverId(id);
+      const target = model.nodeMap.get(id);
+      if (target !== undefined) {
+        showTip(evt.clientX, evt.clientY, nodeTooltipLines(target, model, tokens));
+        return;
+      }
+      const cluster = model.clusters.find((c) => c.id === id);
+      if (cluster !== undefined) {
+        showTip(evt.clientX, evt.clientY, clusterTooltipLines(cluster));
+      }
+    },
+    [model, setHoverId, showTip, tokens]
+  );
+  const onNodeLeave = useCallback((): void => {
+    setHoverId(null);
+    hideTip();
+  }, [hideTip, setHoverId]);
+  const onBandEnter = useCallback(
+    (e: TraceEdge, evt: MouseEvent): void => {
+      if (draggingRef.current || !model.ok) {
+        return;
+      }
+      showTip(evt.clientX, evt.clientY, bandTooltipLines(e, model));
+    },
+    [model, showTip]
+  );
+  const onResidualEnter = useCallback(
+    (n: TraceNode, side: 'in' | 'out', evt: MouseEvent): void => {
+      if (draggingRef.current) {
+        return;
+      }
+      showTip(evt.clientX, evt.clientY, residualTooltipLines(n, side, tokens));
+    },
+    [showTip, tokens]
+  );
+
   const gate = loadGateScreen({ status, hasPayload, error });
   if (gate !== null) {
     return gate;
@@ -240,34 +292,6 @@ export function TraceView({
   })();
   const empty = emptyKind === null ? null : emptyCopy(emptyKind, demoMode);
   const chartReady = emptyKind === null && model.ok && geo !== null;
-
-  const onNodeEnter = (id: string, evt: MouseEvent): void => {
-    if (zoom.dragging || !model.ok) {
-      return;
-    }
-    setHoverId(id);
-    const target = model.nodeMap.get(id);
-    if (target !== undefined) {
-      tooltip.show(evt.clientX, evt.clientY, nodeTooltipLines(target, model, tokens));
-      return;
-    }
-    const cluster = model.clusters.find((c) => c.id === id);
-    if (cluster !== undefined) {
-      tooltip.show(evt.clientX, evt.clientY, clusterTooltipLines(cluster));
-    }
-  };
-  const onBandEnter = (e: TraceEdge, evt: MouseEvent): void => {
-    if (zoom.dragging || !model.ok) {
-      return;
-    }
-    tooltip.show(evt.clientX, evt.clientY, bandTooltipLines(e, model));
-  };
-  const onResidualEnter = (n: TraceNode, side: 'in' | 'out', evt: MouseEvent): void => {
-    if (zoom.dragging) {
-      return;
-    }
-    tooltip.show(evt.clientX, evt.clientY, residualTooltipLines(n, side, tokens));
-  };
   const cleaned = cleanMinBps(minText);
 
   return (
@@ -372,15 +396,12 @@ export function TraceView({
               dragging={zoom.dragging}
               lit={lit}
               onNodeEnter={onNodeEnter}
-              onNodeLeave={() => {
-                setHoverId(null);
-                tooltip.hide();
-              }}
+              onNodeLeave={onNodeLeave}
               onNodeClick={onLocateNode}
               onBandEnter={onBandEnter}
-              onBandLeave={tooltip.hide}
+              onBandLeave={hideTip}
               onResidualEnter={onResidualEnter}
-              onResidualLeave={tooltip.hide}
+              onResidualLeave={hideTip}
               onKeyDown={handleKeyDown}
             >
               <SankeySearchOverlay search={search} />

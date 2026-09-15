@@ -14,30 +14,31 @@ import {
   type ColumnHeader,
 } from '../../sankey-canvas';
 import { bandOf, isClientPartition, k8sSubcol, type TraceBand } from '../model/bands';
+import { resIn, resOut } from '../model/residuals';
 import type { TraceCluster, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
-import { mustGet, SEP } from '../model/util';
+import { cmpString, mustGet, SEP } from '../model/util';
 
-import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, LATERAL_BULGE_MIN, OWN_T, PAD_SIDE } from './constants';
-import { bandKind, chevronDir, edgePath, endChevron, lateralArrow } from './paths';
 import {
-  ANCHOR_MIN_H,
-  cardText,
-  clientTableLines,
-  hopHeaderH,
-  leafCardH,
-  leafCardW,
-  resIn,
-  resOut,
-  traceFlowOf,
-} from './text';
+  ANCHOR_W,
+  BAND_COL_GAP,
+  BAND_GAP,
+  LATERAL_BULGE_MAX,
+  LATERAL_BULGE_MIN,
+  LATERAL_CROWN_K,
+  LATERAL_STEP,
+  OWN_T,
+  PAD_SIDE,
+} from './constants';
+import { bandKind, chevronDir, edgePath, endChevron, lateralArrow } from './paths';
+import { ANCHOR_MIN_H, cardText, clientTableLines, hopHeaderH, leafCardH, leafCardW, traceFlowOf } from './text';
 import { colCaption } from './tooltips';
 import type { ClusterGeom, EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry } from './types';
 
 /** In-column order: `flow` (larger flow on top, default) or `barycenter` (fewest crossings). */
 export type TraceNodeOrder = 'flow' | 'barycenter';
-export const DEFAULT_TRACE_ORDER: TraceNodeOrder = 'flow';
+const DEFAULT_TRACE_ORDER: TraceNodeOrder = 'flow';
 
-export interface LayoutTraceOptions {
+interface LayoutTraceOptions {
   order?: TraceNodeOrder;
 }
 
@@ -292,9 +293,11 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     const { text, table } = mustGet(texts, n.id, 'card text');
     let w: number;
     let h: number;
+    let headerH = 0;
     if (n.kind === 'node') {
       w = CARD_W;
-      h = hopHeaderH(n) + Math.max(lh, rh, BODY_MIN) + BODY_PAD_BOTTOM;
+      headerH = hopHeaderH(text);
+      h = headerH + Math.max(lh, rh, BODY_MIN) + BODY_PAD_BOTTOM;
     } else if (n.kind === 'leaf') {
       w = leafCardW(n, table);
       h = Math.max(leafCardH(text), lh, rh);
@@ -302,7 +305,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
       w = ANCHOR_W;
       h = Math.max(ANCHOR_MIN_H, lh, rh);
     }
-    gn.set(n.id, { x: 0, y: 0, w, h, cy: 0, leftSlots, rightSlots, text });
+    gn.set(n.id, { x: 0, y: 0, w, h, cy: 0, headerH, leftSlots, rightSlots, text });
   }
 
   const cols: TraceNode[][] = [];
@@ -338,8 +341,8 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   );
   const clusterOrder: TraceCluster[] = [...clusters].sort(
     order === 'flow'
-      ? (a, b) => (clusterFlow.get(b.id) ?? 0) - (clusterFlow.get(a.id) ?? 0) || a.label.localeCompare(b.label)
-      : (a, b) => a.label.localeCompare(b.label)
+      ? (a, b) => (clusterFlow.get(b.id) ?? 0) - (clusterFlow.get(a.id) ?? 0) || cmpString(a.label, b.label)
+      : (a, b) => cmpString(a.label, b.label)
   );
   const blockIdxOf = new Map<string, number>();
   clusterOrder.forEach((c, k) => {
@@ -634,8 +637,8 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   // Port centres.
   for (const n of nodes) {
     const g = N(n.id);
-    const top = n.kind === 'node' ? g.y + hopHeaderH(n) : g.y;
-    const avail = n.kind === 'node' ? g.h - hopHeaderH(n) - BODY_PAD_BOTTOM : g.h;
+    const top = g.y + g.headerH;
+    const avail = n.kind === 'node' ? g.h - g.headerH - BODY_PAD_BOTTOM : g.h;
     const leftCy = placeStack(g.leftSlots, top, avail);
     const rightCy = placeStack(g.rightSlots, top, avail);
     g.leftSlots.forEach((s, i) => {
@@ -687,7 +690,10 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     list.sort((a, b) => Math.abs(E(a).y2 - E(a).y1) - Math.abs(E(b).y2 - E(b).y1));
     list.forEach((e, i) => {
       const eg = E(e);
-      eg.bulge = Math.min(LATERAL_BULGE_MIN + ((eg.t1 + eg.t2) / 2) * 0.67 + 18 * i, COL_GAP - 26);
+      eg.bulge = Math.min(
+        LATERAL_BULGE_MIN + ((eg.t1 + eg.t2) / 2) * LATERAL_CROWN_K + LATERAL_STEP * i,
+        LATERAL_BULGE_MAX
+      );
     });
   }
 

@@ -1,4 +1,6 @@
+import { resIn, resOut } from './residuals';
 import type { TraceModelOk } from './types';
+import { cmpString } from './util';
 
 export interface NamespaceAgg {
   namespace: string;
@@ -38,7 +40,7 @@ export function namespaceAggs(model: TraceModelOk): NamespaceAgg[] {
       a.total += n.bps;
     }
   }
-  return [...byNs.values()].sort((a, b) => b.total - a.total || a.namespace.localeCompare(b.namespace));
+  return [...byNs.values()].sort((a, b) => b.total - a.total || cmpString(a.namespace, b.namespace));
 }
 
 export interface HopBalanceRow {
@@ -64,7 +66,7 @@ export function hopBalanceRows(model: TraceModelOk): HopBalanceRow[] {
       noFlow: n.noFlow,
       tracedIn: n.tracedIn,
       tracedOut: n.tracedOut,
-      otherIn: n.otherIn > n.resEps ? n.otherIn : 0,
-      otherOut: n.otherOut > n.resEps ? n.otherOut : 0,
+      otherIn: resIn(n),
+      otherOut: resOut(n),
     }));
 }

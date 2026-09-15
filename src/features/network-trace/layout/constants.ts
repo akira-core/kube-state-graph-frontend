@@ -2,6 +2,8 @@
 // the anchor card, ownership lines and the clients table. Card sizes, slot rows, ribbon
 // thickness and column gaps are the shared numbers so trace cards match storage cards.
 
+import { COL_GAP } from '../../sankey-canvas';
+
 /** Residual block length (its height follows the ribbon scale) and the gap to its label. */
 export const RES_LEN = 34;
 export const RES_GAP = 8;
@@ -40,6 +42,12 @@ export const CLIENT_PAD = 10;
 export const BAND_GAP = 56;
 /** The innermost lateral arc's protrusion; each further arc in the column bulges more. */
 export const LATERAL_BULGE_MIN = 56;
+/** How much more each further lateral arc in a column bulges. */
+export const LATERAL_STEP = 18;
+/** A lateral arc never bulges past the column gap, whatever the ribbon count. */
+export const LATERAL_BULGE_MAX = COL_GAP - 26;
+/** Crown widening of a lateral arc per unit of mean ribbon half-width; the layout's bulge must clear the crown `paths` draws with it. */
+export const LATERAL_CROWN_K = 0.67;
 
 /** Extra horizontal room where one band ends and the next begins (on top of COL_GAP). */
 export const BAND_COL_GAP = 48;

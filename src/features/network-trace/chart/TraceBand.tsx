@@ -126,11 +126,14 @@ export function TraceBandLabel({
     return null;
   }
   const loop = e.backward && !g.backNear;
-  const mx = loop
-    ? ((g.backXD ?? g.x1) + (g.backXU ?? g.x2)) / 2
-    : e.lateral
-      ? g.x1 + 0.72 * (g.bulge ?? 56)
-      : (g.x1 + g.x2) / 2;
+  let mx: number;
+  if (loop) {
+    mx = ((g.backXD ?? g.x1) + (g.backXU ?? g.x2)) / 2;
+  } else if (e.lateral) {
+    mx = g.x1 + 0.72 * (g.bulge ?? 56);
+  } else {
+    mx = (g.x1 + g.x2) / 2;
+  }
   const my = loop ? (g.backY ?? g.y1) - (g.backT ?? g.t) / 2 - 10 : (g.y1 + g.y2) / 2;
   return (
     <text

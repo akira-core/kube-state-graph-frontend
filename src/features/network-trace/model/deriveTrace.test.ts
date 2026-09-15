@@ -7,8 +7,9 @@ import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples
 
 import { hopBalanceRows, namespaceAggs } from './aggregates';
 import { bandOf, isClientPartition, k8sSubcol } from './bands';
-import { deriveTrace, directionFor, indexTrace, resolveTraceDirection } from './deriveTrace';
+import { deriveTrace, directionFor, indexTrace } from './deriveTrace';
 import { hoverPath } from './hoverPath';
+import { resolveTraceDirection } from './investigation';
 import type { TraceModelOk, TraceNode } from './types';
 
 function elementsOf(wire: unknown): cytoscape.ElementDefinition[] {

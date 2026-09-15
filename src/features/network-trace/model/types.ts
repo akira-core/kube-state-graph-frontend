@@ -1,6 +1,8 @@
 import type { NodeStatus } from '../../../shared/constants/types';
+import type { TraceDirection } from '../../graph-data';
 
-export type TraceDirection = 'destination' | 'source';
+/** The request's `track_dir`, which is also the drawing direction: one type, declared with the request. */
+export type { TraceDirection };
 /** `cluster` frames the k8s-band cards of one Kubernetes cluster together; `none` draws them loose. */
 export type TraceGrouping = 'none' | 'cluster';
 

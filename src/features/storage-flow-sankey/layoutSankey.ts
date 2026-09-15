@@ -39,21 +39,7 @@ import {
 } from './deriveSankey';
 
 // The content-space geometry (card widths, slot rows, ribbon thickness range) is the shared
-// `sankey-canvas` set, so a storage card and a network-trace card are the same size. Kept
-// re-exported here for the callers and tests that read them as this layout's numbers.
-export {
-  BODY_MIN,
-  CARD_W,
-  HEADER_H,
-  LABEL_MIN_THICKNESS,
-  LEAF_W,
-  MAX_THICKNESS,
-  MIN_THICKNESS,
-  PAD_TOP,
-  ROW_GAP,
-  ROW_MIN_H,
-} from '../sankey-canvas';
-export type { ColumnHeader } from '../sankey-canvas';
+// `sankey-canvas` set, so a storage card and a network-trace card are the same size.
 
 export type SankeyPodLayout = 'flat' | 'node';
 

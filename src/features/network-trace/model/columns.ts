@@ -85,11 +85,14 @@ function layerSwitchBand(ctx: BuildCtx, ids: readonly string[], edges: readonly 
   const { nodes, warnings } = ctx;
   const groupOf = new Map<string, string>();
   const groupIds: string[] = [];
+  // Group → first-appearance rank, for the tie-break in 5b.
+  const groupIdx = new Map<string, number>();
   for (const id of ids) {
     const n = mustGet(nodes, id, 'node');
     const g = n.tier !== null ? `t:${n.tier}` : `n:${id}`;
     groupOf.set(id, g);
-    if (!groupIds.includes(g)) {
+    if (!groupIdx.has(g)) {
+      groupIdx.set(g, groupIds.length);
       groupIds.push(g);
     }
   }
@@ -124,7 +127,7 @@ function layerSwitchBand(ctx: BuildCtx, ids: readonly string[], edges: readonly 
       continue;
     }
     let loser = k;
-    if (v > rv || (v === rv && groupIds.indexOf(a) < groupIds.indexOf(b))) {
+    if (v > rv || (v === rv && mustGet(groupIdx, a, 'group') < mustGet(groupIdx, b, 'group'))) {
       loser = rk;
     }
     gdropped.add(loser);
@@ -261,31 +264,40 @@ function assignTierSubOrder(ctx: BuildCtx, ids: readonly string[]): void {
   for (const id of ids) {
     mustGet(nodes, id, 'node').subOrder = 0;
   }
+  const tierOf = new Map<string, string>();
   const tierMembers = new Map<string, string[]>();
   for (const id of ids) {
     const t = mustGet(nodes, id, 'node').tier;
     if (t !== null) {
+      tierOf.set(id, t);
       const list = tierMembers.get(t) ?? [];
       list.push(id);
       tierMembers.set(t, list);
     }
   }
-  for (const members of tierMembers.values()) {
+  // The edges inside each tier, bucketed in one pass (edge order kept, so adjacency is stable).
+  const tierEdges = new Map<string, TraceEdge[]>();
+  for (const e of edges) {
+    const t = tierOf.get(e.fromId);
+    if (t !== undefined && tierOf.get(e.toId) === t) {
+      const list = tierEdges.get(t) ?? [];
+      list.push(e);
+      tierEdges.set(t, list);
+    }
+  }
+  for (const [tier, members] of tierMembers) {
     if (members.length < 2) {
       continue;
     }
-    const inGroup = new Set(members);
     const indeg = new Map<string, number>();
     const adj = new Map<string, string[]>();
     for (const id of members) {
       indeg.set(id, 0);
       adj.set(id, []);
     }
-    for (const e of edges) {
-      if (inGroup.has(e.fromId) && inGroup.has(e.toId)) {
-        mustGet(adj, e.fromId, 'member').push(e.toId);
-        indeg.set(e.toId, (indeg.get(e.toId) ?? 0) + 1);
-      }
+    for (const e of tierEdges.get(tier) ?? []) {
+      mustGet(adj, e.fromId, 'member').push(e.toId);
+      indeg.set(e.toId, (indeg.get(e.toId) ?? 0) + 1);
     }
     const queue = members.filter((id) => indeg.get(id) === 0);
     let seq = 0;

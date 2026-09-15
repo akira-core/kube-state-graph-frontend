@@ -17,7 +17,7 @@ import {
 } from '../network-trace';
 
 import { NotFoundPage } from './NotFoundPage';
-import { categoryHome, routeFor, type View } from './routes';
+import { CATEGORY_ALIAS, categoryHome, routeFor, type View } from './routes';
 import { useShellFrame } from './ShellFrame';
 import { useAppliedScope, useCommitField, useSeedTimeOnMount } from './useAppliedScope';
 import { useDraft } from './useDraft';
@@ -34,7 +34,7 @@ export function NetworkPage(): JSX.Element {
   // Same chrome as the shell's `*` route (both render under AppLayout); the table decides
   // which `:view` values exist so this guard cannot drift from the nav. It runs before any
   // page hook: a wrong view must not seed `from` / `to` into the 404's URL or prime a loader.
-  const route = routeFor(`/network/${view ?? ''}`);
+  const route = routeFor(`${CATEGORY_ALIAS.network}/${view ?? ''}`);
   if (route === undefined) {
     return <NotFoundPage />;
   }
