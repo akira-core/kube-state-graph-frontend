@@ -1,29 +1,39 @@
-import { formatBitsPerSec, formatDeltaBps, formatUsage } from '../../../shared/format/measurements';
+import { countWord } from '../../../shared/format/countWord';
+import { formatDeltaBps, formatUsage } from '../../../shared/format/measurements';
 import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, HEADER_H, LEAF_W } from '../../sankey-canvas';
 import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
 import { sum } from '../model/util';
 
 import { CLIENT_CELL_W, CLIENT_COL_GAP, CLIENT_COLS, CLIENT_PAD, type ClientCol } from './constants';
 
+/** Half-width counts 1, CJK and everything above the CJK radicals 2 — per code point, so a
+ * surrogate pair (an emoji, CJK Extension B) is one wide cell, never two half cells. */
+function cells(ch: string): number {
+  return (ch.codePointAt(0) ?? 0) > 0x2e7f ? 2 : 1;
+}
+
 /**
- * SVG has no text-overflow: card text clips itself. Half-width counts 1, CJK 2 — a rough
- * width, but the body is monospace and the full value is always in the tooltip.
+ * SVG has no text-overflow: card text clips itself. A rough width, but the body is
+ * monospace and the full value is always in the tooltip. Walks code points, so the cut
+ * never splits a surrogate pair.
  */
 export function clip(v: string, budget: number): string {
   let w = 0;
-  for (let i = 0; i < v.length; i += 1) {
-    w += v.charCodeAt(i) > 0x2e7f ? 2 : 1;
+  let out = '';
+  for (const ch of v) {
+    w += cells(ch);
     if (w > budget) {
-      return `${v.slice(0, i)}…`;
+      return `${out}…`;
     }
+    out += ch;
   }
   return v;
 }
 
 function cellWidth(v: string): number {
   let w = 0;
-  for (let i = 0; i < v.length; i += 1) {
-    w += v.charCodeAt(i) > 0x2e7f ? 2 : 1;
+  for (const ch of v) {
+    w += cells(ch);
   }
   return w;
 }
@@ -59,12 +69,15 @@ export function clientTableLines(n: TraceNode): string[] {
   return [header, ...rows];
 }
 
-/** Card width for a leaf: the clients table's width, never narrower than a leaf card. */
-export function leafCardW(n: TraceNode): number {
+/**
+ * Card width for a leaf: the clients table's width, never narrower than a leaf card. The
+ * layout passes the table it already built for `cardText`; on its own the function builds it.
+ */
+export function leafCardW(n: TraceNode, table?: readonly string[]): number {
   if (n.role === 'owner') {
     return CARD_W; // owners are free-form strings; a leaf-width card clips them
   }
-  const lines = clientTableLines(n);
+  const lines = table ?? clientTableLines(n);
   if (lines.length === 0) {
     return LEAF_W;
   }
@@ -137,12 +150,27 @@ function leafLines(n: TraceNode): string[] {
   if (n.namespace !== null) {
     out.push(`ns/${n.namespace}`);
   }
+  if (n.noFlow) {
+    out.push('no flow');
+    return out;
+  }
   const ifc = n.iface !== '' ? n.iface : n.localIface;
-  out.push(n.noFlow ? 'no flow' : `${ifc !== '' ? `${ifc} · ` : ''}${formatDeltaBps(n.bps)}`);
+  out.push(ifc !== '' ? `${ifc} · ${formatDeltaBps(n.bps)}` : formatDeltaBps(n.bps));
   return out;
 }
 
-export function cardText(n: TraceNode, model: TraceModelOk): CardText {
+function ownerAmountLine(n: TraceNode): string {
+  if (!(n.bps > 0)) {
+    return 'metered at port';
+  }
+  return n.meteredPorts < n.portCount ? `${formatDeltaBps(n.bps)} (partial ports)` : formatDeltaBps(n.bps);
+}
+
+/**
+ * The text of one card. `table` is the clients table when the caller already built it
+ * (the layout needs it for the width too); otherwise it is built here.
+ */
+export function cardText(n: TraceNode, model: TraceModelOk, table?: readonly string[]): CardText {
   if (n.kind === 'anchor') {
     const inv = model.investigation;
     return {
@@ -163,38 +191,29 @@ export function cardText(n: TraceNode, model: TraceModelOk): CardText {
     return {
       label: n.label,
       subtitle: typeWord(n),
-      extraLines: [
-        ...extra,
-        `${String(n.podCount)} pod${n.podCount === 1 ? '' : 's'}`,
-        `total ${formatDeltaBps(n.bps)}`,
-      ],
+      extraLines: [...extra, countWord(n.podCount, 'pod'), `total ${formatDeltaBps(n.bps)}`],
     };
   }
   if (n.role === 'owner') {
     return {
       label: clip(n.label, 34),
       subtitle: 'owner',
-      extraLines: [
-        n.bps > 0
-          ? `${formatDeltaBps(n.bps)}${n.meteredPorts < n.portCount ? ' (partial ports)' : ''}`
-          : 'metered at port',
-        `${String(n.clientCount)} client${n.clientCount === 1 ? '' : 's'} · ${String(n.portCount)} port${n.portCount === 1 ? '' : 's'}`,
-      ],
+      extraLines: [ownerAmountLine(n), `${countWord(n.clientCount, 'client')} · ${countWord(n.portCount, 'port')}`],
     };
   }
   // A trace-stop leaf. With clients it is a table; the synthetic `switch:iface` id is not
   // a title (the ribbon leads back to it), only a name the wire gave is. The corner counts
   // the clients whether or not they grew an owner card — the owner band says the rest; a
   // stop with no clients (the end device itself) has no corner.
-  const table = clientTableLines(n);
+  const lines = table ?? clientTableLines(n);
   const nc = n.clients?.length ?? 0;
-  const corner = nc === 0 ? {} : { cornerLabel: `${String(nc)} client${nc === 1 ? '' : 's'}` };
-  if (table.length > 0) {
+  const corner = nc === 0 ? {} : { cornerLabel: countWord(nc, 'client') };
+  if (lines.length > 0) {
     const ns = n.namespace !== null ? [`ns/${n.namespace}`] : [];
     return {
       label: n.named ? n.label : '',
       subtitle: n.type ?? 'host',
-      extraLines: [...ns, ...table, formatDeltaBps(n.bps)],
+      extraLines: [...ns, ...lines, formatDeltaBps(n.bps)],
       ...corner,
     };
   }
@@ -231,5 +250,3 @@ export function resOut(n: TraceNode): number {
 export function traceFlowOf(n: TraceNode, direction: TraceDirection): number {
   return sum(direction === 'destination' ? n.inEdges : n.outEdges);
 }
-
-export { formatBitsPerSec };

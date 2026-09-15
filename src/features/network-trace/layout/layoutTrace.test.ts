@@ -315,7 +315,11 @@ describe('column captions', () => {
     expect(labels[1]).toBe('Hop 1');
     expect(labels[labels.length - 1]).toBe('client');
     const src = layoutTrace(model(traceSample('k8s-source'))).columns.map((c) => c.label);
-    expect(src).toEqual(['namespace', 'pod', 'k8s node', 'Hop 3', 'Trace start (out)']);
+    expect(src).toEqual(['namespace', 'pod', 'k8s node', 'Hop 1', 'Trace start (out)']);
+    // Hops count away from the start under both directions: a source trace numbers right to left.
+    const out = layoutTrace(model(traceSample('source'))).columns.map((c) => c.label);
+    expect(out).toEqual(['client', 'Hop 2', 'Hop 1', 'Trace start (out)']);
+
     const client = layoutTrace(model(traceSample('client'))).columns.map((c) => c.label);
     expect(client).toEqual(['Trace start (in)', 'Hop 1', 'client', 'owner']);
     const k8s = layoutTrace(model(traceSample('k8s'))).columns.map((c) => c.label);

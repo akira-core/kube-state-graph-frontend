@@ -1,6 +1,7 @@
 import type cytoscape from 'cytoscape';
 
-import { recKind } from './classify';
+import { recKind } from '../../graph-data';
+
 import { isNonEmptyString } from './util';
 
 export interface NodeIndex {

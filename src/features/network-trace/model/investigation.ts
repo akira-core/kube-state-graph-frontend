@@ -1,11 +1,14 @@
 import type cytoscape from 'cytoscape';
 
-import { classOf, recKind } from './classify';
+import { recKind } from '../../graph-data';
+
+import { classOf } from './classify';
 import type { BuildCtx } from './ctx';
+import { ANCHOR_ID } from './ids';
 import type { NodeIndex } from './nodeIndex';
 import { makeEdge, makeNode, type TraceDirection, type TraceInvestigation } from './types';
 
-export const ANCHOR_ID = 'trace:anchor';
+export { ANCHOR_ID } from './ids';
 export const ANCHOR_LABEL = 'Trace start';
 
 /**
@@ -68,8 +71,12 @@ export function resolveTraceDirection(
   trackDir: TraceDirection | undefined,
   inv: TraceInvestigation | null
 ): { direction: TraceDirection; warning?: string } {
-  const stated: TraceDirection | null =
-    inv?.direction === 'out' ? 'source' : inv?.direction === 'in' ? 'destination' : null;
+  let stated: TraceDirection | null = null;
+  if (inv?.direction === 'out') {
+    stated = 'source';
+  } else if (inv?.direction === 'in') {
+    stated = 'destination';
+  }
   if (trackDir === undefined) {
     return { direction: stated ?? 'destination' };
   }
@@ -92,9 +99,14 @@ export function addAnchor(ctx: BuildCtx): string | null {
     return null;
   }
   const root = nodes.get(inv.nodeId);
+  if (root?.kind === 'leaf') {
+    // A pod with no onward flow edge was created as a trace stop by its one edge.
+    return `Trace start "${inv.nodeId}" has no onward flow edge and is drawn as a trace stop; it cannot carry the anchor ribbon.`;
+  }
   if (root === undefined || root.kind !== 'node') {
     return `Trace start "${inv.nodeId}" is not a drawable hop (a k8s node touched only by placement edges is not drawn).`;
   }
+
   root.isRoot = true;
   root.noFlow = false; // the anchor ribbon is its flow
   const anchor = makeNode({

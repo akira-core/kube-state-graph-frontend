@@ -1,20 +1,16 @@
 import type cytoscape from 'cytoscape';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
 
+import { countWord } from '../../shared/format/countWord';
 import { formatBitsPerSec } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import {
+  loadGateScreen,
   SankeyControlBar,
   SankeySearchOverlay,
   SankeyTooltip,
-  UNMEASURED_CONTAINER,
-  useContainerSize,
-  useOpeningViewport,
-  useSankeyKeyboard,
-  useSankeySearch,
-  useSankeyTooltip,
-  useZoomPan,
+  useSankeyStage,
   type HoverLit,
   type Rect,
   shellEmptyKind,
@@ -45,6 +41,9 @@ const ORDER_OPTIONS: ReadonlyArray<SegmentedOption<TraceNodeOrder>> = [
 ];
 
 const MIN_BPS_DEBOUNCE_MS = 200;
+/** One identity while there is no geometry, so the search's callbacks do not churn on it. */
+const EMPTY_RECTS: ReadonlyMap<string, Rect> = new Map();
+const NO_LIT: HoverLit = { keys: new Set(), nodeIds: new Set() };
 
 export interface TraceViewProps {
   elements: cytoscape.ElementDefinition[];
@@ -71,7 +70,7 @@ export interface TraceViewProps {
   onLayoutChange?: (next: TraceLayout) => void;
 }
 
-type EmptyKind = ShellEmptyKind | 'model-error' | 'filtered';
+type EmptyKind = ShellEmptyKind | 'response' | 'model-error' | 'filtered';
 
 function emptyCopy(kind: EmptyKind, demoMode: boolean): { testId: string; text: string } {
   switch (kind) {
@@ -92,6 +91,11 @@ function emptyCopy(kind: EmptyKind, demoMode: boolean): { testId: string; text: 
       };
     case 'cancelled':
       return { testId: 'trace-empty-cancelled', text: 'The request was cancelled. Press Query to trace again.' };
+    case 'response':
+      return {
+        testId: 'trace-empty-response',
+        text: `No traffic was recorded for this switch in the current time range. The hostname may not exist, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
+      };
     case 'model-error':
       return { testId: 'trace-empty-model-error', text: 'The response cannot be drawn as a trace.' };
     default:
@@ -151,71 +155,52 @@ export function TraceView({
     return () => window.clearTimeout(t);
   }, [minBps, minText]);
 
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const chartHostRef = useRef<HTMLDivElement>(null);
-  // The ref'd box and chart host only render once the loading / empty early-returns below
-  // have passed, so both measurement and the wheel listener re-attach on this key.
-  const remountKey = `${status}:${String(hasPayload)}`;
-  const containerSize = useContainerSize(boxRef, remountKey);
-
   const direction = useMemo(() => directionFor(elements, trackDir), [elements, trackDir]);
   const model = useMemo(
-    () => deriveTrace(elements, { direction: direction.direction, minBps, layout }),
-    [direction.direction, elements, layout, minBps]
+    () => deriveTrace(elements, { direction: direction.direction, minBps, layout }, direction.indexed),
+    [direction.direction, direction.indexed, elements, layout, minBps]
   );
   const geo = useMemo(() => (model.ok ? layoutTrace(model, { order }) : null), [model, order]);
   const content = useMemo(() => ({ w: geo?.width ?? 0, h: geo?.height ?? 0 }), [geo]);
-  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER, remountKey);
-  useOpeningViewport({
-    boxRef,
-    content,
-    containerSize,
-    hasContent: model.ok && (model.nodes.length > 0 || model.wrappers.length > 0),
-    setViewport: zoom.setViewport,
-  });
-  const tooltip = useSankeyTooltip(boxRef, zoom.dragging);
-  // `tooltip` is a fresh object every render; `hide` is the stable callback inside it.
-  const hideTip = tooltip.hide;
-  const handleKeyDown = useSankeyKeyboard({ zoom, focusMode, onFocusModeChange });
-
-  // A refresh may remove the hovered card; its mouseleave never fires.
-  useEffect(() => {
-    if (hoverId !== null && model.ok && !model.nodeMap.has(hoverId) && !model.wrappers.some((w) => w.id === hoverId)) {
-      setHoverId(null);
-      hideTip();
-    }
-  }, [hideTip, hoverId, model]);
-
-  const hoverLit: HoverLit | null = useMemo(() => {
-    if (hoverId === null || !model.ok) {
-      return null;
-    }
-    const path = hoverPath(model, hoverId);
-    return { keys: path.edgeIds, nodeIds: path.nodeIds };
-  }, [hoverId, model]);
+  const hasCard = useCallback(
+    (id: string) => model.ok && (model.nodeMap.has(id) || model.wrappers.some((w) => w.id === id)),
+    [model]
+  );
+  const hoverLit = useCallback(
+    (id: string): HoverLit => {
+      if (!model.ok) {
+        return NO_LIT;
+      }
+      const path = hoverPath(model, id);
+      return { keys: path.edgeIds, nodeIds: path.nodeIds };
+    },
+    [model]
+  );
   const searchRecords = useMemo(() => (model.ok && geo !== null ? traceSearchRecords(model, geo) : []), [geo, model]);
-  const cardRects = useMemo(() => (geo !== null ? traceCardRects(geo) : new Map<string, Rect>()), [geo]);
+  const cardRects = useMemo(() => (geo !== null ? traceCardRects(geo) : EMPTY_RECTS), [geo]);
   const searchPathLit = useCallback(
     (ids: ReadonlySet<string>): HoverLit => {
       if (!model.ok) {
-        return { keys: new Set(), nodeIds: new Set() };
+        return NO_LIT;
       }
       const path = hoverPathMany(model, ids);
       return { keys: path.edgeIds, nodeIds: path.nodeIds };
     },
     [model]
   );
-  const search = useSankeySearch({
+  const { boxRef, zoom, tooltip, handleKeyDown, setHoverId, search, lit } = useSankeyStage({
+    status,
+    hasPayload,
+    content,
+    hasContent: model.ok && (model.nodes.length > 0 || model.wrappers.length > 0),
+    focusMode,
+    onFocusModeChange,
+    hasCard,
+    hoverLit,
     records: searchRecords,
     rects: cardRects,
     pathLit: searchPathLit,
-    fitToRect: zoom.fitToRect,
   });
-  // Hovering a card while a search is lit shows that card's path alone; leaving it hands
-  // the chart back to the search.
-  const lit = hoverLit ?? search.lit;
-
   const summary = useMemo(
     () => (model.ok ? { hops: hopBalanceRows(model), namespaces: namespaceAggs(model) } : { hops: [], namespaces: [] }),
     [model]
@@ -229,21 +214,20 @@ export function TraceView({
     [direction.warning, errors, model]
   );
 
-  if (status === 'loading' && !hasPayload) {
-    return <div className="flex h-full items-center justify-center text-secondary">Loading…</div>;
-  }
-  if (status === 'error' && !hasPayload) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-primary" role="alert">
-        {error}
-      </div>
-    );
+  const gate = loadGateScreen({ status, hasPayload, error });
+  if (gate !== null) {
+    return gate;
   }
 
   const emptyKind: EmptyKind | null = (() => {
     const shell = shellEmptyKind({ demoMode, endpointConfigured, scopeReady, status, hasPayload, cancelled });
     if (shell !== null) {
       return shell;
+    }
+    // A successful body with nothing in it is an answer, not a malformed one: the model
+    // would refuse it for having no drawable node, which reads as a broken response.
+    if (elements.length === 0) {
+      return 'response';
     }
     if (!model.ok) {
       return 'model-error';
@@ -342,10 +326,8 @@ export function TraceView({
           )}
           {minBps > 0 && model.ok && model.filtered.edges > 0 && (
             <span className="text-[11px] text-secondary" data-testid="trace-filtered-pill">
-              hidden {model.filtered.edges} ribbon{model.filtered.edges === 1 ? '' : 's'}
-              {model.filteredNodes.length > 0
-                ? ` / ${String(model.filteredNodes.length)} hop${model.filteredNodes.length === 1 ? '' : 's'}`
-                : ''}
+              hidden {countWord(model.filtered.edges, 'ribbon')}
+              {model.filteredNodes.length > 0 ? ` / ${countWord(model.filteredNodes.length, 'hop')}` : ''}
               {` (${formatBitsPerSec(model.filtered.bps)})`}
             </span>
           )}
@@ -380,7 +362,6 @@ export function TraceView({
               geo={geo}
               tokens={tokens}
               viewport={zoom.viewport}
-              hostRef={chartHostRef}
               hostProps={zoom.hostProps}
               dragging={zoom.dragging}
               lit={lit}

@@ -1,17 +1,8 @@
 import type cytoscape from 'cytoscape';
 
-import {
-  AUTO_TIER,
-  classOf,
-  clientsOf,
-  FLOW_EDGE_TYPES,
-  infoOf,
-  isPlacementEdge,
-  recKind,
-  statusOf,
-  usageOf,
-  weightOf,
-} from './classify';
+import { recKind } from '../../graph-data';
+
+import { AUTO_TIER, classOf, FLOW_EDGE_TYPES, isPlacementEdge, weightOf, wireFacts } from './classify';
 import type { BuildCtx } from './ctx';
 import { makeNode, type TraceNode } from './types';
 import { isFiniteNumber, isNonEmptyString, SEP } from './util';
@@ -85,22 +76,25 @@ export function scanEdges(ctx: BuildCtx): void {
 function makeHop(ctx: BuildCtx, d: cytoscape.NodeDataDefinition, id: string): TraceNode {
   const kind = recKind(d);
   const lab = d.labels ?? {};
+  // A stated tier wins; a storage kind without one locks to its own column.
+  let tier: string | null = null;
+  if (isNonEmptyString(lab.tier)) {
+    tier = lab.tier;
+  } else if (AUTO_TIER.includes(kind)) {
+    tier = kind;
+  }
   const n = makeNode({
     id,
     label: ctx.index.labelOf(d),
     role: kind,
     kind: 'node',
-    tier: isNonEmptyString(lab.tier) ? lab.tier : AUTO_TIER.includes(kind) ? kind : null,
-    namespace: kind === 'pod' ? ctx.index.nsOfPod(id) : isNonEmptyString(lab.namespace) ? lab.namespace : null,
-    ontapCluster: isNonEmptyString(lab.ontap_cluster) ? lab.ontap_cluster : null,
+    tier,
     otherInBps: isFiniteNumber(d.otherInBps) ? d.otherInBps : null,
     otherOutBps: isFiniteNumber(d.otherOutBps) ? d.otherOutBps : null,
     noFlow: !ctx.drawTouch.has(id),
-    status: statusOf(d.status),
-    usage: usageOf(d),
-    info: infoOf(d),
-    clients: clientsOf(d),
+    ...wireFacts(ctx.index, d, id, kind),
   });
+
   if (n.noFlow && (n.otherInBps !== null || n.otherOutBps !== null)) {
     ctx.warnings.push(
       `${n.label}: no drawable flow edge (no-flow card); its other_in_bps / other_out_bps are not drawn.`

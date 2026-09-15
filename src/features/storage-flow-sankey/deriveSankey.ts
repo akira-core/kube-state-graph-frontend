@@ -1,9 +1,9 @@
 import type cytoscape from 'cytoscape';
 
-import { isNodeStatus, rankToStatus, STATUS_RANK } from '../../shared/constants/colorByStatus';
+import { isNodeStatus, worstStatus } from '../../shared/constants/colorByStatus';
 import type { NodeStatus } from '../../shared/constants/types';
 import { formatBytes } from '../../shared/format/measurements';
-import { EMPTY_STORAGE_GRAPH_ROOTS, type StorageGraphRoots } from '../graph-data';
+import { EMPTY_STORAGE_GRAPH_ROOTS, recKind, type StorageGraphRoots } from '../graph-data';
 
 export type SankeyMode = 'read' | 'write' | 'both';
 /**
@@ -140,32 +140,6 @@ interface NodeRec {
   svm?: string;
   /** Resolved against the body's node ids by `resolveClaimAggregates`; a `pvc` only. */
   claimAggr?: string;
-}
-
-/**
- * Compound groups (`application` / `namespace` / `controller`) are kind-less on the
- * wire after normalize — they carry `isApplication` / `isNamespace` / `isController`
- * instead. The parent-chain walk needs the D6 kind, so those flags are folded back
- * here. A controller also receives a workload `kind` from enrichControllers; that is
- * the icon, not the hop, so `isController` wins.
- */
-function recKind(d: cytoscape.NodeDataDefinition): string {
-  if (d.isController === true) {
-    return 'controller';
-  }
-  if (d.isApplication === true) {
-    return 'application';
-  }
-  if (d.isNamespace === true) {
-    return 'namespace';
-  }
-  if (d.isCluster === true) {
-    return 'cluster';
-  }
-  if (d.isStorageCluster === true) {
-    return 'storage-cluster';
-  }
-  return typeof d.kind === 'string' ? d.kind : '';
 }
 
 function indexNodes(elements: readonly cytoscape.ElementDefinition[]): Map<string, NodeRec> {
@@ -368,26 +342,6 @@ function touchGroup(map: Map<string, GroupAgg>, rec: NodeRec, podId: string, nam
   };
   map.set(rec.id, created);
   return created;
-}
-
-/**
- * Worst status over a set of ids, or `undefined` when none of them carries one.
- *
- * Absent must NOT collapse to `normal`: a green border on a card whose members the backend
- * never judged claims a verdict nobody made. That is the same reason `FALLBACK_STATUS` is
- * an aggregation default only — it counts an unjudged member as healthy INSIDE a fold that
- * already has evidence, never as evidence of its own.
- */
-function worstStatusOf(nodes: Map<string, NodeRec>, ids: Iterable<string>): NodeStatus | undefined {
-  let rank: number | undefined;
-  for (const id of ids) {
-    const status = nodes.get(id)?.status;
-    if (status === undefined) {
-      continue;
-    }
-    rank = rank === undefined ? STATUS_RANK[status] : Math.max(rank, STATUS_RANK[status]);
-  }
-  return rank === undefined ? undefined : rankToStatus(rank);
 }
 
 function toDerivedNode(agg: GroupAgg, kind: 'application' | 'namespace', status: NodeStatus | undefined): SankeyNode {
@@ -752,12 +706,12 @@ export function deriveSankey(
     }
     // The node's OWN status folds in beside its pods': the wrapper is the only thing drawn
     // for it, so a degraded node holding healthy pods must still read as degraded.
-    const worst = worstStatusOf(nodes, [rec.id, ...members]);
+    const worst = worstStatus([rec.id, ...members].map((id) => nodes.get(id)?.status));
     k8sNodes.push({
       id: rec.id,
       label: rec.label,
       podIds: members,
-      ...(worst !== undefined ? { status: worst } : {}),
+      ...(worst !== null ? { status: worst } : {}),
       ...(members.length === 0 ? { noFlow: true } : {}),
     });
   }
@@ -859,29 +813,10 @@ export function formatBytesPerSec(value: number): string {
   return `${formatBytes(value)}/s`;
 }
 
-/**
- * Highlights every link on a path through `nodeId` — see "Hover highlights the path".
- *
- * When the body reports claim aggregates, crossing an SVM is claim-aware (design D4):
- * walking UP from a pvc leaves it only toward ITS OWN claim aggregate, never the SVM's
- * other inbound `aggr-svm` edges (which may belong to a different claim), and stops at the
- * SVM for a claim with none (a FlexGroup claim); walking DOWN from an aggregate enters the
- * SVM only toward the pvcs whose claim aggregate is that same aggregate. Both crossings are
- * handled by reading straight from the pvc / aggregate endpoint — the walk never lands ON
- * the SVM node itself, so two claims sharing one SVM (a merge point) never fight over a
- * single "visited" flag. Hovering the SVM card itself is unconstrained (its own inbound and
- * outbound are both generic), and so is the whole walk when the body reports none at all —
- * "a body that reports no claim aggregates is walked over every link, which is all such a
- * body can say." Under the `Group` SVM display the SVM tier draws no card and no
- * `aggr-svm` link at all, so neither special case ever triggers there — the plain walk is
- * already exact.
- */
-export function hoverPathLinks(graph: SankeyGraph, nodeId: string): SankeyLink[] {
-  return hoverPathLinksMany(graph, [nodeId]);
-}
-
 interface LinkIndex {
   kindOf: Map<string, SankeyKind>;
+  /** Wrapper (k8s node) id -> its pods; SVM frame id -> its PVCs. */
+  membersOf: Map<string, readonly string[]>;
   outBy: Map<string, SankeyLink[]>;
   inBy: Map<string, SankeyLink[]>;
   /** SVM id -> its `svm-pvc` links. */
@@ -909,6 +844,10 @@ function linkIndexOf(graph: SankeyGraph): LinkIndex {
   };
   const index: LinkIndex = {
     kindOf: new Map(graph.nodes.map((n) => [n.id, n.kind])),
+    membersOf: new Map([
+      ...graph.k8sNodes.map((k): [string, readonly string[]] => [k.id, k.podIds]),
+      ...graph.svmFrames.map((f): [string, readonly string[]] => [f.id, f.pvcIds]),
+    ]),
     outBy: new Map(),
     inBy: new Map(),
     svmPvcBySvm: new Map(),
@@ -928,14 +867,32 @@ function linkIndexOf(graph: SankeyGraph): LinkIndex {
 }
 
 /**
- * The union of `hoverPathLinks` over every start — what a search lights for all its hits at
- * once. Each walk step depends only on the node it is at (and on whether the walk is
- * claim-constrained), so starts sharing a constraint share their visited sets: the union is
- * exact and costs one pass over the reachable links however many starts there are.
+ * Every link on a path through any of `startIds` — see "Hover highlights the path" — as
+ * one set: what a hover lights for one card, and what a search lights for all its hits at
+ * once. A wrapper (a Kubernetes node under the `Node` layout) stands for its member pods
+ * and an SVM frame (under the `Group` display) for its member PVCs, so naming either
+ * lights every member's path. Each walk step depends only on the node it is at (and on
+ * whether the walk is claim-constrained), so starts sharing a constraint share their
+ * visited sets: the union is exact and costs one pass over the reachable links however
+ * many starts there are.
+ *
+ * When the body reports claim aggregates, crossing an SVM is claim-aware (design D4):
+ * walking UP from a pvc leaves it only toward ITS OWN claim aggregate, never the SVM's
+ * other inbound `aggr-svm` edges (which may belong to a different claim), and stops at the
+ * SVM for a claim with none (a FlexGroup claim); walking DOWN from an aggregate enters the
+ * SVM only toward the pvcs whose claim aggregate is that same aggregate. Both crossings are
+ * handled by reading straight from the pvc / aggregate endpoint — the walk never lands ON
+ * the SVM node itself, so two claims sharing one SVM (a merge point) never fight over a
+ * single "visited" flag. Hovering the SVM card itself is unconstrained (its own inbound and
+ * outbound are both generic), and so is the whole walk when the body reports none at all —
+ * "a body that reports no claim aggregates is walked over every link, which is all such a
+ * body can say." Under the `Group` SVM display the SVM tier draws no card and no
+ * `aggr-svm` link at all, so neither special case ever triggers there — the plain walk is
+ * already exact.
  */
 export function hoverPathLinksMany(graph: SankeyGraph, startIds: Iterable<string>): SankeyLink[] {
   const out = new Set<SankeyLink>();
-  const { kindOf, outBy, inBy, svmPvcBySvm, aggrSvmBySvm } = linkIndexOf(graph);
+  const { kindOf, membersOf, outBy, inBy, svmPvcBySvm, aggrSvmBySvm } = linkIndexOf(graph);
 
   const walk = (starts: readonly string[], constrained: boolean): void => {
     const seenForward = new Set<string>();
@@ -999,23 +956,15 @@ export function hoverPathLinksMany(graph: SankeyGraph, startIds: Iterable<string
     }
   };
 
-  // Hovering an SVM card is unconstrained (see `hoverPathLinks`), so SVM starts walk apart.
+  // Hovering an SVM card is unconstrained (see above), so SVM starts walk apart.
   const svmStarts: string[] = [];
   const otherStarts: string[] = [];
   for (const id of startIds) {
-    (kindOf.get(id) === 'netapp-svm' ? svmStarts : otherStarts).push(id);
+    for (const start of membersOf.get(id) ?? [id]) {
+      (kindOf.get(start) === 'netapp-svm' ? svmStarts : otherStarts).push(start);
+    }
   }
   walk(svmStarts, false);
   walk(otherStarts, graph.reportsClaimAggregates);
   return [...out];
-}
-
-/** Union of every member pod's path — hovering a wrapper title lights them all. */
-export function hoverPathForWrapper(graph: SankeyGraph, k8sNode: SankeyK8sNode): SankeyLink[] {
-  return hoverPathLinksMany(graph, k8sNode.podIds);
-}
-
-/** Union of every member PVC's path — hovering a Group-display frame title lights them all. */
-export function hoverPathForFrame(graph: SankeyGraph, frame: SankeySvmFrame): SankeyLink[] {
-  return hoverPathLinksMany(graph, frame.pvcIds);
 }

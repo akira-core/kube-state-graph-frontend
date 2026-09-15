@@ -1,5 +1,7 @@
 import type cytoscape from 'cytoscape';
 
+import { recKind } from '../graph-data';
+
 import { resolveClaimAggregates, type SankeyMode } from './deriveSankey';
 
 export const DEFAULT_TOP_PODS = 10;
@@ -14,22 +16,6 @@ export interface TopPodsCut {
 
 function asId(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function recKind(d: cytoscape.NodeDataDefinition): string {
-  if (d.isController === true) {
-    return 'controller';
-  }
-  if (d.isApplication === true) {
-    return 'application';
-  }
-  if (d.isNamespace === true) {
-    return 'namespace';
-  }
-  if (d.isCluster === true) {
-    return 'cluster';
-  }
-  return typeof d.kind === 'string' ? d.kind : '';
 }
 
 function metricValue(metrics: cytoscape.EdgeIoMetrics | undefined, mode: SankeyMode): number {

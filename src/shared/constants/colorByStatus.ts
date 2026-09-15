@@ -27,6 +27,24 @@ export function rankToStatus(rank: number): NodeStatus {
   return rank >= 2 ? 'critical' : rank === 1 ? 'warning' : 'normal';
 }
 
+/**
+ * Worst status over a fold's members, or `null` when none of them carries one.
+ *
+ * Absent must NOT collapse to `normal`: a green border on a card whose members the backend
+ * never judged claims a verdict nobody made. That is the same reason `FALLBACK_STATUS` is
+ * an aggregation default only — it counts an unjudged member as healthy INSIDE a fold that
+ * already has evidence, never as evidence of its own.
+ */
+export function worstStatus(statuses: Iterable<NodeStatus | null | undefined>): NodeStatus | null {
+  let worst: NodeStatus | null = null;
+  for (const s of statuses) {
+    if (s !== null && s !== undefined && (worst === null || STATUS_RANK[s] > STATUS_RANK[worst])) {
+      worst = s;
+    }
+  }
+  return worst;
+}
+
 // Keyed off STATUS_COLOR so a status can never be paintable but unrecognised, or the
 // reverse. Callers use it to keep a backend `data.status` ONLY when it is one this palette
 // can draw — an unknown value must leave the field absent, not paint a wrong colour.

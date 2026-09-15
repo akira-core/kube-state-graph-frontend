@@ -4,10 +4,7 @@ export { useSankeyQuery } from './useSankeyQuery';
 export {
   deriveSankey,
   formatBytesPerSec,
-  hoverPathLinks,
   hoverPathLinksMany,
-  hoverPathForFrame,
-  hoverPathForWrapper,
   resolveClaimAggregates,
   rootValueOptions,
   EMPTY_SANKEY_ROOT_OPTIONS,

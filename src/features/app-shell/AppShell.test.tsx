@@ -868,13 +868,61 @@ describe('AppShell network category', () => {
     expect(traceCalls(fetchMock)).toHaveLength(1);
   });
 
-  it('renders Page not found for an unknown network view, with Reload disabled', () => {
-    stubTraceFetch();
-    renderAt('/network/foo', liveNetwork);
+  it('renders Page not found for an unknown network view, with Reload disabled', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/foo?hostname=sw%2Fdist-a', liveNetwork);
     expect(screen.getByText('Page not found')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Application' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
     expect(screen.queryByTestId('trace-controls')).not.toBeInTheDocument();
+    // The guard runs before any page hook: the 404 neither seeds `from` / `to` into its URL
+    // nor primes a loader.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.location.search).toBe('?hostname=sw%2Fdist-a');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('locates from the trace Sankey into the Network Graph, keeping the scope and the drawn body', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw%2Fdist-a&track_dir=destination&from=now-1h&to=now', liveNetwork);
+    pressQuery();
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    });
+    const search = window.location.search;
+
+    fireEvent.click(screen.getByTestId('trace-node-Core 1'));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/network/graph');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', 'dci-uturn/core-1');
+    });
+    // Unlike the Storage locate, the Network views share one loader: the query string rides
+    // along unchanged (no re-seeded `from` / `to`), the target is navigation state only,
+    // and nothing is refetched.
+    expect(window.location.search).toBe(search);
+    expect(window.location.search).not.toContain('locate');
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+    expect(screen.queryByTestId('sankey-svg')).not.toBeInTheDocument();
+
+    // Locate is a one-off: consumed once, and gone from the state behind the entry.
+    fireEvent.click(screen.getByRole('button', { name: 'consume-locate' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+    });
+    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    });
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
   });
 
   it('draws the fixture on mount in demo mode, with no Query button', async () => {
@@ -903,6 +951,13 @@ describe('AppShell network category', () => {
     expect(screen.getByTestId('trace-max-hops')).toHaveValue('abc');
     expect(screen.getByTestId('trace-empty-scope')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+
+    // Editing the draft into something valid lifts the complaint: the Query button and the
+    // chart's empty state consult the same list, so they change together.
+    fireEvent.change(screen.getByTestId('trace-max-hops'), { target: { value: '3' } });
+    expect(screen.getByRole('button', { name: 'Query' })).toBeEnabled();
+    expect(screen.queryByTestId('trace-empty-scope')).not.toBeInTheDocument();
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
   });
 
   it('shows unconfigured and keeps Reload disabled when endpoints.trace is absent', () => {

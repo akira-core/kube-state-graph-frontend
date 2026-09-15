@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 
 import { MISSING_VALUE_PLACEHOLDER } from '../../shared/constants';
+import { countWord } from '../../shared/format/countWord';
 import { formatBitsPerSec, formatDeltaBps } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import {
@@ -35,7 +36,7 @@ export function TraceSummary({ hops, namespaces, warnings }: Readonly<TraceSumma
       meta={
         <>
           {hops.length} hops · {namespaces.length} namespaces
-          {warnings.length > 0 ? ` · ${String(warnings.length)} warning${warnings.length === 1 ? '' : 's'}` : ''}
+          {warnings.length > 0 ? ` · ${countWord(warnings.length, 'warning')}` : ''}
         </>
       }
     >

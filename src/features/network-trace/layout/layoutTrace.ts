@@ -17,8 +17,19 @@ import { bandOf, isClientPartition, type TraceBand } from '../model/bands';
 import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, SEP } from '../model/util';
 
-import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, OWN_T, PAD_SIDE } from './constants';
-import { ANCHOR_MIN_H, cardText, hopHeaderH, leafCardH, leafCardW, resIn, resOut, traceFlowOf } from './text';
+import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, LATERAL_BULGE_MIN, OWN_T, PAD_SIDE } from './constants';
+import { bandKind, edgePath, lateralArrow } from './paths';
+import {
+  ANCHOR_MIN_H,
+  cardText,
+  clientTableLines,
+  hopHeaderH,
+  leafCardH,
+  leafCardW,
+  resIn,
+  resOut,
+  traceFlowOf,
+} from './text';
 import { colCaption, wrapperColCaption } from './tooltips';
 import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry, WrapperGeom } from './types';
 
@@ -217,16 +228,20 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   const thick = thicknessScale(maxVal);
 
   for (const e of edges) {
+    const backNear =
+      e.backward && mustGet(model.nodeMap, e.fromId, 'node').col - mustGet(model.nodeMap, e.toId, 'node').col === 1;
     ge.set(e.id, {
       t: e.owns ? OWN_T : thick(e.bps),
-      backNear:
-        e.backward && mustGet(model.nodeMap, e.fromId, 'node').col - mustGet(model.nodeMap, e.toId, 'node').col === 1,
+      backNear,
+      kind: bandKind(e, { backNear }),
+      d: '',
       x1: 0,
       y1: 0,
       t1: 0,
       x2: 0,
       y2: 0,
       t2: 0,
+      bulge: LATERAL_BULGE_MIN,
     });
   }
   const near = (e: TraceEdge): boolean => E(e).backNear;
@@ -238,7 +253,14 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     cy: 0,
   });
 
-  const texts = new Map(nodes.map((n) => [n.id, cardText(n, model)]));
+  // Card text once per node: the clients table decides a leaf's width as well as its
+  // lines, so it is built here and handed to both.
+  const texts = new Map(
+    nodes.map((n) => {
+      const table = n.kind === 'leaf' ? clientTableLines(n) : [];
+      return [n.id, { text: cardText(n, model, table), table }];
+    })
+  );
   for (const n of nodes) {
     // Lateral edges hang both ends on the right edge (the arc lives in the column's right
     // gap). An adjacent-column backflow hangs on the facing edges; a longer one enters on
@@ -267,20 +289,20 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     }
     const lh = stackHeight(leftSlots);
     const rh = stackHeight(rightSlots);
-    const text = mustGet(texts, n.id, 'card text');
+    const { text, table } = mustGet(texts, n.id, 'card text');
     let w: number;
     let h: number;
     if (n.kind === 'node') {
       w = CARD_W;
       h = hopHeaderH(n) + Math.max(lh, rh, BODY_MIN) + BODY_PAD_BOTTOM;
     } else if (n.kind === 'leaf') {
-      w = leafCardW(n);
+      w = leafCardW(n, table);
       h = Math.max(leafCardH(text), lh, rh);
     } else {
       w = ANCHOR_W;
       h = Math.max(ANCHOR_MIN_H, lh, rh);
     }
-    gn.set(n.id, { x: 0, y: 0, w, h, cy: 0, leftSlots, rightSlots });
+    gn.set(n.id, { x: 0, y: 0, w, h, cy: 0, leftSlots, rightSlots, text });
   }
 
   // Column x. Under the `node` layout the frames live in the pod column (the column holding
@@ -346,22 +368,60 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   }
   const totalW = x - COL_GAP + PAD_SIDE;
 
+  // The pod column under the `node` layout stacks frames first: pods by their frame, then
+  // the frameless ones. (A pod naming a frame that is not drawn is dropped, not stacked.)
+  const framed = (
+    list: readonly TraceNode[],
+    ci: number
+  ): { byW: Map<string, TraceNode[]>; loose: TraceNode[] } | null => {
+    if (ci !== podCol || wrappers.length === 0) {
+      return null;
+    }
+    const byW = new Map<string, TraceNode[]>();
+    const loose: TraceNode[] = [];
+    for (const n of list) {
+      if (n.k8sNode !== null) {
+        const l = byW.get(n.k8sNode) ?? [];
+        l.push(n);
+        byW.set(n.k8sNode, l);
+      } else {
+        loose.push(n);
+      }
+    }
+    return { byW, loose };
+  };
+  const frameH = (pods: readonly TraceNode[], y: number): number => {
+    if (pods.length === 0) {
+      return WRAPPER_HEADER_H + WRAPPER_PAD;
+    }
+    let yy = y + WRAPPER_HEADER_H;
+    for (const n of pods) {
+      yy += N(n.id).h + V_GAP;
+    }
+    return yy - V_GAP + WRAPPER_PAD - y;
+  };
+
+  // The height a stack of cards would take from y0 — `stack` with the writes left out, so
+  // the k8s band can size itself before anything is placed. Same arithmetic, same order.
+  const partitionHeight = (list: readonly TraceNode[], ci: number): number => {
+    const parts = framed(list, ci);
+    if (parts === null) {
+      return list.reduce((y, n) => y + N(n.id).h + V_GAP, 0);
+    }
+    let y = 0;
+    for (const wg of wrappers) {
+      y += frameH(parts.byW.get(wg.wrapper.id) ?? [], y) + V_GAP;
+    }
+    return parts.loose.reduce((yy, n) => yy + N(n.id).h + V_GAP, y);
+  };
+
   // Stack a list of cards from y0 (frames first in the pod column), appending them to `out`
   // in drawing order; returns the y below the last card plus one gap.
   const stack = (list: readonly TraceNode[], y0: number, ci: number, out: TraceNode[]): number => {
     let y = y0;
-    if (ci === podCol && wrappers.length > 0) {
-      const byW = new Map<string, TraceNode[]>();
-      const loose: TraceNode[] = [];
-      for (const n of list) {
-        if (n.k8sNode !== null) {
-          const l = byW.get(n.k8sNode) ?? [];
-          l.push(n);
-          byW.set(n.k8sNode, l);
-        } else {
-          loose.push(n);
-        }
-      }
+    const parts = framed(list, ci);
+    if (parts !== null) {
+      const { byW, loose } = parts;
       for (const wg of wrappers) {
         const pods = byW.get(wg.wrapper.id) ?? [];
         wg.x = colX[ci] ?? PAD_SIDE;
@@ -373,7 +433,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
           yy += N(n.id).h + V_GAP;
           out.push(n);
         }
-        wg.h = pods.length > 0 ? yy - V_GAP + WRAPPER_PAD - y : WRAPPER_HEADER_H + WRAPPER_PAD;
+        wg.h = frameH(pods, y);
         y += wg.h + V_GAP;
       }
       for (const n of loose) {
@@ -397,7 +457,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   for (let ci = 0; ci < cols.length; ci += 1) {
     if (colBand(ci) === 'k8s') {
       const upper = (cols[ci] ?? []).filter((n) => !isClientPartition(n));
-      maxK8sH = Math.max(maxK8sH, stack(upper, 0, ci, []) - V_GAP);
+      maxK8sH = Math.max(maxK8sH, partitionHeight(upper, ci) - V_GAP);
     }
   }
 
@@ -612,7 +672,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     list.sort((a, b) => Math.abs(E(a).y2 - E(a).y1) - Math.abs(E(b).y2 - E(b).y1));
     list.forEach((e, i) => {
       const eg = E(e);
-      eg.bulge = Math.min(56 + ((eg.t1 + eg.t2) / 2) * 0.67 + 18 * i, COL_GAP - 26);
+      eg.bulge = Math.min(LATERAL_BULGE_MIN + ((eg.t1 + eg.t2) / 2) * 0.67 + 18 * i, COL_GAP - 26);
     });
   }
 
@@ -635,11 +695,31 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     totalH = backY - 16 + PAD_BOTTOM;
   }
 
+  // Every end is placed: the paths are strings from here on, so the chart draws without
+  // rebuilding them per render.
+  for (const e of edges) {
+    const eg = E(e);
+    eg.d = edgePath(eg);
+    if (eg.kind === 'lateral') {
+      eg.arrow = lateralArrow(eg);
+    }
+  }
+
+  // Hops count from the trace start. Without a start there is no anchor column: hops then
+  // count from the side the start would sit on (left for a destination trace, right for a
+  // source trace).
+  const anchor = nodes.find((n) => n.kind === 'anchor');
+  let startCol: number;
+  if (anchor !== undefined) {
+    startCol = anchor.col;
+  } else {
+    startCol = model.direction === 'destination' ? -1 : cols.length;
+  }
   const columns: ColumnHeader[] = [];
   cols.forEach((col, ci) => {
     const cx = colX[ci] ?? PAD_SIDE;
     if (col.length > 0) {
-      columns.push({ x: cx, label: colCaption(col, model.direction) });
+      columns.push({ x: cx, label: colCaption(col, model.direction, startCol) });
     } else if (ci === podCol && wrappers.length > 0) {
       columns.push({ x: cx, label: wrapperColCaption() });
     }

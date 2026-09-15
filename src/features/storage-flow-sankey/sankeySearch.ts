@@ -1,12 +1,8 @@
-import type { SearchField, SearchRecord } from '../graph-search';
+import { searchFields, type SearchRecord } from '../graph-search';
 import type { HoverLit, Rect } from '../sankey-canvas';
 
 import { hoverPathLinksMany, type SankeyGraph } from './deriveSankey';
 import { linkKey, type SankeyLayout } from './layoutSankey';
-
-function fieldsOf(entries: ReadonlyArray<[string, string | undefined]>): SearchField[] {
-  return entries.flatMap(([field, value]) => (value !== undefined && value.length > 0 ? [{ field, value }] : []));
-}
 
 /**
  * One search record per DRAWN card: every card in the layout plus every wrapper it frames
@@ -31,7 +27,7 @@ export function sankeySearchRecords(graph: SankeyGraph, layout: SankeyLayout): S
             },
           }
         : {}),
-      fields: fieldsOf([
+      fields: searchFields([
         ['label', ln.label],
         ['kind', ln.kind],
         ['namespace', ln.namespace],
@@ -46,7 +42,7 @@ export function sankeySearchRecords(graph: SankeyGraph, layout: SankeyLayout): S
       label: w.label.length > 0 ? w.label : w.id,
       kind: w.kind,
       ...(ontapCluster !== undefined ? { context: { cluster: ontapCluster } } : {}),
-      fields: fieldsOf([
+      fields: searchFields([
         ['label', w.label],
         ['kind', w.kind],
         ['ontapCluster', ontapCluster],
@@ -67,20 +63,14 @@ export function sankeyCardRects(layout: SankeyLayout): Map<string, Rect> {
 
 /**
  * What stays lit for these cards — the union of each one's hover path (see "Hover highlights
- * the path"). A wrapper lights its member pods' paths, an SVM frame its member PVCs'; every
- * requested card stays lit itself even when it has no path.
+ * the path"; `hoverPathLinksMany` already stands a wrapper or an SVM frame in for its
+ * members), keyed the way the drawn ribbons are. Every requested card stays lit itself even
+ * when it has no path.
  */
 export function sankeyPathLit(graph: SankeyGraph, ids: Iterable<string>): HoverLit {
-  const podsByWrapper = new Map(graph.k8sNodes.map((k) => [k.id, k.podIds]));
-  const pvcsByFrame = new Map(graph.svmFrames.map((f) => [f.id, f.pvcIds]));
-  const nodeIds = new Set<string>();
-  const starts: string[] = [];
-  for (const id of ids) {
-    nodeIds.add(id);
-    starts.push(...(podsByWrapper.get(id) ?? pvcsByFrame.get(id) ?? [id]));
-  }
+  const nodeIds = new Set(ids);
   const keys = new Set<string>();
-  for (const l of hoverPathLinksMany(graph, starts)) {
+  for (const l of hoverPathLinksMany(graph, nodeIds)) {
     keys.add(linkKey(l.source, l.target, l.direction, l.tier));
     nodeIds.add(l.source);
     nodeIds.add(l.target);

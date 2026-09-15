@@ -1,26 +1,22 @@
 import type cytoscape from 'cytoscape';
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react';
+import { useCallback, useMemo, useState, type JSX, type MouseEvent } from 'react';
 
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
 import { eyebrowClass } from '../../shared/ui/Section';
 import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { EMPTY_STORAGE_GRAPH_ROOTS, hasAnyRoot, type StorageGraphRoots } from '../graph-data';
 import {
+  loadGateScreen,
   SankeyControlBar,
   SankeySearchOverlay,
   SankeyTooltip,
   StatusLegend,
-  UNMEASURED_CONTAINER,
-  useContainerSize,
-  useOpeningViewport,
-  useSankeyKeyboard,
-  useSankeySearch,
-  useSankeyTooltip,
-  useZoomPan,
+  useSankeyStage,
   nodeTooltipRows,
   rawReading,
   shellEmptyKind,
   Swatch,
+  type HoverLit,
   type ShellEmptyKind,
 } from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
@@ -36,7 +32,7 @@ import {
   type SankeySvmDisplay,
 } from './deriveSankey';
 import { layoutSankey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
-import { SankeyChart, type HoverLit } from './SankeyChart';
+import { SankeyChart } from './SankeyChart';
 import { sankeyCardRects, sankeyPathLit, sankeySearchRecords } from './sankeySearch';
 import {
   SankeySummary,
@@ -272,15 +268,6 @@ export function SankeyView({
     }
     onSvmDisplayChange?.(next);
   };
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const chartHostRef = useRef<HTMLDivElement>(null);
-  // See SankeyView.test.tsx: the ref'd box only renders once the loading / fatal-error
-  // early returns below have passed, so the measurement must re-attach once the box
-  // actually mounts — the key is exactly what decides that.
-  const remountKey = `${status}:${String(hasPayload)}`;
-  const containerSize = useContainerSize(boxRef, remountKey);
-
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
   // weight conservation, which is why this view has no cluster selector of its own.
@@ -336,50 +323,34 @@ export function SankeyView({
   );
 
   const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
-  const zoom = useZoomPan(chartHostRef, content, containerSize ?? UNMEASURED_CONTAINER, remountKey);
-  useOpeningViewport({
-    boxRef,
-    content,
-    containerSize,
-    hasContent: layout.nodes.length > 0,
-    setViewport: zoom.setViewport,
-  });
-  const tooltip = useSankeyTooltip(boxRef, zoom.dragging);
-  const setTip = tooltip.show;
-  const hideTip = tooltip.hide;
-  const handleKeyDown = useSankeyKeyboard({ zoom, focusMode, onFocusModeChange });
-
-  // A refresh may remove the node under the cursor; its mouseleave never fires, so nothing
-  // else clears this — the tooltip would describe a gone node and `lit` would fade
-  // everything against zero surviving links.
-  useEffect(() => {
-    if (
-      hoverId !== null &&
-      !graph.nodes.some((n) => n.id === hoverId) &&
-      !graph.k8sNodes.some((n) => n.id === hoverId) &&
-      !graph.svmFrames.some((f) => f.id === hoverId)
-    ) {
-      setHoverId(null);
-      hideTip();
-    }
-  }, [graph, hideTip, hoverId]);
-
-  const hoverLit: HoverLit | null = useMemo(
-    () => (hoverId === null ? null : sankeyPathLit(graph, [hoverId])),
-    [graph, hoverId]
+  // A gone hovered node would leave the tooltip describing it and `lit` fading everything
+  // against zero surviving links; the stage clears the hover when this says the card left.
+  const hasCard = useCallback(
+    (id: string) =>
+      graph.nodes.some((n) => n.id === id) ||
+      graph.k8sNodes.some((n) => n.id === id) ||
+      graph.svmFrames.some((f) => f.id === id),
+    [graph]
   );
+  const hoverLit = useCallback((id: string): HoverLit => sankeyPathLit(graph, [id]), [graph]);
   const searchRecords = useMemo(() => sankeySearchRecords(graph, layout), [graph, layout]);
   const cardRects = useMemo(() => sankeyCardRects(layout), [layout]);
   const searchPathLit = useCallback((ids: ReadonlySet<string>) => sankeyPathLit(graph, ids), [graph]);
-  const search = useSankeySearch({
+  const { boxRef, zoom, tooltip, handleKeyDown, setHoverId, search, lit } = useSankeyStage({
+    status,
+    hasPayload,
+    content,
+    hasContent: layout.nodes.length > 0,
+    focusMode,
+    onFocusModeChange,
+    hasCard,
+    hoverLit,
     records: searchRecords,
     rects: cardRects,
     pathLit: searchPathLit,
-    fitToRect: zoom.fitToRect,
   });
-  // Hovering a card while a search is lit shows that card's path alone; leaving it hands
-  // the chart back to the search.
-  const lit = hoverLit ?? search.lit;
+  const setTip = tooltip.show;
+  const hideTip = tooltip.hide;
 
   const summary = useMemo(() => {
     const inbound = new Map<string, number>();
@@ -447,15 +418,9 @@ export function SankeyView({
     return { nodes, namespaces, applications };
   }, [graph, layout]);
 
-  if (status === 'loading' && !hasPayload) {
-    return <div className="flex h-full items-center justify-center text-secondary">Loading…</div>;
-  }
-  if (status === 'error' && !hasPayload) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-primary" role="alert">
-        {error}
-      </div>
-    );
+  const gate = loadGateScreen({ status, hasPayload, error });
+  if (gate !== null) {
+    return gate;
   }
 
   // Six causes, six sentences. They are not interchangeable: an unfinished selection that
@@ -653,7 +618,6 @@ export function SankeyView({
               layout={layout}
               tokens={tokens}
               viewport={zoom.viewport}
-              hostRef={chartHostRef}
               hostProps={zoom.hostProps}
               dragging={zoom.dragging}
               lit={lit}

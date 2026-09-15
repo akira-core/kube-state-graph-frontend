@@ -209,6 +209,13 @@ describe('TraceView empty states', () => {
     expect(screen.queryByTestId('trace-empty-awaiting')).not.toBeInTheDocument();
   });
 
+  it('shows an empty-response message, not a model error, for a successful body with nothing in it', () => {
+    renderTrace({ elements: [] });
+    expect(screen.getByTestId('trace-empty-response')).toHaveTextContent('No traffic was recorded');
+    expect(screen.queryByTestId('trace-empty-model-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-svg')).not.toBeInTheDocument();
+  });
+
   it('shows the model errors when the body cannot be drawn in the requested direction', () => {
     // The fixture's leaves are hosts with clients; followed as `source` they would have to
     // carry a flow edge onward, which the model refuses.

@@ -313,6 +313,14 @@ describe('SankeyView', () => {
     fireEvent.click(screen.getByRole('radio', { name: /write/i }));
     expect(screen.queryByTestId('sankey-empty-mode')).not.toBeInTheDocument();
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+
+    // The host was unmounted by the empty state and mounted again by the mode switch, with
+    // nothing about the view's status changing: the wheel listener must follow the element,
+    // not the status, or zoom is dead for the rest of the session.
+    const host = screen.getByTestId('sankey-chart-host');
+    const before = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
   });
 
   it('locates a storage node on click but not an SVM', () => {

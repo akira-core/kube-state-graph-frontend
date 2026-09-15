@@ -1,6 +1,6 @@
 import type cytoscape from 'cytoscape';
 
-import { matchRecords, type SearchField, type SearchRecord } from './matchRecords';
+import { matchRecords, type LazySearchRecord, type SearchDescription, type SearchField } from './matchRecords';
 import type { ComputeHitsResult, SearchResultContext } from './types';
 
 // The six searchable fields (design D2 / CONTEXT.md "Hit"), in read order. `ipAddress` is a
@@ -48,7 +48,18 @@ function buildContext(data: Record<string, unknown>): SearchResultContext | unde
   };
 }
 
-function* nodeRecords(elements: cytoscape.ElementDefinition[]): Generator<SearchRecord> {
+// Built for hits only: a query runs over every node per keystroke, and most nodes miss.
+function describeNode(data: Record<string, unknown>, id: string): SearchDescription {
+  const kind = readScalar(data, 'kind');
+  const context = buildContext(data);
+  return {
+    label: readScalar(data, 'label') ?? id,
+    ...(kind !== undefined ? { kind } : {}),
+    ...(context !== undefined ? { context } : {}),
+  };
+}
+
+function* nodeRecords(elements: cytoscape.ElementDefinition[]): Generator<LazySearchRecord> {
   for (const el of elements) {
     if (el.group !== 'nodes') {
       continue;
@@ -58,15 +69,7 @@ function* nodeRecords(elements: cytoscape.ElementDefinition[]): Generator<Search
     if (typeof id !== 'string') {
       continue;
     }
-    const kind = readScalar(data, 'kind');
-    const context = buildContext(data);
-    yield {
-      id,
-      label: readScalar(data, 'label') ?? id,
-      ...(kind !== undefined ? { kind } : {}),
-      ...(context !== undefined ? { context } : {}),
-      fields: fieldValues(data),
-    };
+    yield { id, fields: fieldValues(data), describe: () => describeNode(data, id) };
   }
 }
 

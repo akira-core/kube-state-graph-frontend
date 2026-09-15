@@ -1,4 +1,6 @@
-import { infoOf, statusOf, usageOf, worstStatus } from './classify';
+import { worstStatus } from '../../../shared/constants/colorByStatus';
+
+import { infoOf, statusOf, usageOf } from './classify';
 import type { BuildCtx } from './ctx';
 import type { TraceWrapper } from './types';
 

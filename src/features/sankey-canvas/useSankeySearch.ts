@@ -64,5 +64,10 @@ export function useSankeySearch({ records, rects, pathLit, fitToRect }: SankeySe
     [fitToRect, rects]
   );
 
-  return { query, setQuery, results: hits.results, fitIds, lit, onLocate, onFitToIds };
+  // One object per change of its parts, so the overlay (a memoised component) sits out the
+  // renders a pan drag or a hover causes — every part is itself memoised or a stable setter.
+  return useMemo(
+    () => ({ query, setQuery, results: hits.results, fitIds, lit, onLocate, onFitToIds }),
+    [fitIds, hits.results, lit, onFitToIds, onLocate, query]
+  );
 }

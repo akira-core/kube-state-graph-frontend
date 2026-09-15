@@ -7,7 +7,7 @@ import { GraphPage } from './GraphPage';
 import { NavBar } from './NavBar';
 import { NetworkPage } from './NetworkPage';
 import { NotFoundPage } from './NotFoundPage';
-import { categoryHome, documentTitle, isKnownPath, routeFor } from './routes';
+import { categoryHome, documentTitle, isKnownPath, routeFor, type Category } from './routes';
 import { SankeyPage } from './SankeyPage';
 import { IDLE_PAGE_STATUS, ShellFrameProvider, type PageStatus } from './ShellFrame';
 import { useViewTimeRange } from './useViewTimeRange';
@@ -21,19 +21,13 @@ function pathKey(pathname: string): string {
 }
 
 /**
- * `/` is an alias for `/graph`, so it must carry the query across. A bare
- * `<Navigate to="/graph" />` would drop it, and a root link written with `from`/`to` (or
- * with a scope) would land on a graph that silently ignored both.
+ * A category alias (`/`, `/network`) lands on that category's Graph and must carry the
+ * query across. A bare `<Navigate to="/graph" />` would drop it, and a root link written
+ * with `from`/`to` (or with a scope) would land on a graph that silently ignored both.
  */
-function RootRedirect(): JSX.Element {
+function CategoryRedirect({ category }: Readonly<{ category: Category }>): JSX.Element {
   const location = useLocation();
-  return <Navigate to={{ pathname: categoryHome('storage'), search: location.search }} replace />;
-}
-
-/** `/network` is an alias for `/network/graph`, carrying the query for the same reason. */
-function NetworkRedirect(): JSX.Element {
-  const location = useLocation();
-  return <Navigate to={{ pathname: categoryHome('network'), search: location.search }} replace />;
+  return <Navigate to={{ pathname: categoryHome(category), search: location.search }} replace />;
 }
 
 function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
@@ -86,11 +80,11 @@ export function AppShell({ config }: Readonly<AppShellProps>): JSX.Element {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
-        <Route path="/" element={<RootRedirect />} />
+        <Route path="/" element={<CategoryRedirect category="storage" />} />
         <Route element={<AppLayout config={config} />}>
           <Route path="graph" element={<GraphPage />} />
           <Route path="sankey" element={<SankeyPage />} />
-          <Route path="network" element={<NetworkRedirect />} />
+          <Route path="network" element={<CategoryRedirect category="network" />} />
           <Route path="network/:view" element={<NetworkPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

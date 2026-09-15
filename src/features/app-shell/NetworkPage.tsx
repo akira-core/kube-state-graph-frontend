@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useState, type JSX } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 
 import { SHOWCASE_TRACE } from '../../shared/fixtures/showcaseTrace';
-import { parseTimeQuery } from '../../shared/time/viewTimeRange';
 import { buildTraceRequestUrl } from '../graph-data';
 import { GraphView } from '../graph-view';
 import {
@@ -12,14 +11,15 @@ import {
   TraceScopeBar,
   TraceView,
   useHostnameCandidates,
+  type TraceDirection,
   type TraceDraft,
   type TraceLayout,
 } from '../network-trace';
 
 import { NotFoundPage } from './NotFoundPage';
-import { routeFor } from './routes';
+import { categoryHome, routeFor, type View } from './routes';
 import { useShellFrame } from './ShellFrame';
-import { useAppliedScope, useSeedTimeOnMount } from './useAppliedScope';
+import { useAppliedScope, useCommitField, useSeedTimeOnMount } from './useAppliedScope';
 import { useDraft } from './useDraft';
 import { useLocateFromNavigation, usePageLoader } from './usePageLoader';
 
@@ -31,10 +31,20 @@ import { useLocateFromNavigation, usePageLoader } from './usePageLoader';
  */
 export function NetworkPage(): JSX.Element {
   const { view } = useParams<{ view: string }>();
+  // Same chrome as the shell's `*` route (both render under AppLayout); the table decides
+  // which `:view` values exist so this guard cannot drift from the nav. It runs before any
+  // page hook: a wrong view must not seed `from` / `to` into the 404's URL or prime a loader.
+  const route = routeFor(`/network/${view ?? ''}`);
+  if (route === undefined) {
+    return <NotFoundPage />;
+  }
+  return <NetworkPageBody view={route.view} />;
+}
+
+function NetworkPageBody({ view }: Readonly<{ view: View }>): JSX.Element {
   const { config, time, focusMode, setFocusMode } = useShellFrame();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const serialize = config.demoMode ? () => [] : serializeTraceScope;
   const { applied, commit } = useAppliedScope(parseTraceScope, serialize);
   const { draft, setDraft, dirty } = useDraft(applied.query);
@@ -59,11 +69,6 @@ export function NetworkPage(): JSX.Element {
   );
   const [demoMinBps, setDemoMinBps] = useState(0);
   const [layout, setLayout] = useState<TraceLayout>('flat');
-
-  // Memoised on the params object: `parseTimeQuery` returns a fresh object per call, and an
-  // identity that changed every render would churn every callback below and, through
-  // `onMinBpsChange`, restart the view's threshold debounce on each render.
-  const appliedRange = useMemo(() => parseTimeQuery(searchParams) ?? time.range, [searchParams, time.range]);
   const minBps = config.demoMode ? demoMinBps : applied.minBps;
 
   const onQuery = useCallback(() => {
@@ -76,16 +81,13 @@ export function NetworkPage(): JSX.Element {
     trace.onQuery(() => (endpoint === undefined ? undefined : buildTraceRequestUrl(endpoint, range, built.query)));
   }, [applied.minBps, built, commit, draft, endpoint, time, trace]);
 
-  const onMinBpsChange = useCallback(
-    (next: number) => {
-      if (config.demoMode) {
-        setDemoMinBps(next);
-        return;
-      }
-      commit({ ...applied, minBps: next }, appliedRange);
-    },
-    [applied, appliedRange, commit, config.demoMode]
-  );
+  const onMinBpsChange = useCommitField('minBps', {
+    applied,
+    commit,
+    fallbackRange: time.range,
+    demoMode: config.demoMode,
+    onDemo: setDemoMinBps,
+  });
 
   const onDraftChange = useCallback(
     (patch: Partial<TraceDraft>) => {
@@ -99,19 +101,20 @@ export function NetworkPage(): JSX.Element {
 
   const onLocateNode = useCallback(
     (id: string) => {
-      void navigate({ pathname: '/network/graph', search: location.search }, { state: { locate: id } });
+      void navigate({ pathname: categoryHome('network'), search: location.search }, { state: { locate: id } });
     },
     [location.search, navigate]
   );
+  // The view only knows the direction once a query has been sent (the fixture is always a
+  // destination trace); before that it has nothing to orient the columns by.
+  let trackDir: TraceDirection | undefined;
+  if (config.demoMode) {
+    trackDir = 'destination';
+  } else if (trace.armed) {
+    trackDir = applied.query.trackDir;
+  }
 
   const hostnameOptions = useHostnameCandidates(trace.state.elements);
-
-  // Same chrome as the shell's `*` route (both render under AppLayout); the table decides
-  // which `:view` values exist so this guard cannot drift from the nav.
-  const route = routeFor(`/network/${view ?? ''}`);
-  if (route === undefined || (view !== 'graph' && view !== 'sankey')) {
-    return <NotFoundPage />;
-  }
 
   return (
     <>
@@ -155,8 +158,8 @@ export function NetworkPage(): JSX.Element {
             focusMode={focusMode}
             onFocusModeChange={setFocusMode}
             endpointConfigured={endpointConfigured}
-            scopeReady={built.ok && applied.problems.length === 0}
-            trackDir={config.demoMode ? 'destination' : trace.armed ? applied.query.trackDir : undefined}
+            scopeReady={problems.length === 0}
+            trackDir={trackDir}
             minBps={minBps}
             onMinBpsChange={onMinBpsChange}
             onLocateNode={onLocateNode}

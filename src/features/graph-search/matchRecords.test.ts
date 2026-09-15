@@ -55,6 +55,19 @@ describe('matchRecords', () => {
     expect(results[1]).toMatchObject({ kind: 'pod', context: { namespace: 'shop' } });
   });
 
+  it('describes a lazily-described record only when it hits', () => {
+    const describe = vi.fn(() => ({ label: 'shown', kind: 'pod' }));
+    const records = [
+      { id: 'hit', fields: [{ field: 'role', value: 'kafka' }], describe },
+      { id: 'miss', fields: [{ field: 'role', value: 'zookeeper' }], describe },
+    ];
+    const { results } = matchRecords(records, 'kafka');
+    expect(results).toEqual([
+      { id: 'hit', label: 'shown', kind: 'pod', matchedField: { field: 'role', value: 'kafka' } },
+    ]);
+    expect(describe).toHaveBeenCalledTimes(1);
+  });
+
   it('treats an empty query as inactive', () => {
     expect(matchRecords([record('a', { label: 'a' })], ' ').hitIds.size).toBe(0);
   });

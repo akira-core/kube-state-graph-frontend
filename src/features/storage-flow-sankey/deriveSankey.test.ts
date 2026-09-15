@@ -5,13 +5,18 @@ import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph, type StorageGraphRoots } fro
 import {
   deriveSankey,
   formatBytesPerSec,
-  hoverPathForFrame,
-  hoverPathLinks,
   hoverPathLinksMany,
   resolveClaimAggregates,
   rootValueOptions,
   SANKEY_KIND_ORDER,
+  type SankeyGraph,
+  type SankeyLink,
 } from './deriveSankey';
+
+/** One card's hover path — the single-start case of the union. */
+function hoverPathLinks(graph: SankeyGraph, nodeId: string): SankeyLink[] {
+  return hoverPathLinksMany(graph, [nodeId]);
+}
 
 function wire(nodes: unknown[], edges: unknown[]): unknown {
   return { elements: { nodes: nodes.map((data) => ({ data })), edges: edges.map((data) => ({ data })) } };
@@ -626,7 +631,7 @@ describe('deriveSankey', () => {
       const graph = deriveSankey(elements, 'both', undefined, 'group');
       const frame = graph.svmFrames.find((f) => f.label === 'svm_shop');
       expect(frame).toBeDefined();
-      const path = hoverPathForFrame(graph, frame!);
+      const path = hoverPathLinks(graph, frame!.id);
       const aggr1 = idOf(graph, 'netapp-aggr', 'aggr1');
       const aggr2 = idOf(graph, 'netapp-aggr', 'aggr2');
       const mongo0 = idOf(graph, 'pvc', 'data-mongo-0');

@@ -1,4 +1,3 @@
-import { createRef } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -28,8 +27,8 @@ function renderChart(model: TraceModelOk): string {
       geo={geo}
       tokens={DARK_TOKENS}
       viewport={{ scale: 1, tx: 0, ty: 0 }}
-      hostRef={createRef<HTMLDivElement>()}
-      hostProps={{ onPointerDown: noop, onPointerMove: noop, onPointerUp: noop, onPointerCancel: noop }}
+      hostProps={{ ref: noop, onPointerDown: noop, onPointerMove: noop, onPointerUp: noop, onPointerCancel: noop }}
+
       dragging={false}
       lit={null}
       onNodeEnter={noop}

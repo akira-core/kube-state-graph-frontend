@@ -1,3 +1,4 @@
+import { countWord } from '../../../shared/format/countWord';
 import { formatBitsPerSec } from '../../../shared/format/measurements';
 
 import type { BuildCtx } from './ctx';
@@ -29,9 +30,9 @@ export function attachAndPrune(ctx: BuildCtx): void {
   }
   if (ctx.filteredCount > 0) {
     ctx.warnings.push(
-      `Display threshold > ${formatBitsPerSec(minBps)}: ${String(ctx.filteredCount)} ribbon${ctx.filteredCount === 1 ? '' : 's'} hidden (${formatBitsPerSec(ctx.filteredBps)} in total)` +
+      `Display threshold > ${formatBitsPerSec(minBps)}: ${countWord(ctx.filteredCount, 'ribbon')} hidden (${formatBitsPerSec(ctx.filteredBps)} in total)` +
         (filteredNodes.length > 0
-          ? `, ${String(filteredNodes.length)} hop${filteredNodes.length === 1 ? '' : 's'} hidden whole (${filteredNodes.join(', ')})`
+          ? `, ${countWord(filteredNodes.length, 'hop')} hidden whole (${filteredNodes.join(', ')})`
           : '') +
         '; the amounts are folded into other in / other out, so every hop still balances.'
     );

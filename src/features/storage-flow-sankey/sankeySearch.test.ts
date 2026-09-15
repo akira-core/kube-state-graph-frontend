@@ -4,7 +4,7 @@ import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGra
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
 import { matchRecords } from '../graph-search';
 
-import { deriveSankey, hoverPathForWrapper, hoverPathLinks } from './deriveSankey';
+import { deriveSankey, hoverPathLinksMany } from './deriveSankey';
 import { layoutSankey, linkKey } from './layoutSankey';
 import { sankeyCardRects, sankeyPathLit, sankeySearchRecords } from './sankeySearch';
 
@@ -53,7 +53,7 @@ describe('sankeyPathLit', () => {
     const aggr1 = graph.nodes.find((n) => n.label === 'aggr1')!;
     const lit = sankeyPathLit(graph, [aggr1.id]);
     expect(lit.keys).toEqual(
-      new Set(hoverPathLinks(graph, aggr1.id).map((l) => linkKey(l.source, l.target, l.direction, l.tier)))
+      new Set(hoverPathLinksMany(graph, [aggr1.id]).map((l) => linkKey(l.source, l.target, l.direction, l.tier)))
     );
     expect(lit.nodeIds.has(aggr1.id)).toBe(true);
     expect(sankeyPathLit(graph, ['not-a-card'])).toEqual({ keys: new Set(), nodeIds: new Set(['not-a-card']) });
@@ -65,6 +65,6 @@ describe('sankeyPathLit', () => {
     const worker0 = graph.k8sNodes.find((k) => k.label === 'worker-0')!;
     const lit = sankeyPathLit(graph, [worker0.id]);
     expect(lit.nodeIds.has(worker0.id)).toBe(true);
-    expect(lit.keys.size).toBe(hoverPathForWrapper(graph, worker0).length);
+    expect(lit.keys.size).toBe(hoverPathLinksMany(graph, worker0.podIds).length);
   });
 });

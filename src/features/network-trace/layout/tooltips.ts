@@ -1,6 +1,7 @@
+import { countWord } from '../../../shared/format/countWord';
 import { formatBitsPerSec, formatBytes, formatDeltaBps } from '../../../shared/format/measurements';
 import { nodeTooltipRows } from '../../sankey-canvas';
-import { bandOf, isClientPartition, k8sSubcol } from '../model/bands';
+import { bandOf, isClientPartition, k8sSubcol, type K8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
 import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode, TraceWrapper } from '../model/types';
 import { mustGet, sum } from '../model/util';
@@ -90,7 +91,7 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
   const membership: string[] = [];
   if (isW) {
     membership.push('derived from member pods');
-    membership.push(`${String(n.podIds.length)} pod${n.podIds.length === 1 ? '' : 's'}`);
+    membership.push(countWord(n.podIds.length, 'pod'));
   } else if (n.kind === 'node') {
     if (resIn(n) > 0) {
       membership.push(`other in ${formatBitsPerSec(n.otherIn)}`);
@@ -102,18 +103,18 @@ export function nodeTooltipLines(n: TraceNode | TraceWrapper, model: TraceModelO
     if (n.bps > 0) {
       membership.push(`derived from port cards${n.meteredPorts < n.portCount ? ' (partial ports)' : ''}`);
     }
-    membership.push(`${String(n.clientCount)} client${n.clientCount === 1 ? '' : 's'}`);
-    membership.push(`${String(n.portCount)} port${n.portCount === 1 ? '' : 's'}`);
+    membership.push(countWord(n.clientCount, 'client'));
+    membership.push(countWord(n.portCount, 'port'));
   } else if (n.role === 'ns' || n.role === 'app') {
     membership.push('derived from member pods');
-    membership.push(`${String(n.podCount)} pod${n.podCount === 1 ? '' : 's'}`);
+    membership.push(countWord(n.podCount, 'pod'));
   }
-  const fold =
-    !isW && (n.role === 'ns' || n.role === 'app')
-      ? ' (worst of member pods)'
-      : isW
-        ? ' (worst of node and member pods)'
-        : '';
+  let fold = '';
+  if (isW) {
+    fold = ' (worst of node and member pods)';
+  } else if (n.role === 'ns' || n.role === 'app') {
+    fold = ' (worst of member pods)';
+  }
   const info = n.info;
   const perf =
     info?.perf === undefined
@@ -159,13 +160,22 @@ export function wrapperColCaption(): string {
   return 'node / pod';
 }
 
+/** The k8s sub-column word; a pod column that also holds k8s nodes reads `node / pod`. */
+const K8S_SUBCOL_WORD: Record<K8sSubcol, string> = {
+  node: 'k8s node',
+  pod: 'pod',
+  app: 'application',
+  ns: 'namespace',
+};
+
 /**
- * Column captions by band: the switch band counts hops (`Trace start`, `Hop 1`, …); the
- * k8s band names its sub-column (`k8s node`, `pod`, `application`, `namespace`), with
- * ` / client` appended when the lower partition holds trace stops and plain `client` when
- * nothing in the column is k8s; the owner band is `owner`.
+ * Column captions by band: the switch band counts hops away from the trace start
+ * (`Trace start`, `Hop 1`, …, `startCol` being the anchor's column); the k8s band names its
+ * sub-column (`k8s node`, `pod`, `application`, `namespace`), with ` / client` appended
+ * when the lower partition holds trace stops and plain `client` when nothing in the column
+ * is k8s; the owner band is `owner`.
  */
-export function colCaption(col: readonly TraceNode[], direction: TraceDirection): string {
+export function colCaption(col: readonly TraceNode[], direction: TraceDirection, startCol: number): string {
   const first = col[0];
   if (first === undefined) {
     return '';
@@ -180,7 +190,7 @@ export function colCaption(col: readonly TraceNode[], direction: TraceDirection)
   if (band === 'switch') {
     const role = first.role;
     const same = role !== 'switch' && col.every((n) => n.kind === 'node' && n.role === role);
-    return `Hop ${String(first.col)}${same ? ` · ${KIND_LABEL[role] ?? role}` : ''}`;
+    return `Hop ${String(Math.abs(first.col - startCol))}${same ? ` · ${KIND_LABEL[role] ?? role}` : ''}`;
   }
   if (band === 'owner') {
     return 'owner';
@@ -191,15 +201,10 @@ export function colCaption(col: readonly TraceNode[], direction: TraceDirection)
     return 'client';
   }
   const sub = k8sSubcol(k8s);
-  const word =
-    sub === 'node'
-      ? 'k8s node'
-      : sub === 'pod'
-        ? col.some((n) => n.k8sNode !== null)
-          ? 'node / pod'
-          : 'pod'
-        : sub === 'app'
-          ? 'application'
-          : 'namespace';
+  let word = K8S_SUBCOL_WORD[sub ?? 'ns'];
+
+  if (sub === 'pod' && col.some((n) => n.k8sNode !== null)) {
+    word = 'node / pod';
+  }
   return hasClient ? `${word} / client` : word;
 }

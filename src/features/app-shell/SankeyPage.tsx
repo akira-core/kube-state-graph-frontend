@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate } from 'react-router';
 
 import { DEMO_IDENTITY_OPTIONS, SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
-import { parseTimeQuery } from '../../shared/time/viewTimeRange';
 import {
   buildStorageGraphRequestUrl,
   EMPTY_STORAGE_GRAPH_ROOTS,
@@ -28,8 +27,9 @@ import {
   type SankeySvmDisplay,
 } from '../storage-flow-sankey';
 
+import { HOME_PATH } from './routes';
 import { useShellFrame } from './ShellFrame';
-import { useAppliedScope, useSeedTimeOnMount } from './useAppliedScope';
+import { useAppliedScope, useCommitField, useSeedTimeOnMount } from './useAppliedScope';
 import { useDraft } from './useDraft';
 import { usePageLoader } from './usePageLoader';
 
@@ -92,7 +92,6 @@ function liveController(
 export function SankeyPage(): JSX.Element {
   const { config, time, focusMode, setFocusMode } = useShellFrame();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const filterOptions = useFilterOptions(config.demoMode ? undefined : config.endpoints.labelValues);
   const identity = config.demoMode
     ? DEMO_IDENTITY_OPTIONS
@@ -158,9 +157,6 @@ export function SankeyPage(): JSX.Element {
     onTeardown: leaveFocusMode,
   });
 
-  // Memoised on the params object (see NetworkPage): a fresh range object every render would
-  // churn `onTopPods` / `onModeChange` for nothing.
-  const appliedRange = useMemo(() => parseTimeQuery(searchParams) ?? time.range, [searchParams, time.range]);
   const topPods = config.demoMode ? demoTopPods : applied.topPods;
   const mode = config.demoMode ? demoModeValue : applied.mode;
 
@@ -186,7 +182,7 @@ export function SankeyPage(): JSX.Element {
 
   const onLocateNode = useCallback(
     (id: string) => {
-      void navigate('/graph', { state: { locate: id } });
+      void navigate(HOME_PATH, { state: { locate: id } });
     },
     [navigate]
   );
@@ -198,26 +194,20 @@ export function SankeyPage(): JSX.Element {
     drawn: drawnOptions,
   });
 
-  const onTopPods = useCallback(
-    (value: number) => {
-      if (config.demoMode) {
-        setDemoTopPods(value);
-        return;
-      }
-      commit({ ...applied, topPods: value }, appliedRange);
-    },
-    [applied, appliedRange, commit, config.demoMode]
-  );
-  const onModeChange = useCallback(
-    (next: SankeyMode) => {
-      if (config.demoMode) {
-        setDemoModeValue(next);
-        return;
-      }
-      commit({ ...applied, mode: next }, appliedRange);
-    },
-    [applied, appliedRange, commit, config.demoMode]
-  );
+  const onTopPods = useCommitField('topPods', {
+    applied,
+    commit,
+    fallbackRange: time.range,
+    demoMode: config.demoMode,
+    onDemo: setDemoTopPods,
+  });
+  const onModeChange = useCommitField('mode', {
+    applied,
+    commit,
+    fallbackRange: time.range,
+    demoMode: config.demoMode,
+    onDemo: setDemoModeValue,
+  });
 
   return (
     <>

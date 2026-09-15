@@ -10,7 +10,7 @@ import { Select } from '../../shared/ui/Select';
 import { StatusLamp, type LampState } from '../../shared/ui/StatusLamp';
 import { useRequiredThemeController, type ThemeChoice } from '../theme';
 
-import { CATEGORY_LABEL, categoryHome, categoryOf, viewsOf, type Category } from './routes';
+import { CATEGORY_LABEL, categoryHome, categoryOf, VIEW_LABEL, viewsOf, type Category } from './routes';
 import type { PagePhase } from './ShellFrame';
 
 export interface NavBarProps {
@@ -66,19 +66,6 @@ function datetimeLocalToUnix(value: string): number | null {
 const CATEGORIES: ReadonlyArray<{ key: Category; to: string; label: string }> = (['storage', 'network'] as const).map(
   (key) => ({ key, to: categoryHome(key), label: CATEGORY_LABEL[key] })
 );
-
-const VIEWS_BY_CATEGORY: Record<Category, ReadonlyArray<{ to: string; label: string; keepSearch: boolean }>> = {
-  storage: viewsOf('storage').map((r) => ({
-    to: r.path,
-    label: r.view === 'graph' ? 'Graph' : 'Sankey',
-    keepSearch: r.keepSearch,
-  })),
-  network: viewsOf('network').map((r) => ({
-    to: r.path,
-    label: r.view === 'graph' ? 'Graph' : 'Sankey',
-    keepSearch: r.keepSearch,
-  })),
-};
 
 const SEGMENT_CLASS = 'flex h-6 items-center rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-100';
 const SEGMENT_ACTIVE = 'bg-selected text-primary shadow-sm';
@@ -155,13 +142,13 @@ export function NavBar({
         aria-label="View"
         data-testid="nav-view"
       >
-        {VIEWS_BY_CATEGORY[category].map((view) => (
+        {viewsOf(category).map((route) => (
           <NavLink
-            key={view.to}
-            to={view.keepSearch ? { pathname: view.to, search: location.search } : view.to}
+            key={route.path}
+            to={route.keepSearch ? { pathname: route.path, search: location.search } : route.path}
             className={({ isActive }) => clsx(SEGMENT_CLASS, isActive ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
           >
-            {view.label}
+            {VIEW_LABEL[route.view]}
           </NavLink>
         ))}
       </div>

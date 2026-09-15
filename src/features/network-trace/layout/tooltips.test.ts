@@ -173,5 +173,9 @@ describe('tooltip and card text', () => {
     expect(clip('abcdef', 4)).toBe('abcd…');
     expect(clip('網管部 王小明', 6)).toBe('網管部…');
     expect(clip('ok', 10)).toBe('ok');
+    // An astral code point (emoji, CJK Extension B) is one wide cell, never a split surrogate pair.
+    expect(clip('ab🙂cd', 4)).toBe('ab🙂…');
+    expect(clip('ab🙂cd', 3)).toBe('ab…');
+    expect(clip('𠀋𠀋x', 4)).toBe('𠀋𠀋…');
   });
 });

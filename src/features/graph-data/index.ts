@@ -10,6 +10,7 @@ export type { StorageGraphQuery, StorageGraphRoots } from './storageGraphRequest
 export { buildTraceRequestUrl, TRACE_DEFAULTS } from './traceRequestUrl';
 export type { TraceDirection, TraceQuery } from './traceRequestUrl';
 export { normalizeGraph } from './normalize';
+export { recKind } from './nodeKind';
 export type { NormalizeResult } from './normalize';
 export { wrapSwitchFabric } from './wrapSwitchFabric';
 export { wrapNodeGroup } from './wrapNodeGroup';

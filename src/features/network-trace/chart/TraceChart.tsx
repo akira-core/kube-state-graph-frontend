@@ -1,4 +1,4 @@
-import type { JSX, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react';
+import type { JSX, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 
 import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { SankeyCanvas, type HoverLit, type Viewport, type ZoomPanApi } from '../../sankey-canvas';
@@ -15,7 +15,6 @@ export interface TraceChartProps {
   geo: TraceGeometry;
   tokens: ThemeTokens;
   viewport: Viewport;
-  hostRef: RefObject<HTMLDivElement>;
   hostProps: ZoomPanApi['hostProps'];
   dragging: boolean;
   /** `keys` are edge ids. */
@@ -41,7 +40,6 @@ export function TraceChart({
   geo,
   tokens,
   viewport,
-  hostRef,
   hostProps,
   dragging,
   lit,
@@ -63,7 +61,6 @@ export function TraceChart({
       columns={geo.columns}
       tokens={tokens}
       viewport={viewport}
-      hostRef={hostRef}
       hostProps={hostProps}
       dragging={dragging}
       onKeyDown={onKeyDown}
@@ -102,8 +99,8 @@ export function TraceChart({
           key={n.id}
           n={n}
           g={N(n.id)}
-          model={model}
           tokens={tokens}
+
           faded={nodeFaded(n.id)}
           onEnter={onNodeEnter}
           onLeave={onNodeLeave}

@@ -1,14 +1,8 @@
-import type { SearchField, SearchRecord } from '../graph-search';
+import { searchFields, type SearchRecord } from '../graph-search';
 import type { Rect } from '../sankey-canvas';
 
 import type { TraceGeometry } from './layout/types';
 import type { TraceModelOk } from './model/types';
-
-function fieldsOf(entries: ReadonlyArray<[string, string | null | undefined]>): SearchField[] {
-  return entries.flatMap(([field, value]) =>
-    value !== null && value !== undefined && value.length > 0 ? [{ field, value }] : []
-  );
-}
 
 /**
  * One search record per DRAWN card: every placed node (hop, leaf, anchor) and every
@@ -36,7 +30,7 @@ export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): Sea
       kind,
       ...(context !== undefined ? { context } : {}),
       fields: [
-        ...fieldsOf([
+        ...searchFields([
           ['label', n.label],
           ['kind', kind],
           ['namespace', n.namespace],
@@ -46,7 +40,7 @@ export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): Sea
           ['owner', n.owner],
         ]),
         ...(n.clients ?? []).flatMap((c) =>
-          fieldsOf([
+          searchFields([
             ['ip', c.ip],
             ['hostname', c.hostname],
             ['owner', c.owner],
@@ -61,7 +55,7 @@ export function traceSearchRecords(model: TraceModelOk, geo: TraceGeometry): Sea
       id: w.id,
       label: w.label.length > 0 ? w.label : w.id,
       kind: 'node',
-      fields: fieldsOf([
+      fields: searchFields([
         ['label', w.label],
         ['kind', 'node'],
       ]),

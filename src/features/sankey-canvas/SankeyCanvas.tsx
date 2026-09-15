@@ -1,4 +1,4 @@
-import type { JSX, KeyboardEvent, ReactNode, RefObject } from 'react';
+import type { JSX, KeyboardEvent, ReactNode } from 'react';
 
 import type { ThemeTokens } from '../../shared/theme/tokens';
 
@@ -19,7 +19,7 @@ export interface SankeyCanvasProps {
   columns: readonly ColumnHeader[];
   tokens: ThemeTokens;
   viewport: Viewport;
-  hostRef: RefObject<HTMLDivElement>;
+  /** From `useZoomPan`; its `ref` registers this host so the wheel listener follows remounts. */
   hostProps: ZoomPanApi['hostProps'];
   dragging: boolean;
   onKeyDown: (evt: KeyboardEvent<HTMLDivElement>) => void;
@@ -45,7 +45,6 @@ export function SankeyCanvas({
   columns,
   tokens,
   viewport,
-  hostRef,
   hostProps,
   dragging,
   onKeyDown,
@@ -53,9 +52,12 @@ export function SankeyCanvas({
   children,
   overlay,
 }: Readonly<SankeyCanvasProps>): JSX.Element {
+  // `ref` is the stable setter from `useZoomPan`; passing it straight through keeps the host
+  // attached once, not re-registered on every pan frame.
+  const { ref: registerHost, ...hostHandlers } = hostProps;
   return (
     <div
-      ref={hostRef}
+      ref={registerHost}
       className={
         dragging
           ? 'relative h-full w-full cursor-grabbing outline-none'
@@ -65,7 +67,7 @@ export function SankeyCanvas({
       tabIndex={0}
       aria-label="Sankey diagram: scroll to zoom, drag to pan"
       onKeyDown={onKeyDown}
-      {...hostProps}
+      {...hostHandlers}
     >
       {/*
         Deliberately NO `viewBox`, and nothing else may add one. Without it an SVG user

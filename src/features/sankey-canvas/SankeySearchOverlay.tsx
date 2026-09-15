@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { memo, type JSX } from 'react';
 
 import { SearchBar } from '../graph-search';
 
@@ -13,9 +13,12 @@ export interface SankeySearchOverlayProps {
  * The card search box, top-right over the chart. It renders inside the pan/zoom host (the
  * chart's `overlay` slot), so it opts out of the host's wheel zoom and drag pan — otherwise
  * the result list could never scroll and pressing in the input would start a pan. Typing
- * never reaches the chart shortcuts: the search box stops its own key events.
+ * never reaches the chart shortcuts: the search box stops its own key events. Memoised on
+ * `search`, which `useSankeySearch` keeps stable across the pan and hover renders.
  */
-export function SankeySearchOverlay({ search }: Readonly<SankeySearchOverlayProps>): JSX.Element {
+export const SankeySearchOverlay = memo(function SankeySearchOverlay({
+  search,
+}: Readonly<SankeySearchOverlayProps>): JSX.Element {
   return (
     <div {...{ [ZOOM_PAN_IGNORE_ATTR]: '' }} className="cursor-auto">
       <SearchBar
@@ -31,4 +34,4 @@ export function SankeySearchOverlay({ search }: Readonly<SankeySearchOverlayProp
       />
     </div>
   );
-}
+});

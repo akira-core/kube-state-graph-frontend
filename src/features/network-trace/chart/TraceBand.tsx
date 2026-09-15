@@ -2,9 +2,8 @@ import type { JSX, MouseEvent } from 'react';
 
 import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
-import { LABEL_MIN_THICKNESS, ribbonPath } from '../../sankey-canvas';
+import { haloStyle, LABEL_MIN_THICKNESS } from '../../sankey-canvas';
 import { OWN_T } from '../layout/constants';
-import { backwardRibbon, lateralRibbon, ownLine } from '../layout/paths';
 import type { EdgeGeom } from '../layout/types';
 import type { TraceEdge } from '../model/types';
 
@@ -19,26 +18,15 @@ export interface TraceBandProps {
   onLeave: () => void;
 }
 
-export type BandKind = 'flow' | 'lateral' | 'back' | 'back-loop' | 'own';
-
-export function bandKind(e: TraceEdge, g: EdgeGeom): BandKind {
-  if (e.owns) {
-    return 'own';
-  }
-  if (e.backward) {
-    return g.backNear ? 'back' : 'back-loop';
-  }
-  return e.lateral ? 'lateral' : 'flow';
-}
-
 /**
  * One ribbon. Opacity follows the storage chart's hover rule (everything off the lit path
  * fades); a zero-value ribbon is dashed and half-opaque so "measured 0" reads apart from
  * "small". A backflow across several columns and an ownership line are stroked paths —
- * a filled band cannot be dashed or run a loop of constant width.
+ * a filled band cannot be dashed or run a loop of constant width. The kind and the path
+ * come with the geometry: the layout built them once.
  */
 export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<TraceBandProps>): JSX.Element {
-  const kind = bandKind(e, g);
+  const { kind } = g;
   const common = {
     'data-testid': 'trace-band',
     'data-band': kind,
@@ -49,7 +37,7 @@ export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<T
     return (
       <path
         {...common}
-        d={ownLine(g)}
+        d={g.d}
         fill="none"
         stroke={tokens.fg.muted}
         strokeOpacity={active ? 0.7 : 0.15}
@@ -62,7 +50,7 @@ export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<T
     return (
       <path
         {...common}
-        d={backwardRibbon(g)}
+        d={g.d}
         fill="none"
         stroke={tokens.sankey.traceBackward}
         strokeOpacity={active ? 0.6 : 0.12}
@@ -74,26 +62,28 @@ export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<T
   }
   const isZero = e.bps === 0;
   const back = kind === 'back';
-  const d = kind === 'lateral' ? lateralRibbon(g, g.bulge ?? 56) : ribbonPath(g.x1, g.y1, g.x2, g.y2, g.t);
-  const arrowSize = Math.max(5, Math.min(9, g.t2 / 2));
+  let fillOpacity = active ? 0.82 : 0.14;
+  if (isZero) {
+    fillOpacity = 0.4;
+  }
   return (
     <>
       <path
         {...common}
-        d={d}
+        d={g.d}
         fill={`url(#${back ? BACK_GRADIENT_ID : FLOW_GRADIENT_ID})`}
-        fillOpacity={isZero ? 0.4 : active ? 0.82 : 0.14}
+        fillOpacity={fillOpacity}
+
         stroke={back ? tokens.sankey.traceBackward : tokens.sankey.traceFlow}
         strokeOpacity={0.3}
         strokeWidth={1}
         strokeDasharray={isZero ? '4 3' : undefined}
       />
-      {kind === 'lateral' && (
-        // The arc always ends on the target's right edge heading -x, so a fixed
-        // left-pointing triangle is the arrow.
+      {g.arrow !== undefined && (
         <path
-          d={`M${String(g.x2 + 4 + arrowSize * 2)},${String(g.y2 - arrowSize)} L${String(g.x2 + 4)},${String(g.y2)} L${String(g.x2 + 4 + arrowSize * 2)},${String(g.y2 + arrowSize)} Z`}
+          d={g.arrow}
           fill={tokens.sankey.traceFlowEnd}
+
           fillOpacity={active ? 0.9 : 0.2}
           className="pointer-events-none"
         />
@@ -127,7 +117,7 @@ export function TraceBandLabel({
       fontWeight={600}
       fill={tokens.fg.primary}
       className="pointer-events-none"
-      style={{ paintOrder: 'stroke', stroke: tokens.bg.canvas, strokeWidth: 3.5 }}
+      style={haloStyle(tokens)}
       data-testid="trace-band-label"
     >
       {formatDeltaBps(e.bps)}

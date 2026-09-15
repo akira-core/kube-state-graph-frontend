@@ -1,7 +1,8 @@
-import type { JSX, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react';
+import type { JSX, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 
 import type { ThemeTokens } from '../../shared/theme/tokens';
 import {
+  haloStyle,
   SankeyCanvas,
   SankeyCard,
   SankeyWrapperBox,
@@ -19,7 +20,6 @@ export interface SankeyChartProps {
   layout: SankeyLayout;
   tokens: ThemeTokens;
   viewport: Viewport;
-  hostRef: RefObject<HTMLDivElement>;
   hostProps: ZoomPanApi['hostProps'];
   dragging: boolean;
   lit: HoverLit | null;
@@ -42,7 +42,6 @@ export function SankeyChart({
   layout,
   tokens,
   viewport,
-  hostRef,
   hostProps,
   dragging,
   lit,
@@ -54,13 +53,12 @@ export function SankeyChart({
   onKeyDown,
   children,
 }: Readonly<SankeyChartProps>): JSX.Element {
-  const halo = { paintOrder: 'stroke', stroke: tokens.bg.canvas, strokeWidth: 3.5 } as const;
+  const halo = haloStyle(tokens);
   return (
     <SankeyCanvas
       columns={layout.columns}
       tokens={tokens}
       viewport={viewport}
-      hostRef={hostRef}
       hostProps={hostProps}
       dragging={dragging}
       onKeyDown={onKeyDown}

@@ -1,18 +1,17 @@
 import type { JSX, MouseEvent } from 'react';
 
+import { countWord } from '../../../shared/format/countWord';
 import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
-import { SankeyCard, SankeyWrapperBox, type SlotLabel } from '../../sankey-canvas';
+import { haloStyle, SankeyCard, SankeyWrapperBox, type SlotLabel } from '../../sankey-canvas';
 import { DEVICE_KINDS, RES_GAP, RES_LEN } from '../layout/constants';
-import { cardText } from '../layout/text';
 import type { NodeGeom, Slot, WrapperGeom } from '../layout/types';
 import { locatable } from '../model/locatable';
-import type { TraceModelOk, TraceNode } from '../model/types';
+import type { TraceNode } from '../model/types';
 
 export interface TraceCardProps {
   n: TraceNode;
   g: NodeGeom;
-  model: TraceModelOk;
   tokens: ThemeTokens;
   faded: boolean;
   onEnter: (id: string, evt: MouseEvent) => void;
@@ -32,19 +31,11 @@ function slotLabels(g: NodeGeom): { left: SlotLabel[]; right: SlotLabel[] } {
  * Every trace card is the shared `SankeyCard` — the same box, border weights, status
  * colours and text sizes as a storage card — fed different text. What varies per role is
  * only: the dashed "device" border (k8s node / pod / NetApp, and a trace-stop leaf) and
- * the interface names beside a hop's slots.
+ * the interface names beside a hop's slots. The text comes with the geometry: the layout
+ * formatted it once when it sized the card.
  */
-export function TraceCard({
-  n,
-  g,
-  model,
-  tokens,
-  faded,
-  onEnter,
-  onLeave,
-  onClick,
-}: Readonly<TraceCardProps>): JSX.Element {
-  const text = cardText(n, model);
+export function TraceCard({ n, g, tokens, faded, onEnter, onLeave, onClick }: Readonly<TraceCardProps>): JSX.Element {
+  const { text } = g;
   const isHop = n.kind === 'node';
   const dashed =
     (isHop && DEVICE_KINDS.includes(n.role)) ||
@@ -55,7 +46,8 @@ export function TraceCard({
       id={n.id}
       label={text.label}
       subtitle={text.subtitle}
-      kind={n.kind === 'anchor' ? 'anchor' : n.kind === 'leaf' ? n.role : n.role}
+      kind={n.kind === 'anchor' ? 'anchor' : n.role}
+
       x={g.x}
       y={g.y}
       width={g.w}
@@ -99,7 +91,7 @@ export function TraceWrapperBox({
     <SankeyWrapperBox
       id={w.id}
       label={w.label}
-      subtitle={w.noFlow ? 'node · no flow' : `node · ${String(count)} pod${count === 1 ? '' : 's'}`}
+      subtitle={w.noFlow ? 'node · no flow' : `node · ${countWord(count, 'pod')}`}
       kind="node"
       x={wg.x}
       y={wg.y}
@@ -144,7 +136,7 @@ export function Residual({ n, g, slot, tokens, faded, onEnter, onLeave }: Readon
   const textX = isIn ? x - RES_GAP : x + RES_LEN + RES_GAP;
   const anchor = isIn ? 'end' : 'start';
   const word = isIn ? 'other in' : 'other out';
-  const halo = { paintOrder: 'stroke', stroke: tokens.bg.canvas, strokeWidth: 3.5 } as const;
+  const halo = haloStyle(tokens);
   return (
     <g
       data-testid={`trace-residual-${slot.res}`}

@@ -1,4 +1,5 @@
 import type { NodeStatus } from '../../shared/constants/types';
+import { countWord } from '../../shared/format/countWord';
 import { formatBytes } from '../../shared/format/measurements';
 import {
   BODY_MIN,
@@ -9,12 +10,14 @@ import {
   HEADER_H,
   LABEL_MIN_THICKNESS,
   LEAF_W,
+  locatableKind,
   PAD_BOTTOM,
   PAD_TOP,
   PAD_X,
   placeStack,
   ribbonPath,
   stackHeight,
+  STORAGE_KIND_CAPTION,
   thicknessScale,
   V_GAP,
   WRAPPER_HEADER_H,
@@ -58,10 +61,7 @@ export type SankeyPodLayout = 'flat' | 'node';
 const TIERS: readonly SankeyKind[] = SANKEY_KIND_ORDER;
 const LEAF_KIND: SankeyKind = 'namespace';
 export const TIER_LABEL: Record<SankeyKind, string> = {
-  'netapp-node': 'NetApp node',
-  'netapp-aggr': 'NetApp aggregate',
-  'netapp-svm': 'SVM',
-  pvc: 'PVC',
+  ...STORAGE_KIND_CAPTION,
   pod: 'Pod',
   application: 'Application',
   namespace: 'Namespace',
@@ -229,21 +229,13 @@ function orderPods(podNodes: SankeyNode[], flow: Map<string, number>): SankeyNod
   return orderPodTier(podNodes, flow, []).nodes;
 }
 
-function podWord(count: number): string {
-  return count === 1 ? '1 pod' : `${String(count)} pods`;
-}
-
-function pvcWord(count: number): string {
-  return count === 1 ? '1 PVC' : `${String(count)} PVCs`;
-}
-
 function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
   if (node.noFlow === true) {
     return `${node.kind} · no flow`;
   }
   if (node.kind === 'application') {
     const ns = node.namespace !== undefined ? ` · ns/${node.namespace}` : '';
-    const members = node.memberPodCount !== undefined ? ` · ${podWord(node.memberPodCount)}` : '';
+    const members = node.memberPodCount !== undefined ? ` · ${countWord(node.memberPodCount, 'pod')}` : '';
     return `${node.kind}${ns}${members}`;
   }
   if (node.kind === 'pod' || node.kind === 'pvc') {
@@ -264,14 +256,10 @@ function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
     }
   }
   if (node.kind === LEAF_KIND) {
-    const members = node.memberPodCount !== undefined ? `${podWord(node.memberPodCount)} · ` : '';
+    const members = node.memberPodCount !== undefined ? `${countWord(node.memberPodCount, 'pod')} · ` : '';
     return `${node.kind} · ${members}${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
   }
   return node.kind;
-}
-
-function locatableFor(kind: SankeyKind): boolean {
-  return kind !== 'netapp-svm' && kind !== 'application' && kind !== 'namespace';
 }
 
 function sortLinks(
@@ -347,7 +335,7 @@ function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: P
     kind: node.kind,
     subtitle: subtitleFor(node, ctx.flow),
     dashed: node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm',
-    locatable: locatableFor(node.kind),
+    locatable: locatableKind(node.kind),
     isLeaf,
     x,
     y,
@@ -451,7 +439,7 @@ function layoutPodWrappers(
     label: k.label,
     memberIds: k.podIds,
     locatable: true,
-    subtitle: k.noFlow === true ? 'node · no flow' : `node · ${podWord(k.podIds.length)}`,
+    subtitle: k.noFlow === true ? 'node · no flow' : `node · ${countWord(k.podIds.length, 'pod')}`,
     ...(k.status !== undefined ? { status: k.status } : {}),
     ...(k.noFlow === true ? { noFlow: true } : {}),
   }));
@@ -470,7 +458,7 @@ function layoutSvmFrames(
     label: f.label,
     memberIds: f.pvcIds,
     locatable: false,
-    subtitle: f.noFlow === true ? 'svm · no flow' : `svm · ${pvcWord(f.pvcIds.length)}`,
+    subtitle: f.noFlow === true ? 'svm · no flow' : `svm · ${countWord(f.pvcIds.length, 'PVC')}`,
     ...(f.noFlow === true ? { noFlow: true } : {}),
   }));
   // The PVC column's own order ("Sorting within a tier") — not the pod tier's

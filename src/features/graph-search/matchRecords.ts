@@ -8,15 +8,41 @@ export interface SearchField {
   value: string;
 }
 
-// A searchable thing, already flattened by its view: a cytoscape node for Graph, a drawn
-// card for the Sankey-style views. `fields` carries a `label` entry only when the label is a
-// real one — a label-less record falls back to its id for display without that id matching.
-export interface SearchRecord {
-  id: string;
+/** What the result list shows for a hit, besides the field that matched. */
+export interface SearchDescription {
   label: string;
   kind?: string;
   context?: SearchResultContext;
+}
+
+// A searchable thing, already flattened by its view: a cytoscape node for Graph, a drawn
+// card for the Sankey-style views. `fields` carries a `label` entry only when the label is a
+// real one — a label-less record falls back to its id for display without that id matching.
+export interface SearchRecord extends SearchDescription {
+  id: string;
   fields: readonly SearchField[];
+}
+
+// The same, for a view whose description costs more than its fields (the Graph's, built per
+// node on every keystroke): it hands over `describe` and pays only for the hits.
+export interface LazySearchRecord {
+  id: string;
+  fields: readonly SearchField[];
+  describe: () => SearchDescription;
+}
+
+function describe(record: SearchRecord | LazySearchRecord): SearchDescription {
+  return 'describe' in record ? record.describe() : record;
+}
+
+/**
+ * The `fields` of a record from `[name, value]` pairs, dropping the ones a card does not
+ * carry (`undefined`, `null`, or empty) — so a query can never match the absence of a value.
+ */
+export function searchFields(entries: ReadonlyArray<[string, string | null | undefined]>): SearchField[] {
+  return entries.flatMap(([field, value]) =>
+    value !== null && value !== undefined && value.length > 0 ? [{ field, value }] : []
+  );
 }
 
 /** Whitespace-separated, lower-cased query tokens. Empty = search inactive. */
@@ -35,7 +61,7 @@ export function tokenizeQuery(query: string): string[] {
  * inactive (no hits). Results are stably ordered by label — the single source the dropdown
  * (ResultList) caps and paginates, not a separate sort.
  */
-export function matchRecords(records: Iterable<SearchRecord>, query: string): ComputeHitsResult {
+export function matchRecords(records: Iterable<SearchRecord | LazySearchRecord>, query: string): ComputeHitsResult {
   const tokens = tokenizeQuery(query);
   const hitIds = new Set<string>();
   const results: SearchResult[] = [];
@@ -56,11 +82,12 @@ export function matchRecords(records: Iterable<SearchRecord>, query: string): Co
     const matchedViaLabel = allMatches.some((m) => m.field === 'label');
     const nonLabelMatch = matchedViaLabel ? undefined : allMatches[0];
 
+    const shown = describe(record);
     results.push({
       id: record.id,
-      label: record.label,
-      ...(record.kind !== undefined ? { kind: record.kind } : {}),
-      ...(record.context !== undefined ? { context: record.context } : {}),
+      label: shown.label,
+      ...(shown.kind !== undefined ? { kind: shown.kind } : {}),
+      ...(shown.context !== undefined ? { context: shown.context } : {}),
       ...(nonLabelMatch !== undefined
         ? { matchedField: { field: nonLabelMatch.field, value: nonLabelMatch.value } }
         : {}),

@@ -11,7 +11,7 @@ export interface RouteEntry {
   path: string;
   category: Category;
   view: View;
-  /** The document-title suffix and the nav's view label share this. */
+  /** The document-title suffix. */
   title: string;
   /**
    * Whether switching to this view inside its category keeps the query string. The
@@ -29,6 +29,8 @@ export const ROUTES: readonly RouteEntry[] = [
 ];
 
 export const CATEGORY_LABEL: Record<Category, string> = { storage: 'Storage', network: 'Network' };
+/** The nav's view segments, the same words in every category. */
+export const VIEW_LABEL: Record<View, string> = { graph: 'Graph', sankey: 'Sankey' };
 
 /** Category aliases: each redirects (query kept) to that category's Graph. */
 export const CATEGORY_ALIAS: Record<Category, string> = { storage: '/', network: '/network' };

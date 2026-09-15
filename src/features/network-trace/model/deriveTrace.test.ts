@@ -7,7 +7,7 @@ import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples
 
 import { hopBalanceRows, namespaceAggs } from './aggregates';
 import { bandOf, isClientPartition, k8sSubcol } from './bands';
-import { deriveTrace, resolveTraceDirection } from './deriveTrace';
+import { deriveTrace, directionFor, indexTrace, resolveTraceDirection } from './deriveTrace';
 import { hoverPath } from './hoverPath';
 import type { TraceModelOk, TraceNode } from './types';
 
@@ -577,14 +577,67 @@ describe('errors and warnings', () => {
   });
 
   it('a reserved synthetic id on the wire is an error', () => {
+    for (const id of ['trace:ns:1', 'trace:owner:7', 'trace:anchor']) {
+      const wire = {
+        elements: {
+          nodes: [N({ id, type: 'switch' }), N({ id: 'h', type: 'host' })],
+          edges: [E({ id: 'e1', type: 'network-flow', source: id, target: 'h', metrics: { delta_bps: 1e9 } })],
+        },
+      };
+      const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
+      expect(m.ok, id).toBe(false);
+      if (!m.ok) {
+        expect(m.errors[0]).toMatch(/reserved/);
+      }
+    }
+    // The guard is about the exact spelling: a look-alike id is an ordinary node.
+    const ok = deriveTrace(
+      elementsOf({
+        elements: {
+          nodes: [N({ id: 'trace:ns:x', type: 'switch' }), N({ id: 'h', type: 'host' })],
+          edges: [
+            E({ id: 'e1', type: 'network-flow', source: 'trace:ns:x', target: 'h', metrics: { delta_bps: 1e9 } }),
+          ],
+        },
+      }),
+      { direction: 'destination' }
+    );
+    expect(ok.ok).toBe(true);
+  });
+
+  it('a trace start that is a leaf pod (no onward edge) names the reason', () => {
     const wire = {
       elements: {
-        nodes: [N({ id: 'trace:ns:1', type: 'switch' }), N({ id: 'h', type: 'host' })],
-        edges: [E({ id: 'e1', type: 'network-flow', source: 'trace:ns:1', target: 'h', metrics: { delta_bps: 1e9 } })],
+        nodes: [
+          N({ id: 'a', type: 'switch' }),
+          N({ id: 'p', type: 'pod', investigation: { iface: 'eth0', delta_bps: 1e9 } }),
+        ],
+        edges: [E({ id: 'e1', type: 'network-flow', source: 'a', target: 'p', metrics: { delta_bps: 1e9 } })],
       },
     };
     const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
     expect(m.ok).toBe(false);
+    if (!m.ok) {
+      expect(m.errors[0]).toMatch(/no onward flow edge/);
+      expect(m.errors[0]).not.toMatch(/placement/);
+    }
+  });
+
+  it('a broken invariant in a step is a model error, not a throw', () => {
+    // Normalize rejects an edge to an unknown node, so this can only be built by hand: the
+    // edge step must look the endpoint up and fail.
+    const elements: cytoscape.ElementDefinition[] = [
+      { group: 'nodes', data: { id: 'a', kind: 'switch', label: 'a' } },
+      {
+        group: 'edges',
+        data: { id: 'e1', source: 'a', target: 'ghost', edgeType: 'network-flow', metrics: { deltaBps: 1e9 } },
+      },
+    ];
+    const m = deriveTrace(elements, { direction: 'destination' });
+    expect(m.ok).toBe(false);
+    if (!m.ok) {
+      expect(m.errors).toEqual(['network-trace: edge endpoint "ghost" is not a node']);
+    }
   });
 
   it('a body with no drawable node is an error; a storage body derives to no-flow hops', () => {
@@ -636,5 +689,19 @@ describe('errors and warnings', () => {
     expect(rows.map((r) => r.id)).toEqual(['sw-edge-a', 'sw-core-1']);
     expect(rows[0]?.otherIn).toBe(10e9);
     expect(rows[1]?.otherIn).toBe(0);
+  });
+});
+
+describe('indexTrace reuse', () => {
+  it('derives the same model from the index directionFor built, and ignores one for another body', () => {
+    const sample = traceSample('classic');
+    const elements = elementsOf(sample.wire);
+    const fresh = deriveTrace(elements, { direction: sample.direction });
+    const dir = directionFor(elements, sample.direction);
+    expect(dir.indexed.elements).toBe(elements);
+    expect(deriveTrace(elements, { direction: sample.direction }, dir.indexed)).toEqual(fresh);
+    // A stale index (built for a different array) must not leak its start into this body.
+    const other = indexTrace(elementsOf({ elements: { nodes: [], edges: [] } }));
+    expect(deriveTrace(elements, { direction: sample.direction }, other)).toEqual(fresh);
   });
 });

@@ -1,4 +1,42 @@
-import type { EdgeGeom } from './types';
+import { ribbonPath } from '../../sankey-canvas';
+import type { TraceEdge } from '../model/types';
+
+import type { BandKind, EdgeGeom } from './types';
+
+export function bandKind(e: TraceEdge, g: Pick<EdgeGeom, 'backNear'>): BandKind {
+  if (e.owns) {
+    return 'own';
+  }
+  if (e.backward) {
+    return g.backNear ? 'back' : 'back-loop';
+  }
+  return e.lateral ? 'lateral' : 'flow';
+}
+
+/** The path of a finished (fully placed) edge, by band kind. */
+export function edgePath(g: EdgeGeom): string {
+  switch (g.kind) {
+    case 'own':
+      return ownLine(g);
+    case 'back-loop':
+      return backwardRibbon(g);
+    case 'lateral':
+      return lateralRibbon(g, g.bulge);
+
+    default:
+      return ribbonPath(g.x1, g.y1, g.x2, g.y2, g.t);
+  }
+}
+
+/**
+ * A lateral arc always ends on the target's right edge heading -x, so a fixed left-pointing
+ * triangle is the arrow.
+ */
+export function lateralArrow(g: EdgeGeom): string {
+  const size = Math.max(5, Math.min(9, g.t2 / 2));
+  const n = (v: number): string => String(v);
+  return `M${n(g.x2 + 4 + size * 2)},${n(g.y2 - size)} L${n(g.x2 + 4)},${n(g.y2)} L${n(g.x2 + 4 + size * 2)},${n(g.y2 + size)} Z`;
+}
 
 /**
  * Ownership line: the centre line of a ribbon, stroked rather than filled — a filled band

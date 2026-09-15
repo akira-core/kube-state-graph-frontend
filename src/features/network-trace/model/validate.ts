@@ -1,11 +1,11 @@
 import type cytoscape from 'cytoscape';
 
-import { classOf, FLOW_EDGE_TYPES, isPlacementEdge, recKind } from './classify';
-import { ANCHOR_ID } from './investigation';
+import { recKind } from '../../graph-data';
+
+import { classOf, FLOW_EDGE_TYPES, isPlacementEdge } from './classify';
+import { isSyntheticId } from './ids';
 import type { NodeIndex } from './nodeIndex';
 import type { TraceDirection } from './types';
-
-const RESERVED_ID = /^trace:(ns|app|owner):\d+$/;
 
 /**
  * The semantic checks normalize cannot make (it knows nothing about hops). Structural ones
@@ -22,7 +22,7 @@ export function validateTraceSemantics(
       continue;
     }
     const d = el.data as cytoscape.NodeDataDefinition;
-    if (typeof d.id === 'string' && (RESERVED_ID.test(d.id) || d.id === ANCHOR_ID)) {
+    if (typeof d.id === 'string' && isSyntheticId(d.id)) {
       errors.push(`Node id "${d.id}" is reserved for cards the trace synthesises.`);
     }
   }

@@ -1,6 +1,8 @@
 import type { ColumnHeader } from '../../sankey-canvas';
 import type { TraceEdge, TraceNode, TraceWrapper } from '../model/types';
 
+import type { CardText } from './text';
+
 export type SlotRole = 'in' | 'out' | 'back-out' | 'lat-out' | 'lat-in' | 'back-in';
 
 /**
@@ -28,21 +30,33 @@ export interface NodeGeom {
   cy: number;
   leftSlots: Slot[];
   rightSlots: Slot[];
+  /** What the card prints — built once here, so the chart never formats per render. */
+  text: CardText;
 }
+
+export type BandKind = 'flow' | 'lateral' | 'back' | 'back-loop' | 'own';
 
 export interface EdgeGeom {
   /** Visual thickness. */
   t: number;
   /** A backflow spanning one column runs in the corridor between them, not around the bottom. */
   backNear: boolean;
+  /** How the ribbon is drawn (decides which path builder made `d`). */
+  kind: BandKind;
+  /** The finished SVG path — filled for a ribbon, stroked for a loop or an ownership line. */
+  d: string;
+  /** A lateral arc's arrow head; absent for every other kind. */
+  arrow?: string;
+
   x1: number;
   y1: number;
   t1: number;
   x2: number;
   y2: number;
   t2: number;
-  /** Lateral arc protrusion. */
-  bulge?: number;
+  /** Lateral arc protrusion (meaningful for a lateral edge only). */
+  bulge: number;
+
   /** Multi-column backflow loop geometry. */
   backT?: number;
   backY?: number;

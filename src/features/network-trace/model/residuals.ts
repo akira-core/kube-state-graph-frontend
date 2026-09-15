@@ -1,6 +1,6 @@
+import { worstStatus } from '../../../shared/constants/colorByStatus';
 import { formatBitsPerSec } from '../../../shared/format/measurements';
 
-import { worstStatus } from './classify';
 import type { BuildCtx } from './ctx';
 import type { TraceNode } from './types';
 import { mustGet, sum } from './util';

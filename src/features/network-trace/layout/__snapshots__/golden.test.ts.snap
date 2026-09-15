@@ -18724,7 +18724,7 @@ exports[`golden corpus > k8s-source > geometry barycenter 1`] = `
       "x": 874,
     },
     {
-      "label": "Hop 3",
+      "label": "Hop 1",
       "x": 1298,
     },
     {
@@ -19118,7 +19118,7 @@ exports[`golden corpus > k8s-source > geometry flow 1`] = `
       "x": 874,
     },
     {
-      "label": "Hop 3",
+      "label": "Hop 1",
       "x": 1298,
     },
     {
@@ -19831,7 +19831,7 @@ exports[`golden corpus > k8s-source@5e8 > geometry flow 1`] = `
       "x": 874,
     },
     {
-      "label": "Hop 3",
+      "label": "Hop 1",
       "x": 1298,
     },
     {
@@ -21730,11 +21730,11 @@ exports[`golden corpus > source > geometry barycenter 1`] = `
       "x": 122,
     },
     {
-      "label": "Hop 1",
+      "label": "Hop 2",
       "x": 546,
     },
     {
-      "label": "Hop 2",
+      "label": "Hop 1",
       "x": 922,
     },
     {
@@ -21994,11 +21994,11 @@ exports[`golden corpus > source > geometry flow 1`] = `
       "x": 122,
     },
     {
-      "label": "Hop 1",
+      "label": "Hop 2",
       "x": 546,
     },
     {
-      "label": "Hop 2",
+      "label": "Hop 1",
       "x": 922,
     },
     {
@@ -22465,11 +22465,11 @@ exports[`golden corpus > source@5e8 > geometry flow 1`] = `
       "x": 122,
     },
     {
-      "label": "Hop 1",
+      "label": "Hop 2",
       "x": 546,
     },
     {
-      "label": "Hop 2",
+      "label": "Hop 1",
       "x": 922,
     },
     {

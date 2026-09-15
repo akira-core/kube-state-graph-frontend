@@ -1,11 +1,10 @@
-import { clientsOf, infoOf, recKind, statusOf, usageOf } from './classify';
-import type { AggEdge, BuildCtx } from './ctx';
-import { makeEdge, makeNode, type TraceEdge, type TraceNode } from './types';
-import { isNonEmptyString, SEP } from './util';
+import { recKind } from '../../graph-data';
 
-export const NS_ID_PREFIX = 'trace:ns:';
-export const APP_ID_PREFIX = 'trace:app:';
-export const OWNER_ID_PREFIX = 'trace:owner:';
+import { clientsOf, wireFacts } from './classify';
+import type { AggEdge, BuildCtx } from './ctx';
+import { APP_ID_PREFIX, NS_ID_PREFIX, OWNER_ID_PREFIX } from './ids';
+import { makeEdge, makeNode, type TraceEdge, type TraceNode } from './types';
+import { SEP } from './util';
 
 interface OwnerGroup {
   owner: string | null;
@@ -218,8 +217,12 @@ export function buildEdges(ctx: BuildCtx): void {
     // A neighbourless port's id is usually the synthetic `switch:iface`. With exactly one
     // client, the client's hostname (or IP) is the card's name, so the ribbon tooltip
     // reads `sw → 10.42.7.32`; the synthetic id stays in the card tooltip.
-    const single = clients !== null && clients.length === 1 ? clients[0] : undefined;
-    const label = named ? wireLabel : single !== undefined ? (single.hostname ?? single.ip ?? id) : id;
+    let label = id;
+    if (named) {
+      label = wireLabel;
+    } else if (clients !== null && clients.length === 1) {
+      label = clients[0]?.hostname ?? clients[0]?.ip ?? id;
+    }
     const n = makeNode({
       id,
       kind: 'leaf',
@@ -229,12 +232,7 @@ export function buildEdges(ctx: BuildCtx): void {
       named,
       iface: own,
       localIface: local,
-      namespace: kind === 'pod' ? index.nsOfPod(id) : isNonEmptyString(d.labels?.namespace) ? d.labels.namespace : null,
-      ontapCluster: isNonEmptyString(d.labels?.ontap_cluster) ? d.labels.ontap_cluster : null,
-      status: statusOf(d.status),
-      usage: usageOf(d),
-      info: infoOf(d),
-      clients,
+      ...wireFacts(index, d, id, kind),
     });
     nodes.set(id, n);
     order.push(id);
@@ -260,8 +258,9 @@ export function buildEdges(ctx: BuildCtx): void {
     const from = ensureLeaf(a.src, a, 'from');
     const to = ensureLeaf(a.tgt, a, 'to');
     const e = makeEdge(from, to, a.sif, a.tif, a.bps, { tier: a.tier, attribution: a.attribution });
-    const leafEnd = to.kind === 'leaf' ? to : from.kind === 'leaf' ? from : null;
+    const leafEnd = [to, from].find((n) => n.kind === 'leaf');
     e.namespace = leafEnd?.namespace ?? null;
+
     edges.push(e);
     // The downstream leaf (packet direction for a destination trace, the reverse for a
     // source trace) grows its derived cards: a pod its ns chain, a client leaf its owners.

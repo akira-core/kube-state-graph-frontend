@@ -1,8 +1,10 @@
 import type cytoscape from 'cytoscape';
 
-import { isNodeStatus, STATUS_RANK } from '../../../shared/constants/colorByStatus';
+import { isNodeStatus } from '../../../shared/constants/colorByStatus';
 import type { NodeStatus } from '../../../shared/constants/types';
+import { STORAGE_KIND_CAPTION } from '../../sankey-canvas';
 
+import type { NodeIndex } from './nodeIndex';
 import type { NodeClient, NodeInfo, NodeUsage } from './types';
 import { isFiniteNumber, isNonEmptyString } from './util';
 
@@ -26,12 +28,12 @@ export const FLOW_EDGE_TYPES: readonly string[] = ['network-flow'];
  */
 export const AUTO_TIER: readonly string[] = ['netapp-node', 'netapp-aggr', 'netapp-svm', 'pvc'];
 
-/** Column caption words; kinds not listed print as themselves. */
+/**
+ * Column caption words for a hop kind; kinds not listed print as themselves. The storage
+ * kinds are the shared captions; the k8s words stay lower-case like the trace's other headers.
+ */
 export const KIND_LABEL: Record<string, string> = {
-  'netapp-node': 'NetApp node',
-  'netapp-aggr': 'NetApp aggregate',
-  'netapp-svm': 'SVM',
-  pvc: 'PVC',
+  ...STORAGE_KIND_CAPTION,
   pod: 'pod',
   node: 'k8s node',
 };
@@ -48,43 +50,8 @@ export function classOf(kind: string): NodeClass {
   return 'leaf';
 }
 
-/**
- * Compound groups are kind-less after normalize — they carry `isNamespace` /
- * `isApplication` / … instead. The parent-chain walk needs the wire kind, so the flags
- * are folded back. A controller also receives a workload `kind` from enrichControllers;
- * that is the icon, not the hop, so `isController` wins (same fold as deriveSankey).
- */
-export function recKind(d: cytoscape.NodeDataDefinition): string {
-  if (d.isController === true) {
-    return 'controller';
-  }
-  if (d.isApplication === true) {
-    return 'application';
-  }
-  if (d.isNamespace === true) {
-    return 'namespace';
-  }
-  if (d.isCluster === true) {
-    return 'cluster';
-  }
-  if (d.isStorageCluster === true) {
-    return 'storage-cluster';
-  }
-  return typeof d.kind === 'string' ? d.kind : '';
-}
-
 export function statusOf(v: unknown): NodeStatus | null {
   return isNodeStatus(v) ? v : null;
-}
-
-export function worstStatus(list: ReadonlyArray<NodeStatus | null | undefined>): NodeStatus | null {
-  let worst: NodeStatus | null = null;
-  for (const s of list) {
-    if (s !== null && s !== undefined && (worst === null || STATUS_RANK[s] > STATUS_RANK[worst])) {
-      worst = s;
-    }
-  }
-  return worst;
 }
 
 /**
@@ -166,4 +133,36 @@ export function clientsOf(d: cytoscape.NodeDataDefinition): NodeClient[] | null 
     });
   }
   return out.length > 0 ? out : null;
+}
+
+/** The card facts a hop box and a leaf card both read straight off the wire node. */
+export interface WireFacts {
+  namespace: string | null;
+  ontapCluster: string | null;
+  status: NodeStatus | null;
+  usage: NodeUsage | null;
+  info: NodeInfo | null;
+  clients: NodeClient[] | null;
+}
+
+/**
+ * One reading of the wire node for both card shapes (`scan.makeHop`, `edges.ensureLeaf`).
+ * A pod's namespace comes from its parent chain; anything else states it in `labels`.
+ */
+export function wireFacts(index: NodeIndex, d: cytoscape.NodeDataDefinition, id: string, kind: string): WireFacts {
+  const lab = d.labels ?? {};
+  let namespace: string | null = null;
+  if (kind === 'pod') {
+    namespace = index.nsOfPod(id);
+  } else if (isNonEmptyString(lab.namespace)) {
+    namespace = lab.namespace;
+  }
+  return {
+    namespace,
+    ontapCluster: isNonEmptyString(lab.ontap_cluster) ? lab.ontap_cluster : null,
+    status: statusOf(d.status),
+    usage: usageOf(d),
+    info: infoOf(d),
+    clients: clientsOf(d),
+  };
 }

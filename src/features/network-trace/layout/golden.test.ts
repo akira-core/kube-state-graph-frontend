@@ -95,7 +95,8 @@ function geometrySnapshot(m: TraceModelOk, order: TraceNodeOrder): unknown {
       x2: r3(e.x2),
       y2: r3(e.y2),
       backNear: e.backNear,
-      ...(e.bulge !== undefined ? { bulge: r3(e.bulge) } : {}),
+      ...(e.kind === 'lateral' ? { bulge: r3(e.bulge) } : {}),
+
       ...(e.backY !== undefined ? { backY: r3(e.backY), backXD: r3(e.backXD ?? 0), backXU: r3(e.backXU ?? 0) } : {}),
     })),
   };
