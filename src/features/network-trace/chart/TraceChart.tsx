@@ -2,12 +2,12 @@ import type { JSX, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 
 import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { SankeyCanvas, type HoverLit, type Viewport, type ZoomPanApi } from '../../sankey-canvas';
-import type { TraceGeometry } from '../layout/types';
+import type { ClusterGeom, TraceGeometry } from '../layout/types';
 import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet } from '../model/util';
 
 import { TraceBand, TraceBandLabel } from './TraceBand';
-import { Residual, TraceCard } from './TraceCards';
+import { Residual, TraceCard, TraceClusterBox } from './TraceCards';
 import { TraceDefs } from './TraceDefs';
 
 export interface TraceChartProps {
@@ -32,8 +32,10 @@ export interface TraceChartProps {
 }
 
 /**
- * The trace drawing inside the shared canvas. z-order: ribbons, their amounts, cards,
- * residuals last (they hang outside the cards and must not be covered).
+ * The trace drawing inside the shared canvas. z-order: the cluster frames' boxes first
+ * (they span columns, and would tint every ribbon between them), then ribbons, their
+ * amounts, cards, the frames' titles (a ribbon must not cover them), residuals last (they
+ * hang outside the cards and must not be covered).
  */
 export function TraceChart({
   model,
@@ -56,6 +58,8 @@ export function TraceChart({
   const E = (e: TraceEdge) => mustGet(geo.edges, e.id, 'edge geometry');
   const N = (id: string) => mustGet(geo.nodes, id, 'node geometry');
   const nodeFaded = (id: string): boolean => lit !== null && !lit.nodeIds.has(id);
+  const clusterFaded = (cg: ClusterGeom): boolean =>
+    lit !== null && !lit.nodeIds.has(cg.cluster.id) && !cg.cluster.memberIds.some((id) => lit.nodeIds.has(id));
   return (
     <SankeyCanvas
       columns={geo.columns}
@@ -67,6 +71,17 @@ export function TraceChart({
       defs={<TraceDefs tokens={tokens} />}
       overlay={children}
     >
+      {geo.clusters.map((cg) => (
+        <TraceClusterBox
+          key={cg.cluster.id}
+          cg={cg}
+          tokens={tokens}
+          faded={clusterFaded(cg)}
+          layer="frame"
+          onEnter={onNodeEnter}
+          onLeave={onNodeLeave}
+        />
+      ))}
       {model.edges.map((e) => (
         <TraceBand
           key={e.id}
@@ -92,6 +107,17 @@ export function TraceChart({
           onEnter={onNodeEnter}
           onLeave={onNodeLeave}
           onClick={onNodeClick}
+        />
+      ))}
+      {geo.clusters.map((cg) => (
+        <TraceClusterBox
+          key={`title-${cg.cluster.id}`}
+          cg={cg}
+          tokens={tokens}
+          faded={clusterFaded(cg)}
+          layer="title"
+          onEnter={onNodeEnter}
+          onLeave={onNodeLeave}
         />
       ))}
       {model.nodes.flatMap((n) =>

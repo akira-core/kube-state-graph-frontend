@@ -7,7 +7,8 @@ export interface HoverPath {
 
 /**
  * The whole path through a card: upstream along `inEdges`, downstream along `outEdges`,
- * through derived edges and ownership lines to the ends.
+ * through derived edges and ownership lines to the ends. A cluster frame lights the union
+ * of its members' paths (plus itself).
  */
 export function hoverPath(model: TraceModelOk, id: string): HoverPath {
   return hoverPathMany(model, [id]);
@@ -19,6 +20,7 @@ export function hoverPath(model: TraceModelOk, id: string): HoverPath {
  * direction: the union is exact and costs one pass however many ids there are.
  */
 export function hoverPathMany(model: TraceModelOk, ids: Iterable<string>): HoverPath {
+  const clustersById = new Map(model.clusters.map((c) => [c.id, c]));
   const edgeIds = new Set<string>();
   const nodeIds = new Set<string>();
   const walk = (
@@ -55,8 +57,14 @@ export function hoverPathMany(model: TraceModelOk, ids: Iterable<string>): Hover
   const seenUp = new Set<string>();
   const seenDown = new Set<string>();
   for (const id of ids) {
-    walk(id, 'inEdges', (e) => e.fromId, seenUp);
-    walk(id, 'outEdges', (e) => e.toId, seenDown);
+    const cluster = clustersById.get(id);
+    if (cluster !== undefined) {
+      nodeIds.add(id);
+    }
+    for (const s of cluster !== undefined ? cluster.memberIds : [id]) {
+      walk(s, 'inEdges', (e) => e.fromId, seenUp);
+      walk(s, 'outEdges', (e) => e.toId, seenDown);
+    }
   }
   return { edgeIds, nodeIds };
 }

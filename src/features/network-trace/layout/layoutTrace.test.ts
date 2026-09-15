@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { normalizeGraph } from '../../graph-data';
+import { CARD_W, WRAPPER_HEADER_H, WRAPPER_PAD } from '../../sankey-canvas';
 import { bandOf, isClientPartition } from '../model/bands';
 import { deriveTrace } from '../model/deriveTrace';
 import type { TraceModelOk, TraceNode } from '../model/types';
 import { sum } from '../model/util';
 import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples';
 
+import { BAND_GAP } from './constants';
 import { layoutTrace, type TraceNodeOrder } from './layoutTrace';
 import { traceFlowOf } from './text';
 
-function model(sample: TraceSample, opts: { minBps?: number } = {}): TraceModelOk {
+function model(sample: TraceSample, opts: { minBps?: number; grouping?: 'none' | 'cluster' } = {}): TraceModelOk {
   const m = deriveTrace(normalizeGraph(sample.wire).elements, { direction: sample.direction, ...opts });
   if (!m.ok) {
     throw new Error(m.errors.join(' / '));
@@ -25,11 +27,36 @@ const CORPUS: Array<{ name: string; model: TraceModelOk }> = TRACE_SAMPLES.flatM
   if (cut.ok) {
     out.push({ name: `${s.key}@5e8`, model: cut });
   }
+  const grouped = model(s, { grouping: 'cluster' });
+  if (grouped.clusters.length > 0) {
+    out.push({ name: `${s.key}@cluster`, model: grouped });
+  }
   return out;
 });
 
 const colsOf = (m: TraceModelOk, order: TraceNodeOrder): TraceNode[][] =>
   layoutTrace(m, { order }).cols.filter((c) => c.length > 0);
+
+/** A column's cards split by cluster frame (drawing order), the loose ones last; one part without grouping. */
+function blocksOf(m: TraceModelOk, col: readonly TraceNode[]): TraceNode[][] {
+  if (m.clusters.length === 0) {
+    return [[...col]];
+  }
+  const blockOf = new Map<string, string>();
+  for (const c of m.clusters) {
+    for (const id of c.memberIds) {
+      blockOf.set(id, c.id);
+    }
+  }
+  const parts = new Map<string, TraceNode[]>();
+  for (const n of col) {
+    const key = blockOf.get(n.id) ?? '';
+    const list = parts.get(key) ?? [];
+    list.push(n);
+    parts.set(key, list);
+  }
+  return [...parts.values()];
+}
 
 describe('layoutTrace geometry', () => {
   it.each(CORPUS.map((c) => [c.name, c.model] as const))(
@@ -140,7 +167,12 @@ describe('in-column order (flow)', () => {
     let checked = 0;
     for (const { name, model: m } of CORPUS) {
       for (const col of colsOf(m, 'flow')) {
-        const parts = [col.filter((n) => !isClientPartition(n)), col.filter(isClientPartition)];
+        // Under the cluster grouping a column stacks one block per frame, then the loose
+        // cards: the order rule holds inside each block, not across them.
+        const parts = blocksOf(
+          m,
+          col.filter((n) => !isClientPartition(n))
+        ).concat([col.filter(isClientPartition)]);
         for (const part of parts) {
           const grouped = part.some(
             (n) =>
@@ -168,19 +200,22 @@ describe('in-column order (flow)', () => {
     let checked = 0;
     for (const { name, model: m } of CORPUS) {
       for (const col of colsOf(m, 'flow')) {
-        const seen = new Map<string, number>();
-        col.forEach((n, i) => {
-          if (n.kind !== 'leaf' || (n.role !== 'pod' && n.role !== 'app') || n.namespace === null) {
-            return;
+        // One namespace name in two clusters is two cards in two blocks: adjacency holds per block.
+        for (const part of blocksOf(m, col)) {
+          const seen = new Map<string, number>();
+          part.forEach((n, i) => {
+            if (n.kind !== 'leaf' || (n.role !== 'pod' && n.role !== 'app') || n.namespace === null) {
+              return;
+            }
+            const at = seen.get(n.namespace);
+            if (at !== undefined) {
+              expect(i, `${name}: namespace ${n.namespace} split`).toBe(at + 1);
+            }
+            seen.set(n.namespace, i);
+          });
+          if (seen.size > 0) {
+            checked += 1;
           }
-          const at = seen.get(n.namespace);
-          if (at !== undefined) {
-            expect(i, `${name}: namespace ${n.namespace} split`).toBe(at + 1);
-          }
-          seen.set(n.namespace, i);
-        });
-        if (seen.size > 0) {
-          checked += 1;
         }
       }
     }
@@ -243,6 +278,64 @@ describe('in-column order (flow)', () => {
     expect(down).toBeGreaterThanOrEqual(0);
     expect(up).toBeLessThan(dci);
     expect(dci).toBeLessThan(down);
+  });
+
+  it('cluster frames span every k8s column, share their tops, and hold every member', () => {
+    const s = traceSample('k8s-clusters');
+    const m = model(s, { grouping: 'cluster' });
+    const labels = (order: TraceNodeOrder): string[] => layoutTrace(m, { order }).clusters.map((g) => g.cluster.label);
+    // east carries 8 Gbps of pods, west 7 Gbps.
+    expect(labels('flow')).toEqual(['east', 'west']);
+    expect(labels('barycenter')).toEqual(['east', 'west']);
+    const geo = layoutTrace(m, { order: 'flow' });
+    const k8sCols = [...new Set(m.nodes.filter((n) => bandOf(n) === 'k8s').map((n) => n.col))].sort((a, b) => a - b);
+    const first = k8sCols[0] ?? 0;
+    const last = k8sCols[k8sCols.length - 1] ?? 0;
+    expect(k8sCols.length).toBeGreaterThan(2);
+    const lastW = Math.max(CARD_W, ...m.nodes.filter((n) => n.col === last).map((n) => geo.nodes.get(n.id)?.w ?? 0));
+    for (const cg of geo.clusters) {
+      expect(cg.x).toBe((geo.colX[first] ?? 0) - WRAPPER_PAD);
+      expect(cg.x + cg.w).toBe((geo.colX[last] ?? 0) + lastW + WRAPPER_PAD);
+      for (const id of cg.cluster.memberIds) {
+        const g = geo.nodes.get(id);
+        expect(g).toBeDefined();
+        if (g !== undefined) {
+          expect(g.x).toBeGreaterThanOrEqual(cg.x + WRAPPER_PAD);
+          expect(g.x + g.w).toBeLessThanOrEqual(cg.x + cg.w - WRAPPER_PAD);
+          expect(g.y).toBeGreaterThanOrEqual(cg.y + WRAPPER_HEADER_H);
+          expect(g.y + g.h).toBeLessThanOrEqual(cg.y + cg.h - WRAPPER_PAD);
+        }
+      }
+    }
+    const [east, west] = geo.clusters;
+    expect(east).toBeDefined();
+    expect(west).toBeDefined();
+    if (east === undefined || west === undefined) {
+      return;
+    }
+    expect(west.y).toBeGreaterThanOrEqual(east.y + east.h);
+    // Loose k8s cards sit below the last frame; the client leaf below every k8s card.
+    const loose = m.nodes.filter((n) => bandOf(n) === 'k8s' && n.cluster === null);
+    expect(loose.length).toBeGreaterThan(0);
+    for (const n of loose) {
+      expect(geo.nodes.get(n.id)?.y ?? 0).toBeGreaterThanOrEqual(west.y + west.h);
+    }
+    const k8sBottom = Math.max(
+      ...m.nodes
+        .filter((n) => bandOf(n) === 'k8s')
+        .map((n) => (geo.nodes.get(n.id)?.y ?? 0) + (geo.nodes.get(n.id)?.h ?? 0))
+    );
+    const client = geo.nodes.get('srv-log-01');
+    expect(client?.y ?? 0).toBeGreaterThanOrEqual(k8sBottom + BAND_GAP);
+    expect(geo.height).toBeGreaterThanOrEqual(west.y + west.h);
+  });
+
+  it('grouping none lays out exactly as before the grouping existed', () => {
+    const s = traceSample('k8s-clusters');
+    const a = layoutTrace(model(s), { order: 'flow' });
+    const b = layoutTrace(model(s, { grouping: 'none' }), { order: 'flow' });
+    expect(a.clusters).toEqual([]);
+    expect(JSON.stringify([...a.nodes.entries()])).toBe(JSON.stringify([...b.nodes.entries()]));
   });
 
   it('the order option really changes at least one layout', () => {

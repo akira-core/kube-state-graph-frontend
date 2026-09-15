@@ -4,7 +4,7 @@
 
 The Network Sankey view MUST take the response of `endpoints.trace` (normalized through the same normalize boundary of `graph-data-source`) as its sole input, held by the Network category's single loader (see `app-shell`); the Network Graph view draws the same normalized elements. The request is `GET <endpoints.trace>?hostname=<h>&from_ts=<ms>&to_ts=<ms>&max_hops=<n>&top_n=<n>&threshold=<pct>&track_dir=<source|destination>`, assembled by `graph-data-source`: all seven parameters MUST always be sent explicitly, including those at their default, and `from_ts` / `to_ts` MUST be the applied view time range resolved **at send time** to epoch **milliseconds** (13 digits for any date in this century). The response body is the cytoscape-style wire shape shared with the other endpoints plus four network fields (`metrics.delta_bps`, node `investigation`, `clients`, `other_in_bps` / `other_out_bps`).
 
-The trace model is **read-only derived data** computed from the normalized elements by `deriveTrace(elements, { direction, minBps, layout })`; the derivation MUST NOT mutate any element (deep-equal before and after). While the loader is loading or in error, the view MUST present that state and draw nothing. When `endpoints.trace` is not configured and `demoMode` is `false`, the view MUST show the not-configured state and MUST NOT issue a request. When `demoMode` is `true`, the view renders the built-in `SHOWCASE_TRACE` fixture on mount, issues no request, and holds every scope value in component state as the storage view does.
+The trace model is **read-only derived data** computed from the normalized elements by `deriveTrace(elements, { direction, minBps, grouping })`; the derivation MUST NOT mutate any element (deep-equal before and after). While the loader is loading or in error, the view MUST present that state and draw nothing. When `endpoints.trace` is not configured and `demoMode` is `false`, the view MUST show the not-configured state and MUST NOT issue a request. When `demoMode` is `true`, the view renders the built-in `SHOWCASE_TRACE` fixture on mount, issues no request, and holds every scope value in component state as the storage view does.
 
 #### Scenario: One request with seven explicit parameters
 
@@ -13,7 +13,7 @@ The trace model is **read-only derived data** computed from the normalized eleme
 
 #### Scenario: Derivation does not change the source data
 
-- **WHEN** `deriveTrace` runs on the normalized fixture for both directions, with `minBps` `0` and `5e8`, and both layouts
+- **WHEN** `deriveTrace` runs on the normalized fixture for both directions, with `minBps` `0` and `5e8`, and both groupings
 - **THEN** the normalized elements after derivation are deep-equal to a deep copy taken before
 
 #### Scenario: Endpoint not configured
@@ -88,7 +88,7 @@ When the start node's `investigation.direction` disagrees (`in` with `source`, `
 
 ### Requirement: Node kinds are hops, groups or leaves; hop boxes carry interface slot labels
 
-Nodes are classified by kind: **hop** kinds `switch`, `router`, `node`, `pod`, `netapp-node`, `netapp-aggr`, `netapp-svm`, `pvc` are drawn as box cards with slots and residuals (a `router` is a hop exactly like a `switch`: the trace follows traffic through it); **group** kinds `namespace`, `application`, `cluster`, `storage-cluster`, `controller` are never drawn directly and exist only on `parent` chains; any other kind (`host`, an unknown value) is a **leaf** (see "Leaf and trace-stop cards"). A `node` touched only by placement edges (`labels.tier === "pod-node"` or `edgeType === "pod-to-node"`) MUST be dropped silently as a hop (it may still become a wrapper under the `Node` layout).
+Nodes are classified by kind: **hop** kinds `switch`, `router`, `node`, `pod`, `netapp-node`, `netapp-aggr`, `netapp-svm`, `pvc` are drawn as box cards with slots and residuals (a `router` is a hop exactly like a `switch`: the trace follows traffic through it); **group** kinds `namespace`, `application`, `cluster`, `storage-cluster`, `controller` are never drawn directly and exist only on `parent` chains; any other kind (`host`, an unknown value) is a **leaf** (see "Leaf and trace-stop cards"). A `node` touched only by placement edges (`labels.tier === "pod-node"` or `edgeType === "pod-to-node"`) MUST be dropped silently as a hop.
 
 A hop box is a `SankeyCard` (see `sankey-canvas`) whose title is the node's `label` (`name`, falling back to `id`), whose subtitle is `<kind>` followed by ` · <labels.tier>` or ` · <labels.ontap_cluster>` when present, whose attribute lines are `ns/<namespace>` (a pod's derived namespace; other kinds' `labels.namespace`) and `usage` as `used / capacity (pct%)` only when both fields are present, and whose slots carry **interface labels**: the edge's `labels.source_iface` beside the slot on the source card's right edge, `labels.target_iface` beside the slot on the target card's left edge; an absent label leaves the slot unlabelled and MUST NOT be guessed. Slots on one side are ordered by ribbon value descending, ties by the opposite label. `node`, `pod` and `netapp-*` boxes use the dashed device stroke; `switch` and `pvc` the solid stroke. The border colour precedence is: `status` colour (the same palette the storage view uses) > the start hop's accent > dashed device > neutral. A **no-flow hop** (listed in `nodes`, hop kind, but no drawable flow edge touches it) is drawn as a box with no slots and no residuals, is not counted by the display threshold as hidden, and any explicit `otherInBps` / `otherOutBps` on it MUST be zeroed with a warning. The card face never prints the id; the id appears as the tooltip's last line only when it differs from the label.
 
@@ -100,7 +100,7 @@ A hop box is a `SankeyCard` (see `sankey-canvas`) whose title is the node's `lab
 #### Scenario: A placement-only node is not a hop
 
 - **WHEN** `node/worker-3` appears in `nodes` and is touched only by a `pod-node` edge
-- **THEN** no card is drawn for it under the `Flat` layout, no error is reported, and under the `Node` layout it becomes the wrapper of its pods
+- **THEN** no card is drawn for it and no error is reported
 
 #### Scenario: A no-flow hop draws a bare box
 
@@ -241,7 +241,7 @@ The drawing is three **bands** in trace order — the **switch** band (the ancho
 
 Inside the switch band, column assignment is the longest path from the start hop: every drawn edge between two switch-band nodes forces its downstream node at least one column after its upstream node. Nodes sharing a `labels.tier` value MUST be locked into one column (treated as one super node for the longest path; edges inside a tier do not participate); `netapp-node`, `netapp-aggr`, `netapp-svm` and `pvc` MUST take their kind as tier when the label is absent, while `switch`, `node` and `pod` MUST NOT. When two groups carry flow in both directions, the direction with the smaller total is marked **backward**, excluded from ordering, and warned; a cycle over three or more groups is broken by dropping the smallest-flow direction on it from ordering, with a warning; a topology that still cannot be ordered warns that a cycle is suspected. An edge that runs from the k8s band back into the switch band takes no part in the ordering, is backward, and is warned as crossing the band boundary. Backward ribbons are drawn with the `sankey.traceBackward` gradient; edges between two nodes of one column are **lateral** ribbons drawn as an arc on the column's right side with an arrowhead at the downstream end; both use the shared thickness scale and pass through conservation as ordinary traced amounts.
 
-Column captions read `Trace start (in)` / `Trace start (out)` for the anchor column and `Hop N` (`Hop N · <kind>` when the column holds one non-switch hop kind) in the switch band; `k8s node`, `pod` (`node / pod` under the `Node` layout), `application` and `namespace` in the k8s band, the last of them suffixed ` / client` when the client partition is present, and plain `client` when the column holds no k8s card; and `owner` for the owner band. Without an anchor the first switch column is `Hop 0`. The vertical order inside a column is `Flow` by default (see "Layout and order switches").
+Column captions read `Trace start (in)` / `Trace start (out)` for the anchor column and `Hop N` (`Hop N · <kind>` when the column holds one non-switch hop kind) in the switch band; `k8s node`, `pod`, `application` and `namespace` in the k8s band, the last of them suffixed ` / client` when the client partition is present, and plain `client` when the column holds no k8s card; and `owner` for the owner band. Without an anchor the first switch column is `Hop 0`. The vertical order inside a column is `Flow` by default (see "Layout and order switches").
 
 #### Scenario: Three bands under a destination trace
 
@@ -265,16 +265,16 @@ Column captions read `Trace start (in)` / `Trace start (out)` for the anchor col
 
 ### Requirement: Layout and order switches
 
-The control bar SHALL provide `Layout` (`Flat` default | `Node`) and `Order` (`Flow` default | `Barycenter`), both **transient** page state (not in the URL, not persisted, reset on remount), and switching either issues no request and preserves the zoom / pan viewport and hover state.
+The control bar SHALL provide `Group` (`None` default | `Cluster`) and `Order` (`Flow` default | `Barycenter`), both **transient** page state (not in the URL, not persisted, reset on remount), and switching either issues no request and preserves the zoom / pan viewport and hover state.
 
-Under `Node`, every Kubernetes `node` that is touched only by placement edges becomes a `SankeyWrapperBox` in the pod column around the pods its placement edges name; wrappers are ordered by node label ascending (`localeCompare`), unscheduled pods sit below every wrapper, and a wrapper's border takes the worst status of the node and its member pods. A wrapper is not a graph node: it has no edges, no column of its own and no residuals; ribbons attach to the pod cards. Its title row is locatable for the node id.
+Every card reads its Kubernetes cluster from its own `labels.cluster` (k8s nodes and pods on the wire); a synthesised namespace / application card inherits its pod's, and one namespace name present in two clusters is two namespace cards. Under `Cluster`, every k8s-band card (k8s node hop, pod, application, namespace) that names a cluster is framed with the others of that cluster in one `SankeyWrapperBox` spanning every k8s column, one row block per cluster shared across the columns (a column with no member of a cluster leaves that block's row empty); frames are ordered by the summed traced flow of the cluster's pod cards under `Flow` and by name under `Barycenter`, cards naming no cluster sit below every frame, the client partition below everything, and a frame's border takes the worst status of its members. A frame is not a graph node: it has no edges, no column of its own and no residuals; ribbons attach to the cards. Its title row hovers (tooltip `cluster / <name>`, the card count, the folded status) and lights the union of its members' paths, and is not locatable. Under `None`, or when no card names a cluster, no frame is drawn and the layout is exactly the ungrouped one.
 
-Under `Flow`, a node's rank is the amount on its **traced side** — the sum of its inbound ribbons under a `destination` trace, of its outbound ribbons under a `source` trace — **excluding residuals**, descending; leaf pods and application cards of one namespace stay adjacent (groups ordered by group total), wrappers partition the pod column first, a lateral chain stays adjacent with the producer above, and equal ranks fall back to the upstream barycenter. `Barycenter` orders purely by the upstream barycenter. Both orders apply to the k8s partition and the client partition of a column separately: the client cards are always below the k8s cards.
+Under `Flow`, a node's rank is the amount on its **traced side** — the sum of its inbound ribbons under a `destination` trace, of its outbound ribbons under a `source` trace — **excluding residuals**, descending; leaf pods and application cards of one namespace stay adjacent (groups ordered by group total), cluster frames partition the k8s columns first, a lateral chain stays adjacent with the producer above, and equal ranks fall back to the upstream barycenter. `Barycenter` orders purely by the upstream barycenter. Both orders apply to the k8s partition and the client partition of a column separately: the client cards are always below the k8s cards.
 
-#### Scenario: Node layout wraps pods
+#### Scenario: Cluster grouping frames a cluster across the k8s columns
 
-- **WHEN** the fixture's `pod/ingest-7d9c` and `pod/kafka-2` carry `pod-node` edges to `node/w-11`, and the user switches `Layout` to `Node`
-- **THEN** a wrapper titled `w-11` encloses both pod cards, the ribbons still end on the pod cards, no card for `w-11` exists elsewhere, the request count is unchanged, and the zoom readout is unchanged
+- **WHEN** the fixture's `node-w-11`, `ingest-7d9c` and `kafka-2` carry `labels.cluster: east`, `node-w-12` and its pods `west`, and the user switches `Group` to `Cluster`
+- **THEN** a frame titled `east` encloses the `node-w-11` hop, both pod cards and their namespace cards across the k8s columns, a second frame `west` sits below it, `node-w-13` sits below both, the ribbons still end on the cards, the request count is unchanged, and the zoom readout is unchanged
 
 #### Scenario: Flow order ignores residuals
 
@@ -311,7 +311,7 @@ The chart area SHALL show a legend whose rows are presence-gated: a traced Δ ri
 
 ### Requirement: Tooltips
 
-Tooltips are rendered by the shared `SankeyTooltip` from lines the model produces. Hovering a ribbon MUST show: `from → to` (display names), the exit interface and the entry interface only where that end has a label, the rate through `formatDeltaBps`, the namespace where the downstream end is a pod, the `client` line when the downstream leaf has clients (an owner-bound edge lists the port side instead), `ownership` for an ownership line (which has no rate line), `tier` and `attribution` when present (`split` reads as an evenly split estimate), and whether the ribbon is the anchor, backward or derived. Hovering a card MUST show, in order and only when present: kind and name, `ns`, `ontap_cluster`, `in` and `out` totals (a namespace terminus has `out` `0`; an owner card metered at the port shows `—` for `in`), the hop's `other in` / `other out`, for application / namespace / wrapper cards `derived from member pods` and the pod count, for owner cards the source plus client and port counts, `usage`, `status` (`worst of member pods` on derived cards), `health`, `hardware.model`, the four `perf` readings marked raw, `alerts` as `<severity> <name>`, the no-flow statement, every client on its own untruncated line, and the id last when it differs from the name. Residual blocks have their own tooltip naming the hop, the side and the amount.
+Tooltips are rendered by the shared `SankeyTooltip` from lines the model produces. Hovering a ribbon MUST show: `from → to` (display names), the exit interface and the entry interface only where that end has a label, the rate through `formatDeltaBps`, the namespace where the downstream end is a pod, the `client` line when the downstream leaf has clients (an owner-bound edge lists the port side instead), `ownership` for an ownership line (which has no rate line), `tier` and `attribution` when present (`split` reads as an evenly split estimate), and whether the ribbon is the anchor, backward or derived. Hovering a card MUST show, in order and only when present: kind and name, `ns`, `ontap_cluster`, for a hop `traced in` / `traced out` painted in the ribbon colour followed by `other in` / `other out` painted in the residual colours (both always present, a `0` reads as `0 bps`), for every other card its `in` and `out` totals (a namespace terminus has `out` `0`; an owner card metered at the port shows `—` for `in`), for application / namespace cards `derived from member pods` and the pod count, for owner cards the source plus client and port counts, `usage`, `status` (`worst of member pods` on derived cards), `health`, `hardware.model`, the four `perf` readings marked raw, `alerts` as `<severity> <name>`, the no-flow statement, every client on its own untruncated line, and the id last when it differs from the name. Residual blocks have their own tooltip naming the hop, the side and the amount.
 
 #### Scenario: Ribbon tooltip
 
@@ -325,7 +325,7 @@ Tooltips are rendered by the shared `SankeyTooltip` from lines the model produce
 
 ### Requirement: Hover highlights the path
 
-Hovering a card MUST highlight every ribbon on every path through it — upstream and downstream, through derived and ownership edges — and fade the rest through the shared `lit` opacity mechanism; hovering a wrapper's title row highlights the union of its member pods' paths; leaving reverts everything; hover MUST change styles only and never re-run layout. When a refresh removes the hovered node the tooltip and highlight MUST be cleared.
+Hovering a card MUST highlight every ribbon on every path through it — upstream and downstream, through derived and ownership edges — and fade the rest through the shared `lit` opacity mechanism; hovering a cluster frame's title row highlights the union of its members' paths; leaving reverts everything; hover MUST change styles only and never re-run layout. When a refresh removes the hovered node the tooltip and highlight MUST be cleared.
 
 #### Scenario: Hovering a host lights its whole path
 
@@ -334,7 +334,7 @@ Hovering a card MUST highlight every ribbon on every path through it — upstrea
 
 ### Requirement: Clicking a card Locates into the Network Graph
 
-Clicking a locatable card MUST push-navigate to `/network/graph` keeping the current query string, passing the node id through navigation state (not the URL). Because both views share the category's loader, the Graph view MUST run Locate as soon as it mounts with the payload already held (no new request); when no payload is held it runs after the first successful load, once. Locatable cards are hop boxes except `netapp-svm`, leaf pods, and wrapper title rows; anchor, application, namespace, owner and leaf (`host`) cards are not and MUST NOT be presented as clickable. Back returns to `/network/sankey` with the same query and no selection.
+Clicking a locatable card MUST push-navigate to `/network/graph` keeping the current query string, passing the node id through navigation state (not the URL). Because both views share the category's loader, the Graph view MUST run Locate as soon as it mounts with the payload already held (no new request); when no payload is held it runs after the first successful load, once. Locatable cards are hop boxes except `netapp-svm` and leaf pods; anchor, application, namespace, owner and leaf (`host`) cards and cluster frame title rows are not and MUST NOT be presented as clickable. Back returns to `/network/sankey` with the same query and no selection.
 
 #### Scenario: Locate keeps the scope and issues no request
 
@@ -393,9 +393,9 @@ The trace view MUST use theme tokens for every colour and render in both themes;
 
 ### Requirement: Performance bounds
 
-For a synthetic body of 2000 `network-flow` edges (400 switches, 300 Kubernetes nodes, 800 leaf pods over 40 namespaces and 100 applications, 200 hosts each with 3 clients over 20 owners, one investigation, ten tier groups, five backward edges), on the hardware the e2e suite runs on: the time from the normalized result to the first completed draw (`Flat`, `Flow`, `Min Δ` `0`) MUST be within **1000 ms**; a `Min Δ`, `Layout` or `Order` change MUST redraw within **500 ms**; hover and zoom / pan MUST call the layout function 0 times and complete within one animation frame.
+For a synthetic body of 2000 `network-flow` edges (400 switches, 300 Kubernetes nodes, 800 leaf pods over 40 namespaces and 100 applications, 200 hosts each with 3 clients over 20 owners, one investigation, ten tier groups, five backward edges), on the hardware the e2e suite runs on: the time from the normalized result to the first completed draw (`None`, `Flow`, `Min Δ` `0`) MUST be within **1000 ms**; a `Min Δ`, `Group` or `Order` change MUST redraw within **500 ms**; hover and zoom / pan MUST call the layout function 0 times and complete within one animation frame.
 
 #### Scenario: First draw of the synthetic body
 
 - **WHEN** the trace view receives the synthetic body above
-- **THEN** the first completed draw is within 1000 ms, every hop's balance holds, and switching to `Node` redraws within 500 ms with 300 wrappers in the pod column
+- **THEN** the first completed draw is within 1000 ms, every hop's balance holds, and switching `Group` to `Cluster` redraws within 500 ms

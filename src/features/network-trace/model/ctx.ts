@@ -1,7 +1,7 @@
 import type cytoscape from 'cytoscape';
 
 import type { NodeIndex } from './nodeIndex';
-import type { TraceDirection, TraceEdge, TraceInvestigation, TraceNode } from './types';
+import type { TraceCluster, TraceDirection, TraceEdge, TraceGrouping, TraceInvestigation, TraceNode } from './types';
 
 /** One aggregated ribbon (same source / target / ifaces) before it becomes an edge. */
 export interface AggEdge {
@@ -24,6 +24,7 @@ export interface BuildCtx {
   direction: TraceDirection;
   inv: TraceInvestigation | null;
   minBps: number;
+  grouping: TraceGrouping;
   warnings: string[];
   index: NodeIndex;
   // step 1a
@@ -46,4 +47,6 @@ export interface BuildCtx {
   anchorEdge: TraceEdge | null;
   // step 4b
   filteredNodes: string[];
+  // step 6b
+  clusters: TraceCluster[];
 }

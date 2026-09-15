@@ -2829,6 +2829,123 @@ export const TRACE_SAMPLE_DCI_UTURN: TraceSample = {
   },
 };
 
+/**
+ * Pods on k8s nodes of two clusters (`labels.cluster`): `east` holds node-w-11 with an
+ * application chain and a second namespace, `west` holds node-w-12 with a pod in the same
+ * `telemetry` namespace as `east`'s, node-w-13 carries no cluster label. One host leaf so
+ * the client partition sits below the frames. Every hop balances.
+ */
+export const TRACE_SAMPLE_K8S_CLUSTERS: TraceSample = {
+  key: 'k8s-clusters',
+  direction: 'destination',
+  wire: {
+    elements: {
+      nodes: [
+        {
+          data: {
+            id: 'sw-tor-c',
+            type: 'switch',
+            name: 'ToR clusters',
+            investigation: {
+              iface: 'et-0/0/48',
+              delta_bps: 20000000000,
+              direction: 'in',
+            },
+          },
+        },
+        { data: { id: 'node-w-11', type: 'node', name: 'node-w-11', status: 'warning', labels: { cluster: 'east' } } },
+        { data: { id: 'node-w-12', type: 'node', name: 'node-w-12', labels: { cluster: 'west' } } },
+        { data: { id: 'node-w-13', type: 'node', name: 'node-w-13' } },
+        { data: { id: 'ns-telemetry', type: 'namespace', name: 'telemetry' } },
+        { data: { id: 'app-ingest', type: 'application', name: 'ingest', parent: 'ns-telemetry' } },
+        { data: { id: 'ingest-a', type: 'pod', parent: 'app-ingest', labels: { cluster: 'east' } } },
+        { data: { id: 'kafka-a', type: 'pod', labels: { namespace: 'stream', cluster: 'east' } } },
+        { data: { id: 'ingest-b', type: 'pod', labels: { namespace: 'telemetry', cluster: 'west' } } },
+        { data: { id: 'debug-c', type: 'pod', labels: { namespace: 'debug' } } },
+        { data: { id: 'srv-log-01', type: 'host' } },
+      ],
+      edges: [
+        {
+          data: {
+            id: 'e0',
+            type: 'network-flow',
+            source: 'sw-tor-c',
+            target: 'node-w-11',
+            labels: { source_iface: 'xe-0/0/11', target_iface: 'bond0' },
+            metrics: { delta_bps: 8000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e1',
+            type: 'network-flow',
+            source: 'sw-tor-c',
+            target: 'node-w-12',
+            labels: { source_iface: 'xe-0/0/12', target_iface: 'bond0' },
+            metrics: { delta_bps: 7000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e2',
+            type: 'network-flow',
+            source: 'sw-tor-c',
+            target: 'node-w-13',
+            labels: { source_iface: 'xe-0/0/13', target_iface: 'bond0' },
+            metrics: { delta_bps: 3000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e3',
+            type: 'network-flow',
+            source: 'sw-tor-c',
+            target: 'srv-log-01',
+            labels: { source_iface: 'xe-0/0/20', target_iface: 'eno1' },
+            metrics: { delta_bps: 2000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e4',
+            type: 'network-flow',
+            source: 'node-w-11',
+            target: 'ingest-a',
+            metrics: { delta_bps: 5000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e5',
+            type: 'network-flow',
+            source: 'node-w-11',
+            target: 'kafka-a',
+            metrics: { delta_bps: 3000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e6',
+            type: 'network-flow',
+            source: 'node-w-12',
+            target: 'ingest-b',
+            metrics: { delta_bps: 7000000000 },
+          },
+        },
+        {
+          data: {
+            id: 'e7',
+            type: 'network-flow',
+            source: 'node-w-13',
+            target: 'debug-c',
+            metrics: { delta_bps: 3000000000 },
+          },
+        },
+      ],
+    },
+  },
+};
+
 export const TRACE_SAMPLES: readonly TraceSample[] = [
   TRACE_SAMPLE_CLASSIC,
   TRACE_SAMPLE_DUAL_UPLINK,
@@ -2838,6 +2955,7 @@ export const TRACE_SAMPLES: readonly TraceSample[] = [
   TRACE_SAMPLE_CLIENT,
   TRACE_SAMPLE_K8S,
   TRACE_SAMPLE_K8S_SOURCE,
+  TRACE_SAMPLE_K8S_CLUSTERS,
   TRACE_SAMPLE_DCI_TIER,
   TRACE_SAMPLE_DCI_UTURN,
 ];

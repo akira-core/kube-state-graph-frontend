@@ -21,7 +21,7 @@ export function TraceLegend({ model, tokens }: Readonly<{ model: TraceModelOk; t
   const hasLateral = model.edges.some((e) => e.lateral);
   const hasBack = model.edges.some((e) => e.backward);
   const hasOwns = model.edges.some((e) => e.owns);
-  const hasStatus = model.nodes.some((n) => n.status !== null);
+  const hasStatus = model.nodes.some((n) => n.status !== null) || model.clusters.some((c) => c.status !== null);
   return (
     <div className="flex flex-wrap items-center gap-3" data-testid="trace-legend">
       <Row testId="trace-legend-flow">

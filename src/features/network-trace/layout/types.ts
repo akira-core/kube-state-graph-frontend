@@ -1,5 +1,5 @@
 import type { ColumnHeader } from '../../sankey-canvas';
-import type { TraceEdge, TraceNode } from '../model/types';
+import type { TraceCluster, TraceEdge, TraceNode } from '../model/types';
 
 import type { CardText } from './text';
 
@@ -66,13 +66,24 @@ export interface EdgeGeom {
   backXU?: number;
 }
 
+/** A cluster frame's placement; the model's cluster is untouched. */
+export interface ClusterGeom {
+  cluster: TraceCluster;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface TraceGeometry {
   width: number;
   height: number;
-  /** Nodes per column, in drawing order. */
+  /** Nodes per column, in drawing order (the k8s columns block by cluster under the `cluster` grouping). */
   cols: TraceNode[][];
   colX: number[];
   columns: ColumnHeader[];
+  /** Cluster frames (ordered, each spanning every k8s column); empty without grouping. */
+  clusters: ClusterGeom[];
   nodes: Map<string, NodeGeom>;
   edges: Map<string, EdgeGeom>;
 }

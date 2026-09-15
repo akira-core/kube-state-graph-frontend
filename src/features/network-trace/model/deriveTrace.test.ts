@@ -8,6 +8,7 @@ import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples
 import { hopBalanceRows, namespaceAggs } from './aggregates';
 import { bandOf, isClientPartition, k8sSubcol } from './bands';
 import { deriveTrace, directionFor, indexTrace, resolveTraceDirection } from './deriveTrace';
+import { hoverPath } from './hoverPath';
 import type { TraceModelOk, TraceNode } from './types';
 
 function elementsOf(wire: unknown): cytoscape.ElementDefinition[] {
@@ -16,7 +17,7 @@ function elementsOf(wire: unknown): cytoscape.ElementDefinition[] {
   return elements;
 }
 
-function derive(sample: TraceSample, opts: { minBps?: number } = {}): TraceModelOk {
+function derive(sample: TraceSample, opts: { minBps?: number; grouping?: 'none' | 'cluster' } = {}): TraceModelOk {
   const model = deriveTrace(elementsOf(sample.wire), { direction: sample.direction, ...opts });
   if (!model.ok) {
     throw new Error(`${sample.key}: ${model.errors.join(' / ')}`);
@@ -492,6 +493,91 @@ describe('hop kinds', () => {
     expect(r.otherOut).toBe(0.5e9);
     expect(r.col).toBe(node(model, 'sw-a').col + 1);
     expect(model.edges.filter((e) => e.fromId === 'rt-1' || e.toId === 'rt-1')).toHaveLength(2);
+  });
+});
+
+describe('cluster grouping', () => {
+  const sample = traceSample('k8s-clusters');
+
+  it("reads labels.cluster onto every card, and a synthesised card inherits its pod's", () => {
+    const m = derive(sample);
+    expect(m.grouping).toBe('none');
+    expect(m.clusters).toEqual([]);
+    expect(node(m, 'node-w-11').cluster).toBe('east');
+    expect(node(m, 'ingest-a').cluster).toBe('east');
+    expect(node(m, 'node-w-13').cluster).toBeNull();
+    expect(node(m, 'sw-tor-c').cluster).toBeNull();
+    const telemetry = m.nodes.filter((n) => n.role === 'ns' && n.label === 'telemetry');
+    expect(telemetry.map((n) => n.cluster).sort()).toEqual(['east', 'west']);
+    const app = m.nodes.find((n) => n.role === 'app');
+    expect(app?.cluster).toBe('east');
+    // The summary table sums a namespace over its clusters.
+    const agg = namespaceAggs(m).find((a) => a.namespace === 'telemetry');
+    expect(agg).toEqual({ namespace: 'telemetry', pods: 2, podsTotal: 2, total: 12e9 });
+  });
+
+  it('groups the labelled k8s-band cards by cluster, folding status; loose cards stay out', () => {
+    const m = derive(sample, { grouping: 'cluster' });
+    expect(m.grouping).toBe('cluster');
+    expect(m.clusters.map((c) => c.id)).toEqual(['trace:cluster:east', 'trace:cluster:west']);
+    const east = m.clusters[0];
+    const west = m.clusters[1];
+    expect(east?.label).toBe('east');
+    expect(east?.status).toBe('warning');
+    expect(west?.status).toBeNull();
+    const eastMembers = (east?.memberIds ?? []).map((id) => node(m, id));
+    expect(eastMembers.map((n) => `${n.role}:${n.label}`).sort()).toEqual(
+      ['app:ingest', 'node:node-w-11', 'ns:stream', 'ns:telemetry', 'pod:ingest-a', 'pod:kafka-a'].sort()
+    );
+    expect(west?.memberIds).toHaveLength(3);
+    const grouped = new Set(m.clusters.flatMap((c) => c.memberIds));
+    expect(grouped.has('node-w-13')).toBe(false);
+    expect(grouped.has('debug-c')).toBe(false);
+    expect(grouped.has('srv-log-01')).toBe(false);
+    expect(grouped.has('sw-tor-c')).toBe(false);
+    for (const n of m.nodes) {
+      expect(grouped.has(n.id)).toBe(bandOf(n) === 'k8s' && n.cluster !== null);
+    }
+  });
+
+  it("hovering a cluster lights its members' paths and nothing of the other cluster", () => {
+    const m = derive(sample, { grouping: 'cluster' });
+    const lit = hoverPath(m, 'trace:cluster:east');
+    expect(lit.nodeIds.has('trace:cluster:east')).toBe(true);
+    expect(lit.nodeIds.has('ingest-a')).toBe(true);
+    expect(lit.nodeIds.has('sw-tor-c')).toBe(true);
+    expect(lit.nodeIds.has('ingest-b')).toBe(false);
+    expect(lit.nodeIds.has('node-w-12')).toBe(false);
+  });
+
+  it('a threshold that removes every member removes the cluster', () => {
+    const m = derive(sample, { grouping: 'cluster', minBps: 7.5e9 });
+    expect(m.clusters.map((c) => c.label)).toEqual(['east']);
+  });
+
+  it('a reserved cluster id on the wire is an error', () => {
+    const wire = {
+      elements: {
+        nodes: [
+          N({ id: 'sw', type: 'switch', investigation: { iface: 'x', delta_bps: 1e9, direction: 'in' } }),
+          N({ id: 'trace:cluster:east', type: 'host' }),
+        ],
+        edges: [
+          E({
+            id: 'e1',
+            type: 'network-flow',
+            source: 'sw',
+            target: 'trace:cluster:east',
+            metrics: { delta_bps: 1e9 },
+          }),
+        ],
+      },
+    };
+    const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
+    expect(m.ok).toBe(false);
+    if (!m.ok) {
+      expect(m.errors[0]).toMatch(/reserved/);
+    }
   });
 });
 

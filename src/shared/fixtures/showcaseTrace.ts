@@ -31,6 +31,11 @@ import type { WireGraph } from '../types/wire';
  * two ToRs stitched under the backbone's ToRs; sharing `tor` with them would turn the ToR →
  * ToR link into an in-column arc).
  *
+ * The stitched `k8s` island carries `labels.cluster` on its k8s nodes and pods (`node-w-11`
+ * and its pods `east`, `node-w-12` and its pods `west`, `node-w-13` unlabelled), so the
+ * `Group: Cluster` switch frames two clusters across the k8s columns with `telemetry`
+ * split into one namespace card per cluster and a loose node below the frames.
+ *
  * Not included: `source` (its servers send into the switches, and a trace-stop leaf with an
  * onward edge is invalid in a destination trace) and `storage` (storage-flow edges).
  *
@@ -245,6 +250,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'node',
           name: 'node-w-11',
           other_out_bps: 2500000000,
+          labels: {
+            cluster: 'east',
+          },
         },
       },
       {
@@ -252,6 +260,9 @@ export const SHOWCASE_TRACE: WireGraph = {
           id: 'k8s/node-w-12',
           type: 'node',
           name: 'node-w-12',
+          labels: {
+            cluster: 'west',
+          },
         },
       },
       {
@@ -274,6 +285,7 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'pod',
           labels: {
             namespace: 'telemetry',
+            cluster: 'east',
           },
           name: 'ingest-7d9c',
         },
@@ -284,6 +296,7 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'pod',
           labels: {
             namespace: 'stream',
+            cluster: 'east',
           },
           name: 'kafka-2',
         },
@@ -294,6 +307,7 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'pod',
           labels: {
             namespace: 'telemetry',
+            cluster: 'west',
           },
           name: 'ingest-4f11',
         },
@@ -304,6 +318,7 @@ export const SHOWCASE_TRACE: WireGraph = {
           type: 'pod',
           labels: {
             namespace: 'debug',
+            cluster: 'west',
           },
           name: 'debug-shell',
         },

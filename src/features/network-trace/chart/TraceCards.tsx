@@ -1,10 +1,11 @@
 import type { JSX, MouseEvent } from 'react';
 
+import { countWord } from '../../../shared/format/countWord';
 import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
-import { haloStyle, SankeyCard, type SlotLabel } from '../../sankey-canvas';
+import { haloStyle, SankeyCard, SankeyWrapperBox, type SlotLabel } from '../../sankey-canvas';
 import { DEVICE_KINDS, RES_GAP, RES_LEN } from '../layout/constants';
-import type { NodeGeom, Slot } from '../layout/types';
+import type { ClusterGeom, NodeGeom, Slot } from '../layout/types';
 import { locatable } from '../model/locatable';
 import type { TraceNode } from '../model/types';
 
@@ -63,6 +64,52 @@ export function TraceCard({ n, g, tokens, faded, onEnter, onLeave, onClick }: Re
       onEnter={onEnter}
       onLeave={onLeave}
       onClick={onClick}
+    />
+  );
+}
+
+export interface TraceClusterProps {
+  cg: ClusterGeom;
+  tokens: ThemeTokens;
+  faded: boolean;
+  /** The box goes under the ribbons, the title above the cards — see `SankeyWrapperBox`. */
+  layer: 'frame' | 'title';
+  onEnter: (id: string, evt: MouseEvent) => void;
+  onLeave: () => void;
+}
+
+const noLocate = (): void => undefined;
+
+/** A cluster frame around its member cards across the k8s columns; the title row hovers, nothing locates. */
+export function TraceClusterBox({
+  cg,
+  tokens,
+  faded,
+  layer,
+  onEnter,
+  onLeave,
+}: Readonly<TraceClusterProps>): JSX.Element {
+  const c = cg.cluster;
+  return (
+    <SankeyWrapperBox
+      id={c.id}
+      label={c.label}
+      subtitle={`cluster · ${countWord(c.memberIds.length, 'card')}`}
+      kind="cluster"
+      x={cg.x}
+      y={cg.y}
+      width={cg.w}
+      height={cg.h}
+      tokens={tokens}
+      {...(c.status !== null ? { status: c.status } : {})}
+      locatable={false}
+      faded={faded}
+      testId={`trace-cluster-${c.label}`}
+      titleTestId={`trace-cluster-title-${c.label}`}
+      layer={layer}
+      onEnter={onEnter}
+      onLeave={onLeave}
+      onClick={noLocate}
     />
   );
 }

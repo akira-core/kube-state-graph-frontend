@@ -245,6 +245,43 @@ describe('TraceView chart', () => {
     expect(screen.queryByTestId('trace-status-legend')).not.toBeInTheDocument();
   });
 
+  it('draws cluster frames under Group: Cluster and remounts back to None', () => {
+    const { unmount } = renderTrace();
+    expect(screen.getByRole('radio', { name: /^none$/i })).toBeChecked();
+    expect(screen.queryByTestId('trace-cluster-east')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /^cluster$/i }));
+    expect(screen.getByTestId('trace-cluster-east')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-cluster-west')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-cluster-title-east')).toHaveAttribute('data-locatable', 'false');
+    // The frame's title hovers like a card: a tooltip naming the cluster and its cards.
+    fireEvent.mouseEnter(screen.getByTestId('trace-cluster-title-east'), { clientX: 10, clientY: 10 });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('cluster / east');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('5 cards');
+    unmount();
+    renderTrace();
+    expect(screen.getByRole('radio', { name: /^none$/i })).toBeChecked();
+    expect(screen.queryByTestId('trace-cluster-east')).not.toBeInTheDocument();
+  });
+
+  it('reports a controlled grouping upward without owning it', () => {
+    const onGroupingChange = vi.fn();
+    renderTrace({ grouping: 'none', onGroupingChange });
+    fireEvent.click(screen.getByRole('radio', { name: /^cluster$/i }));
+    expect(onGroupingChange).toHaveBeenCalledWith('cluster');
+    expect(screen.getByRole('radio', { name: /^none$/i })).toBeChecked();
+  });
+
+  it('preserves the zoom readout across a grouping and an order switch', () => {
+    renderTrace();
+    fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '1' });
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    fireEvent.click(screen.getByRole('radio', { name: /^cluster$/i }));
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    fireEvent.click(screen.getByRole('radio', { name: /^barycenter$/i }));
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+  });
+
   it('preserves the zoom readout across an order switch', () => {
     renderTrace();
     fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '1' });
@@ -497,5 +534,17 @@ describe('TraceView card search', () => {
     expect(screen.getByTestId('sankey-search-input')).toHaveValue('');
     expect(opacityOf('trace-node-網管部 王小明')).toBe('1');
     expect(props.onLocateNode).not.toHaveBeenCalled();
+  });
+
+  it('matches a cluster frame and lights its member pods, not the other cluster’s', () => {
+    renderTrace();
+    fireEvent.click(screen.getByRole('radio', { name: /^cluster$/i }));
+    type('east');
+    expect(screen.getByTestId('search-result-list')).toHaveTextContent('east');
+    expect(opacityOf('trace-node-ingest-7d9c')).toBe('1');
+    expect(opacityOf('trace-node-kafka-2')).toBe('1');
+    expect(opacityOf('trace-cluster-east')).toBe('1');
+    expect(opacityOf('trace-node-ingest-4f11')).toBe('0.3');
+    expect(opacityOf('trace-cluster-west')).toBe('0.3');
   });
 });

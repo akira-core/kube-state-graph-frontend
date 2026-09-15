@@ -9,10 +9,12 @@ import {
   stackHeight,
   thicknessScale,
   V_GAP,
+  WRAPPER_HEADER_H,
+  WRAPPER_PAD,
   type ColumnHeader,
 } from '../../sankey-canvas';
-import { bandOf, isClientPartition, type TraceBand } from '../model/bands';
-import type { TraceEdge, TraceModelOk, TraceNode } from '../model/types';
+import { bandOf, isClientPartition, k8sSubcol, type TraceBand } from '../model/bands';
+import type { TraceCluster, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, SEP } from '../model/util';
 
 import { ANCHOR_W, BAND_COL_GAP, BAND_GAP, LATERAL_BULGE_MIN, OWN_T, PAD_SIDE } from './constants';
@@ -29,7 +31,7 @@ import {
   traceFlowOf,
 } from './text';
 import { colCaption } from './tooltips';
-import type { EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry } from './types';
+import type { ClusterGeom, EdgeGeom, NodeGeom, Slot, SlotRole, TraceGeometry } from './types';
 
 /** In-column order: `flow` (larger flow on top, default) or `barycenter` (fewest crossings). */
 export type TraceNodeOrder = 'flow' | 'barycenter';
@@ -303,13 +305,63 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     gn.set(n.id, { x: 0, y: 0, w, h, cy: 0, leftSlots, rightSlots, text });
   }
 
-  // Column x.
   const cols: TraceNode[][] = [];
   for (const n of nodes) {
     const list = cols[n.col] ?? [];
     list.push(n);
     cols[n.col] = list;
   }
+
+  // Cluster frames span the k8s columns (the columns holding upper-partition k8s cards —
+  // not `colBand`, which reports a client-only column as k8s). Each frame is one block of
+  // rows across those columns: the block's top and height are shared, so it is sized here,
+  // before any placement, from the max member stack over the columns. A cluster ranks by
+  // its pod cards' traced flow (the node → pod → application → namespace chain carries the
+  // same bytes once per sub-column; summing every member would weight a cluster by how
+  // many sub-columns it fills); a cluster with no pod card ranks by all of its members.
+  const clusters = model.clusters;
+  const k8sColIdx: number[] = [];
+  cols.forEach((list, ci) => {
+    if (list.some((n) => bandOf(n) === 'k8s')) {
+      k8sColIdx.push(ci);
+    }
+  });
+  const firstK8s = k8sColIdx[0] ?? -1;
+  const lastK8s = k8sColIdx[k8sColIdx.length - 1] ?? -1;
+  const clusterFlow = new Map<string, number>(
+    clusters.map((c) => {
+      const members = c.memberIds.map((id) => mustGet(model.nodeMap, id, 'cluster member'));
+      const pods = members.filter((n) => k8sSubcol(n) === 'pod');
+      const rank = (pods.length > 0 ? pods : members).reduce((t, n) => t + traceFlowOf(n, model.direction), 0);
+      return [c.id, rank];
+    })
+  );
+  const clusterOrder: TraceCluster[] = [...clusters].sort(
+    order === 'flow'
+      ? (a, b) => (clusterFlow.get(b.id) ?? 0) - (clusterFlow.get(a.id) ?? 0) || a.label.localeCompare(b.label)
+      : (a, b) => a.label.localeCompare(b.label)
+  );
+  const blockIdxOf = new Map<string, number>();
+  clusterOrder.forEach((c, k) => {
+    for (const id of c.memberIds) {
+      blockIdxOf.set(id, k);
+    }
+  });
+  const memberStackH = (k: number, ci: number): number => {
+    const members = (cols[ci] ?? []).filter((n) => blockIdxOf.get(n.id) === k);
+    return members.length === 0 ? 0 : members.reduce((t, n) => t + N(n.id).h, 0) + V_GAP * (members.length - 1);
+  };
+  const blockH = clusterOrder.map(
+    (_c, k) => WRAPPER_HEADER_H + Math.max(0, ...k8sColIdx.map((ci) => memberStackH(k, ci))) + WRAPPER_PAD
+  );
+  const blockOff: number[] = [];
+  let blocksTotal = 0;
+  for (const h of blockH) {
+    blockOff.push(blocksTotal);
+    blocksTotal += h + V_GAP;
+  }
+
+  // Column x.
   // The band a column belongs to: its first card's (the client partition shares the k8s
   // band's last column).
   const colBand = (ci: number): TraceBand => {
@@ -338,15 +390,61 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   }
   const totalW = x - COL_GAP + PAD_SIDE;
 
+  // A framed list (the upper partition of a k8s column) splits into one block per cluster,
+  // in frame order, then the loose cards. The list is already sorted, so a stable split
+  // keeps the flow / barycenter order and the namespace contiguity inside each block.
+  const partition = (list: readonly TraceNode[]): { blocks: TraceNode[][]; loose: TraceNode[] } | null => {
+    if (clusterOrder.length === 0) {
+      return null;
+    }
+    const blocks = clusterOrder.map((): TraceNode[] => []);
+    const loose: TraceNode[] = [];
+    for (const n of list) {
+      const k = blockIdxOf.get(n.id);
+      const block = k === undefined ? undefined : blocks[k];
+      if (block === undefined) {
+        loose.push(n);
+      } else {
+        block.push(n);
+      }
+    }
+    return { blocks, loose };
+  };
+
   // The height a stack of cards would take from y0 — `stack` with the writes left out, so
   // the k8s band can size itself before anything is placed. Same arithmetic, same order.
-  const partitionHeight = (list: readonly TraceNode[]): number => list.reduce((y, n) => y + N(n.id).h + V_GAP, 0);
+  const partitionHeight = (list: readonly TraceNode[], framed: boolean): number => {
+    const parts = framed ? partition(list) : null;
+    if (parts === null) {
+      return list.reduce((y, n) => y + N(n.id).h + V_GAP, 0);
+    }
+    return parts.loose.reduce((y, n) => y + N(n.id).h + V_GAP, blocksTotal);
+  };
 
-  // Stack a list of cards from y0, appending them to `out` in drawing order; returns the y
-  // below the last card plus one gap.
-  const stack = (list: readonly TraceNode[], y0: number, out: TraceNode[]): number => {
-    let y = y0;
-    for (const n of list) {
+  // Stack a list of cards from y0 (a framed one block by block, then its loose cards),
+  // appending them to `out` in drawing order; returns the y below the last card plus one
+  // gap. Every k8s column places block k at the same offset, so the frames line up.
+  const stack = (list: readonly TraceNode[], y0: number, framed: boolean, out: TraceNode[]): number => {
+    const parts = framed ? partition(list) : null;
+    if (parts === null) {
+      let y = y0;
+      for (const n of list) {
+        N(n.id).y = y;
+        y += N(n.id).h + V_GAP;
+        out.push(n);
+      }
+      return y;
+    }
+    parts.blocks.forEach((members, k) => {
+      let y = y0 + (blockOff[k] ?? 0) + WRAPPER_HEADER_H;
+      for (const n of members) {
+        N(n.id).y = y;
+        y += N(n.id).h + V_GAP;
+        out.push(n);
+      }
+    });
+    let y = y0 + blocksTotal;
+    for (const n of parts.loose) {
       N(n.id).y = y;
       y += N(n.id).h + V_GAP;
       out.push(n);
@@ -360,7 +458,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   for (let ci = 0; ci < cols.length; ci += 1) {
     if (colBand(ci) === 'k8s') {
       const upper = (cols[ci] ?? []).filter((n) => !isClientPartition(n));
-      maxK8sH = Math.max(maxK8sH, partitionHeight(upper) - V_GAP);
+      maxK8sH = Math.max(maxK8sH, partitionHeight(upper, true) - V_GAP);
     }
   }
 
@@ -370,6 +468,8 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
   const K: KeyOf = (n) => mustGet(keys, n.id, 'sort key');
   const cyOf = new Map<string, number>();
   let lastSwitchTop = 0;
+  // The k8s band's top: one value for the whole band (it is contiguous and never shifts).
+  let k8sTop: number | null = null;
   for (let ci = 0; ci < cols.length; ci += 1) {
     const col = cols[ci] ?? [];
     col.forEach((n, i) => {
@@ -408,13 +508,16 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     }
     const band = colBand(ci);
     const top = band === 'k8s' ? lastSwitchTop : 0;
+    if (band === 'k8s' && k8sTop === null) {
+      k8sTop = top;
+    }
     col.length = 0;
-    let y = stack(upper, top, col);
+    let y = stack(upper, top, band === 'k8s', col);
     if (lower.length > 0) {
       if (band === 'k8s') {
         y = top + maxK8sH + (maxK8sH > 0 ? BAND_GAP : 0);
       }
-      y = stack(lower, y, col);
+      y = stack(lower, y, false, col);
     }
     const blockH = Math.max(0, y - V_GAP - top);
     const prefAvg = col.reduce((s, n) => s + K(n).pref, 0) / (col.length || 1);
@@ -429,7 +532,21 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     }
   }
 
-  // Normalise y so the top is PAD_TOP.
+  // The frames: from the first k8s column's left edge to the last one's right edge, a pad
+  // beyond each (the pad lives in the corridors; no column widens), at the block's row.
+  const frameTop = k8sTop;
+  const clusterGeoms: ClusterGeom[] =
+    frameTop === null || firstK8s < 0
+      ? []
+      : clusterOrder.map((c, k) => ({
+          cluster: c,
+          x: (colX[firstK8s] ?? PAD_SIDE) - WRAPPER_PAD,
+          y: frameTop + (blockOff[k] ?? 0),
+          w: (colX[lastK8s] ?? 0) + (colW[lastK8s] ?? 0) - (colX[firstK8s] ?? 0) + WRAPPER_PAD * 2,
+          h: blockH[k] ?? 0,
+        }));
+
+  // Normalise y so the top is PAD_TOP; frames count toward the height.
   const any = nodes.length > 0;
   let minY = any ? Number.POSITIVE_INFINITY : 0;
   let maxY = any ? Number.NEGATIVE_INFINITY : 0;
@@ -438,11 +555,18 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     minY = Math.min(minY, g.y);
     maxY = Math.max(maxY, g.y + g.h);
   }
+  for (const cg of clusterGeoms) {
+    minY = Math.min(minY, cg.y);
+    maxY = Math.max(maxY, cg.y + cg.h);
+  }
   const dy = PAD_TOP - minY;
   for (const n of nodes) {
     const g = N(n.id);
     g.y += dy;
     g.cy = g.y + g.h / 2;
+  }
+  for (const cg of clusterGeoms) {
+    cg.y += dy;
   }
   let totalH = maxY + dy + PAD_BOTTOM;
 
@@ -623,6 +747,7 @@ export function layoutTrace(model: TraceModelOk, opts: LayoutTraceOptions = {}):
     columns,
     width: totalW,
     height: Math.max(totalH, 220),
+    clusters: clusterGeoms,
     nodes: gn,
     edges: ge,
   };

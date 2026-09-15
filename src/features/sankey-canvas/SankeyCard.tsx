@@ -5,6 +5,7 @@ import type { NodeStatus } from '../../shared/constants/types';
 import type { ThemeTokens } from '../../shared/theme/tokens';
 
 import { CARD_LINE_H } from './geometry';
+import { haloStyle } from './textHalo';
 
 const WRAPPER_TITLE_H = 40;
 
@@ -196,6 +197,12 @@ export interface SankeyWrapperBoxProps {
   testId?: string;
   /** Test id of the title row — the only part of the frame that takes pointer events. */
   titleTestId?: string;
+  /**
+   * Which part to draw: `both` (default) for a frame that sits above the ribbons; a frame
+   * that spans columns draws its `frame` (the box) under the ribbons and its `title` above
+   * the cards, so neither the ribbons are tinted nor the title covered.
+   */
+  layer?: 'both' | 'frame' | 'title';
   onEnter: (id: string, evt: MouseEvent) => void;
   onLeave: () => void;
   onClick: (id: string) => void;
@@ -217,11 +224,51 @@ export function SankeyWrapperBox({
   faded,
   testId,
   titleTestId,
+  layer = 'both',
   onEnter,
   onLeave,
   onClick,
 }: Readonly<SankeyWrapperBoxProps>): JSX.Element {
   const statusStroke = status === undefined ? undefined : STATUS_COLOR[status];
+  // A title drawn above the ribbons (the `title` layer) needs the halo to stay legible.
+  const halo = layer === 'title' ? haloStyle(tokens) : undefined;
+  const title =
+    layer === 'frame' ? null : (
+      <g
+        data-testid={titleTestId ?? `sankey-wrapper-title-${label}`}
+        data-locatable={locatable ? 'true' : 'false'}
+        onMouseEnter={(evt) => onEnter(id, evt)}
+        onMouseLeave={onLeave}
+        onClick={locatable ? () => onClick(id) : undefined}
+        className={locatable ? 'cursor-pointer' : 'cursor-default'}
+      >
+        <rect x={x} y={y} width={width} height={WRAPPER_TITLE_H} fill="transparent" />
+        <text
+          x={x + 10}
+          y={y + 15}
+          fill={tokens.fg.primary}
+          fontSize={11.5}
+          fontWeight={600}
+          className="pointer-events-none"
+          style={halo}
+        >
+          {label}
+        </text>
+        <text
+          x={x + 10}
+          y={y + 32}
+          fill={tokens.fg.secondary}
+          fontSize={10}
+          className="pointer-events-none"
+          style={halo}
+        >
+          {subtitle}
+        </text>
+      </g>
+    );
+  if (layer === 'title') {
+    return <g style={{ opacity: faded ? 0.3 : 1 }}>{title}</g>;
+  }
   return (
     <g
       data-testid={testId ?? `sankey-wrapper-${label}`}
@@ -241,29 +288,7 @@ export function SankeyWrapperBox({
         strokeWidth={statusStroke === undefined ? NEUTRAL_BORDER_W : STATUS_BORDER_W}
         className="pointer-events-none"
       />
-      <g
-        data-testid={titleTestId ?? `sankey-wrapper-title-${label}`}
-        data-locatable={locatable ? 'true' : 'false'}
-        onMouseEnter={(evt) => onEnter(id, evt)}
-        onMouseLeave={onLeave}
-        onClick={locatable ? () => onClick(id) : undefined}
-        className={locatable ? 'cursor-pointer' : 'cursor-default'}
-      >
-        <rect x={x} y={y} width={width} height={WRAPPER_TITLE_H} fill="transparent" />
-        <text
-          x={x + 10}
-          y={y + 15}
-          fill={tokens.fg.primary}
-          fontSize={11.5}
-          fontWeight={600}
-          className="pointer-events-none"
-        >
-          {label}
-        </text>
-        <text x={x + 10} y={y + 32} fill={tokens.fg.secondary} fontSize={10} className="pointer-events-none">
-          {subtitle}
-        </text>
-      </g>
+      {title}
     </g>
   );
 }

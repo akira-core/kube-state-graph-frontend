@@ -20,15 +20,20 @@ import { useThemeTokens } from '../theme';
 
 import { TraceChart } from './chart/TraceChart';
 import { layoutTrace, type TraceNodeOrder } from './layout/layoutTrace';
-import { bandTooltipLines, nodeTooltipLines, residualTooltipLines } from './layout/tooltips';
+import { bandTooltipLines, clusterTooltipLines, nodeTooltipLines, residualTooltipLines } from './layout/tooltips';
 import { hopBalanceRows, namespaceAggs } from './model/aggregates';
 import { deriveTrace, directionFor } from './model/deriveTrace';
 import { hoverPath, hoverPathMany } from './model/hoverPath';
-import type { TraceDirection, TraceEdge, TraceNode } from './model/types';
+import type { TraceDirection, TraceEdge, TraceGrouping, TraceNode } from './model/types';
 import { TraceLegend } from './TraceLegend';
 import { traceCardRects, traceSearchRecords } from './traceSearch';
 import { TraceSummary } from './TraceSummary';
 import { cleanMinBps } from './traceUrlScope';
+
+const GROUPING_OPTIONS: ReadonlyArray<SegmentedOption<TraceGrouping>> = [
+  { value: 'none', label: 'None' },
+  { value: 'cluster', label: 'Cluster' },
+];
 
 const ORDER_OPTIONS: ReadonlyArray<SegmentedOption<TraceNodeOrder>> = [
   { value: 'flow', label: 'Flow' },
@@ -60,6 +65,9 @@ export interface TraceViewProps {
   minBps: number;
   onMinBpsChange: (next: number) => void;
   onLocateNode: (id: string) => void;
+  /** Page-transient. Omitted = local default `none`, reset on remount. */
+  grouping?: TraceGrouping;
+  onGroupingChange?: (next: TraceGrouping) => void;
 }
 
 type EmptyKind = ShellEmptyKind | 'response' | 'model-error' | 'filtered';
@@ -114,8 +122,18 @@ export function TraceView({
   minBps,
   onMinBpsChange,
   onLocateNode,
+  grouping: groupingProp,
+  onGroupingChange,
 }: Readonly<TraceViewProps>): JSX.Element {
   const tokens = useThemeTokens();
+  const [localGrouping, setLocalGrouping] = useState<TraceGrouping>(groupingProp ?? 'none');
+  const grouping = groupingProp ?? localGrouping;
+  const setGrouping = (next: TraceGrouping): void => {
+    if (groupingProp === undefined) {
+      setLocalGrouping(next);
+    }
+    onGroupingChange?.(next);
+  };
   const [order, setOrder] = useState<TraceNodeOrder>('flow');
   // The threshold box holds raw text; the applied value follows after a short pause so
   // typing "500000000" does not redraw nine times. Blur normalises the text to the value.
@@ -139,12 +157,16 @@ export function TraceView({
 
   const direction = useMemo(() => directionFor(elements, trackDir), [elements, trackDir]);
   const model = useMemo(
-    () => deriveTrace(elements, { direction: direction.direction, minBps }, direction.indexed),
-    [direction.direction, direction.indexed, elements, minBps]
+    () => deriveTrace(elements, { direction: direction.direction, minBps, grouping }, direction.indexed),
+    [direction.direction, direction.indexed, elements, grouping, minBps]
   );
   const geo = useMemo(() => (model.ok ? layoutTrace(model, { order }) : null), [model, order]);
   const content = useMemo(() => ({ w: geo?.width ?? 0, h: geo?.height ?? 0 }), [geo]);
-  const hasCard = useCallback((id: string) => model.ok && model.nodeMap.has(id), [model]);
+  const clusterIds = useMemo(() => new Set(model.ok ? model.clusters.map((c) => c.id) : []), [model]);
+  const hasCard = useCallback(
+    (id: string) => model.ok && (model.nodeMap.has(id) || clusterIds.has(id)),
+    [clusterIds, model]
+  );
   const hoverLit = useCallback(
     (id: string): HoverLit => {
       if (!model.ok) {
@@ -227,6 +249,11 @@ export function TraceView({
     const target = model.nodeMap.get(id);
     if (target !== undefined) {
       tooltip.show(evt.clientX, evt.clientY, nodeTooltipLines(target, model, tokens));
+      return;
+    }
+    const cluster = model.clusters.find((c) => c.id === id);
+    if (cluster !== undefined) {
+      tooltip.show(evt.clientX, evt.clientY, clusterTooltipLines(cluster));
     }
   };
   const onBandEnter = (e: TraceEdge, evt: MouseEvent): void => {
@@ -248,6 +275,15 @@ export function TraceView({
       {!focusMode && (
         <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-3 border-b border-hairline bg-rail px-3 py-1.5">
           <span className={eyebrowClass}>Network trace</span>
+          <span className={eyebrowClass}>Group</span>
+          <Segmented
+            name="trace-grouping"
+            aria-label="Group"
+            value={grouping}
+            options={GROUPING_OPTIONS}
+            onChange={setGrouping}
+            data-testid="trace-grouping"
+          />
           <span className={eyebrowClass}>Order</span>
           <Segmented
             name="trace-order"

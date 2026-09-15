@@ -61,14 +61,15 @@ interface Case {
 
 function cases(): Case[] {
   const out: Case[] = [];
-  const variants: Array<{ tag: string; minBps: number }> = [
-    { tag: '', minBps: 0 },
-    { tag: '@5e8', minBps: 5e8 },
+  const variants: Array<{ tag: string; minBps: number; grouping: 'none' | 'cluster' }> = [
+    { tag: '', minBps: 0, grouping: 'none' },
+    { tag: '@5e8', minBps: 5e8, grouping: 'none' },
+    { tag: '@cluster', minBps: 0, grouping: 'cluster' },
   ];
   for (const sample of TRACE_SAMPLES) {
     const elements = normalizeGraph(sample.wire).elements;
     for (const v of variants) {
-      const model = deriveTrace(elements, { direction: sample.direction, minBps: v.minBps });
+      const model = deriveTrace(elements, { direction: sample.direction, minBps: v.minBps, grouping: v.grouping });
       expect(model.ok, `${sample.key}${v.tag}`).toBe(true);
       if (model.ok) {
         out.push({ name: `${sample.key}${v.tag}`, model });
@@ -142,6 +143,26 @@ describe('TraceCards', () => {
     expect(ns?.getAttribute('data-locatable')).toBe('false');
     const doc = new DOMParser().parseFromString(markup, 'text/html');
     expect(doc.querySelectorAll('[data-testid="trace-residual-out"]').length).toBeGreaterThan(0);
+  });
+
+  it('draws one frame per cluster: its box under the ribbons, its title above the cards, not locatable', () => {
+    const c = cases().find((x) => x.name === 'k8s-clusters@cluster');
+    expect(c).toBeDefined();
+    if (c === undefined) {
+      return;
+    }
+    const doc = new DOMParser().parseFromString(renderChart(c.model), 'text/html');
+    const frames = [...doc.querySelectorAll('g[data-testid^="trace-cluster-"]')].filter(
+      (el) => !(el.getAttribute('data-testid') ?? '').startsWith('trace-cluster-title-')
+    );
+    expect(frames.length).toBe(c.model.clusters.length);
+    expect(frames[0]?.getAttribute('data-status')).toBe('warning');
+    expect(doc.querySelector('[data-testid="trace-cluster-title-east"]')?.getAttribute('data-locatable')).toBe('false');
+    const all = [...doc.querySelectorAll('[data-testid]')].map((el) => el.getAttribute('data-testid') ?? '');
+    expect(all.findIndex((t) => t === 'trace-cluster-east')).toBeLessThan(all.findIndex((t) => t === 'trace-band'));
+    const lastCard = all.map((t, i) => (t.startsWith('trace-node-') ? i : -1)).reduce((m, i) => Math.max(m, i), -1);
+    expect(all.indexOf('trace-cluster-title-east')).toBeGreaterThan(lastCard);
+    expect(all.filter((t) => t === 'trace-cluster-title-east')).toHaveLength(1);
   });
 
   it('draws one direction chevron per amount ribbon, none on an ownership line', () => {

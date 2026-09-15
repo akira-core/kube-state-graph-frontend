@@ -8,7 +8,7 @@ import { TRACE_SAMPLES } from '../testing/samples';
 import { layoutTrace, type TraceNodeOrder } from './layoutTrace';
 
 /**
- * Golden corpus: every sample × the variants (threshold, barycenter). The
+ * Golden corpus: every sample × the variants (threshold, cluster grouping, barycenter). The
  * snapshots were reviewed once against the drawn fixture and now guard the port against
  * regressions in the model and the geometry — a changed number here is a changed drawing.
  */
@@ -21,6 +21,7 @@ function modelSnapshot(m: TraceModelOk): unknown {
     root: m.root?.id ?? null,
     filtered: m.filtered,
     filteredNodes: m.filteredNodes,
+    clusters: m.clusters.map((c) => ({ id: c.id, members: c.memberIds, status: c.status })),
     nodes: m.nodes.map((n) => ({
       id: n.id,
       kind: n.kind,
@@ -29,6 +30,7 @@ function modelSnapshot(m: TraceModelOk): unknown {
       col: n.col,
       subOrder: n.subOrder,
       namespace: n.namespace,
+      cluster: n.cluster,
       tier: n.tier,
       ...(n.kind === 'node'
         ? {
@@ -66,6 +68,7 @@ function geometrySnapshot(m: TraceModelOk, order: TraceNodeOrder): unknown {
     height: r3(geo.height),
     columns: geo.columns.map((c) => ({ x: r3(c.x), label: c.label })),
     cols: geo.cols.map((c) => c.map((n) => n.id)),
+    clusters: geo.clusters.map((c) => ({ id: c.cluster.id, x: r3(c.x), y: r3(c.y), w: r3(c.w), h: r3(c.h) })),
     nodes: [...geo.nodes.entries()].map(([id, g]) => ({
       id,
       x: r3(g.x),
@@ -103,18 +106,22 @@ function geometrySnapshot(m: TraceModelOk, order: TraceNodeOrder): unknown {
 describe('golden corpus', () => {
   for (const sample of TRACE_SAMPLES) {
     const elements = normalizeGraph(sample.wire).elements;
-    const variants: Array<{ tag: string; minBps: number }> = [
-      { tag: '', minBps: 0 },
-      { tag: '@5e8', minBps: 5e8 },
+    const variants: Array<{ tag: string; minBps: number; grouping: 'none' | 'cluster' }> = [
+      { tag: '', minBps: 0, grouping: 'none' },
+      { tag: '@5e8', minBps: 5e8, grouping: 'none' },
+      { tag: '@cluster', minBps: 0, grouping: 'cluster' },
     ];
     for (const v of variants) {
       it(`${sample.key}${v.tag}`, () => {
         const frozen = JSON.parse(JSON.stringify(elements)) as typeof elements;
         Object.freeze(frozen);
-        const m = deriveTrace(frozen, { direction: sample.direction, minBps: v.minBps });
+        const m = deriveTrace(frozen, { direction: sample.direction, minBps: v.minBps, grouping: v.grouping });
         expect(m.ok).toBe(true);
         if (!m.ok) {
           return;
+        }
+        if (v.grouping === 'cluster' && m.clusters.length === 0) {
+          return; // identical to the ungrouped variant
         }
         expect(modelSnapshot(m)).toMatchSnapshot('model');
         expect(geometrySnapshot(m, 'flow')).toMatchSnapshot('geometry flow');

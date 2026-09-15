@@ -206,14 +206,20 @@
           "id": "k8s/node-w-11",
           "type": "node",
           "name": "node-w-11",
-          "other_out_bps": 2500000000
+          "other_out_bps": 2500000000,
+          "labels": {
+            "cluster": "east"
+          }
         }
       },
       {
         "data": {
           "id": "k8s/node-w-12",
           "type": "node",
-          "name": "node-w-12"
+          "name": "node-w-12",
+          "labels": {
+            "cluster": "west"
+          }
         }
       },
       {
@@ -235,7 +241,8 @@
           "id": "k8s/ingest-7d9c",
           "type": "pod",
           "labels": {
-            "namespace": "telemetry"
+            "namespace": "telemetry",
+            "cluster": "east"
           },
           "name": "ingest-7d9c"
         }
@@ -245,7 +252,8 @@
           "id": "k8s/kafka-2",
           "type": "pod",
           "labels": {
-            "namespace": "stream"
+            "namespace": "stream",
+            "cluster": "east"
           },
           "name": "kafka-2"
         }
@@ -255,7 +263,8 @@
           "id": "k8s/ingest-4f11",
           "type": "pod",
           "labels": {
-            "namespace": "telemetry"
+            "namespace": "telemetry",
+            "cluster": "west"
           },
           "name": "ingest-4f11"
         }
@@ -265,7 +274,8 @@
           "id": "k8s/debug-shell",
           "type": "pod",
           "labels": {
-            "namespace": "debug"
+            "namespace": "debug",
+            "cluster": "west"
           },
           "name": "debug-shell"
         }

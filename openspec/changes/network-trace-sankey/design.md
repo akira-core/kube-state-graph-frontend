@@ -67,7 +67,7 @@ _Alternative — parse to numbers on read and clamp._ Rejected: a clamped value 
 
 ### D5. Channels and roots are dropped; only `network-flow` edges draw
 
-`FLOW_EDGE_TYPES = ['network-flow']`. `storage-flow` edges (and every other type) are ignored without error — a storage payload fed to the network view yields the "nothing drawable" model error, not a crash. The `channels` (read / write) option, `hiddenChannel`, `unit`, `roots` and `rootLeafPods` do not exist in the port; `nsEdges: Record<channel, …>` collapses to a single `nsEdge`. Weight is `deltaBps` only; an edge without it is not drawn but still counts as "an edge exists" for the leaf-pod / proxy-pod and no-flow decisions. Placement edges (`labels.tier === 'pod-node'` or `edgeType === 'pod-to-node'`) never draw and only feed the `Node` layout's wrappers.
+`FLOW_EDGE_TYPES = ['network-flow']`. `storage-flow` edges (and every other type) are ignored without error — a storage payload fed to the network view yields the "nothing drawable" model error, not a crash. The `channels` (read / write) option, `hiddenChannel`, `unit`, `roots` and `rootLeafPods` do not exist in the port; `nsEdges: Record<channel, …>` collapses to a single `nsEdge`. Weight is `deltaBps` only; an edge without it is not drawn but still counts as "an edge exists" for the leaf-pod / proxy-pod and no-flow decisions. Placement edges (`labels.tier === 'pod-node'` or `edgeType === 'pod-to-node'`) never draw; they only mark the k8s nodes that carry no traffic.
 
 The `validate.ts` semantic checks land as follows:
 
@@ -89,7 +89,7 @@ The feature directory contains no hex colour, no CSS file and none of `sankey-pa
 
 ### D7. Golden snapshots guard the port
 
-`golden.test.ts` runs every ported sample × `minBps` in `{ 0, 5e8 }` × `layout: 'node'` × `order: 'barycenter'` over deep-frozen input and snapshots the model plus the geometry rounded to three decimals. The numbers differ from `sankey-panel`'s `golden.mjs` (this repository formats to three significant digits and uses the shared geometry constants), so the snapshot is taken from the ported implementation once it has been visually checked against the fixture, then frozen. Per-hop conservation (`tracedIn + otherIn ≈ tracedOut + otherOut` within the eps rule) is asserted independently in `deriveTrace.test.ts` on every sample so the snapshot cannot silently freeze a broken balance.
+`golden.test.ts` runs every ported sample × `minBps` in `{ 0, 5e8 }` × `grouping: 'cluster'` × `order: 'barycenter'` over deep-frozen input and snapshots the model plus the geometry rounded to three decimals. The numbers differ from `sankey-panel`'s `golden.mjs` (this repository formats to three significant digits and uses the shared geometry constants), so the snapshot is taken from the ported implementation once it has been visually checked against the fixture, then frozen. Per-hop conservation (`tracedIn + otherIn ≈ tracedOut + otherOut` within the eps rule) is asserted independently in `deriveTrace.test.ts` on every sample so the snapshot cannot silently freeze a broken balance.
 
 ### D8. `sankey-canvas` is the single presentation module
 

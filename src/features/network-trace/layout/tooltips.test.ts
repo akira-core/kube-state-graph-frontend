@@ -8,11 +8,11 @@ import type { TraceModelOk } from '../model/types';
 import { traceSample } from '../testing/samples';
 
 import { cardText, clientTableLines, clip } from './text';
-import { bandTooltipLines, colCaption, nodeTooltipLines, residualTooltipLines } from './tooltips';
+import { bandTooltipLines, clusterTooltipLines, colCaption, nodeTooltipLines, residualTooltipLines } from './tooltips';
 
-function model(key: string): TraceModelOk {
+function model(key: string, grouping: 'none' | 'cluster' = 'none'): TraceModelOk {
   const s = traceSample(key);
-  const m = deriveTrace(normalizeGraph(s.wire).elements, { direction: s.direction });
+  const m = deriveTrace(normalizeGraph(s.wire).elements, { direction: s.direction, grouping });
   if (!m.ok) {
     throw new Error(m.errors.join(' / '));
   }
@@ -152,6 +152,18 @@ describe('tooltip and card text', () => {
       expect(nodeTip(ns, k8s)).toContain('derived from member pods');
       expect(cardText(ns, k8s).extraLines[0]).toMatch(/pods?$/);
     }
+  });
+
+  it('a cluster frame counts its cards and folds their status', () => {
+    const m = model('k8s-clusters', 'cluster');
+    const [east, west] = m.clusters;
+    expect(east).toBeDefined();
+    expect(west).toBeDefined();
+    if (east === undefined || west === undefined) {
+      return;
+    }
+    expect(clusterTooltipLines(east)).toEqual(['cluster / east', '6 cards', 'status warning (worst of member cards)']);
+    expect(clusterTooltipLines(west)).toEqual(['cluster / west', '3 cards']);
   });
 
   it('a column of routers is captioned as such, and a router card prints its kind', () => {

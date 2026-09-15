@@ -141,6 +141,7 @@ export function clientsOf(d: cytoscape.NodeDataDefinition): NodeClient[] | null 
 export interface WireFacts {
   namespace: string | null;
   ontapCluster: string | null;
+  cluster: string | null;
   status: NodeStatus | null;
   usage: NodeUsage | null;
   info: NodeInfo | null;
@@ -149,7 +150,8 @@ export interface WireFacts {
 
 /**
  * One reading of the wire node for both card shapes (`scan.makeHop`, `edges.ensureLeaf`).
- * A pod's namespace comes from its parent chain; anything else states it in `labels`.
+ * A pod's namespace comes from its parent chain; anything else states it in `labels`. The
+ * Kubernetes cluster is `labels.cluster` on the node itself, never inferred.
  */
 export function wireFacts(index: NodeIndex, d: cytoscape.NodeDataDefinition, id: string, kind: string): WireFacts {
   const lab = d.labels ?? {};
@@ -162,6 +164,7 @@ export function wireFacts(index: NodeIndex, d: cytoscape.NodeDataDefinition, id:
   return {
     namespace,
     ontapCluster: isNonEmptyString(lab.ontap_cluster) ? lab.ontap_cluster : null,
+    cluster: isNonEmptyString(lab.cluster) ? lab.cluster : null,
     status: statusOf(d.status),
     usage: usageOf(d),
     info: infoOf(d),

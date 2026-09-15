@@ -1,6 +1,7 @@
 import type cytoscape from 'cytoscape';
 
 import { assemble, normalizeColumns } from './assemble';
+import { buildClusters } from './clusters';
 import { assignColumns } from './columns';
 import type { BuildCtx } from './ctx';
 import { buildEdges } from './edges';
@@ -54,6 +55,7 @@ export function directionFor(
  *   4  prune          attach edges; 4b ★ drop hops left with no edge
  *   5  columns        tier super-nodes, majority vote, SCC, longest path, backward / lateral
  *   6  residuals      ★ hidden amounts fold into residuals; every hop balances
+ *   6b clusters       cluster frames under the `cluster` grouping
  *   7  assemble       columns from 0, the result object
  * The input is never mutated.
  */
@@ -88,6 +90,7 @@ function derive(
     direction: opts.direction,
     inv: resolved.inv,
     minBps: Math.max(0, opts.minBps ?? 0),
+    grouping: opts.grouping ?? 'none',
     warnings: [],
     index,
     flowTouch: new Set(),
@@ -106,6 +109,7 @@ function derive(
     root: null,
     anchorEdge: null,
     filteredNodes: [],
+    clusters: [],
   };
   scanEdges(ctx);
   const e1 = scanNodes(ctx);
@@ -120,6 +124,7 @@ function derive(
   attachAndPrune(ctx);
   assignColumns(ctx);
   computeResiduals(ctx);
+  buildClusters(ctx);
   normalizeColumns(ctx);
   return assemble(ctx);
 }

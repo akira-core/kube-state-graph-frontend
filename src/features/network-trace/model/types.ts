@@ -1,6 +1,8 @@
 import type { NodeStatus } from '../../../shared/constants/types';
 
 export type TraceDirection = 'destination' | 'source';
+/** `cluster` frames the k8s-band cards of one Kubernetes cluster together; `none` draws them loose. */
+export type TraceGrouping = 'none' | 'cluster';
 
 /** A client resolved behind a port with no LLDP neighbour (ARP / MAC table / DHCP / CMDB). */
 export interface NodeClient {
@@ -53,6 +55,8 @@ export interface TraceNode {
   outEdges: TraceEdge[];
   tier: string | null;
   ontapCluster: string | null;
+  /** Kubernetes cluster from `labels.cluster`; a synthesised namespace / application card inherits its pod's. */
+  cluster: string | null;
   status: NodeStatus | null;
   usage: NodeUsage | null;
   info: NodeInfo | null;
@@ -116,10 +120,26 @@ export interface TraceEdge {
   lateral: boolean;
 }
 
+/**
+ * A cluster frame under the `cluster` grouping: the k8s-band cards carrying one
+ * `labels.cluster`. Not a graph node — no edges, no column, no residual; the frame spans
+ * every k8s column and its border takes the worst status of its members.
+ */
+export interface TraceCluster {
+  id: string;
+  label: string;
+  kind: 'cluster';
+  memberIds: string[];
+  status: NodeStatus | null;
+}
+
 export interface TraceModelOk {
   ok: true;
   direction: TraceDirection;
   investigation: TraceInvestigation | null;
+  grouping: TraceGrouping;
+  /** Frames in first-seen order; empty under `none` or when no k8s card names a cluster. */
+  clusters: TraceCluster[];
   minBps: number;
   /** Ribbons hidden by the display threshold and their total. */
   filtered: { edges: number; bps: number };
@@ -145,6 +165,7 @@ export interface DeriveTraceOptions {
   direction: TraceDirection;
   /** Display threshold: only ribbons strictly above it are kept; 0 = off. */
   minBps?: number;
+  grouping?: TraceGrouping;
 }
 
 export function makeNode(init: Pick<TraceNode, 'id' | 'label' | 'kind' | 'role'> & Partial<TraceNode>): TraceNode {
@@ -156,6 +177,7 @@ export function makeNode(init: Pick<TraceNode, 'id' | 'label' | 'kind' | 'role'>
     outEdges: [],
     tier: null,
     ontapCluster: null,
+    cluster: null,
     status: null,
     usage: null,
     info: null,

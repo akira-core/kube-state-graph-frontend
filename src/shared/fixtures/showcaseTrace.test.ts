@@ -103,6 +103,11 @@ describe('SHOWCASE_TRACE', () => {
     expect(router?.outEdges.length).toBe(0);
     expect((router?.otherOut ?? 0) > (router?.resEps ?? 0)).toBe(true);
 
+    // k8s: two clusters framed under the cluster grouping, one namespace card per cluster.
+    const grouped = deriveTrace(elements, { direction: 'destination', grouping: 'cluster' });
+    expect(grouped.ok ? grouped.clusters.map((c) => c.label) : []).toEqual(['east', 'west']);
+    expect(grouped.ok ? grouped.nodes.filter((n) => n.role === 'ns' && n.label === 'telemetry').length : 0).toBe(2);
+
     for (const n of m.nodes) {
       // A hop with no inbound edge is a source and draws no "other in" by design
       // (k8s-source's pods); everything else balances.

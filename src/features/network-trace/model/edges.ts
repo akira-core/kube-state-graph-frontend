@@ -29,22 +29,31 @@ export function buildEdges(ctx: BuildCtx): void {
 
   // Every leaf pod gets a derived edge to its namespace (through its application card
   // when it has an application ancestor); one card per namespace / application across the
-  // whole drawing, so "how much does this namespace receive" is read off the chart. The
-  // values are the pod's own measurements regrouped — never an estimate.
-  const nsFor = (name: string): TraceNode => {
-    let ns = nsBag.get(name);
+  // whole drawing — per cluster, so a namespace name shared by two clusters is two cards —
+  // so "how much does this namespace receive" is read off the chart. The values are the
+  // pod's own measurements regrouped — never an estimate.
+  const nsFor = (name: string, cluster: string | null): TraceNode => {
+    const key = `${cluster ?? ''}${SEP}${name}`;
+    let ns = nsBag.get(key);
     if (ns === undefined) {
       nsSeq += 1;
-      ns = makeNode({ id: `${NS_ID_PREFIX}${String(nsSeq)}`, kind: 'leaf', role: 'ns', label: name, namespace: name });
-      nsBag.set(name, ns);
+      ns = makeNode({
+        id: `${NS_ID_PREFIX}${String(nsSeq)}`,
+        kind: 'leaf',
+        role: 'ns',
+        label: name,
+        namespace: name,
+        cluster,
+      });
+      nsBag.set(key, ns);
       nodes.set(ns.id, ns);
       order.push(ns.id);
     }
     return ns;
   };
-  // One application name can exist in two namespaces: the key carries the namespace.
-  const appFor = (name: string, ns: string | null): TraceNode => {
-    const key = `${ns ?? ''}${SEP}${name}`;
+  // One application name can exist in two namespaces (or clusters): the key carries both.
+  const appFor = (name: string, ns: string | null, cluster: string | null): TraceNode => {
+    const key = `${cluster ?? ''}${SEP}${ns ?? ''}${SEP}${name}`;
     let app = appBag.get(key);
     if (app === undefined) {
       appSeq += 1;
@@ -54,6 +63,7 @@ export function buildEdges(ctx: BuildCtx): void {
         role: 'app',
         label: name,
         namespace: ns,
+        cluster,
       });
       appBag.set(key, app);
       nodes.set(app.id, app);
@@ -76,7 +86,7 @@ export function buildEdges(ctx: BuildCtx): void {
       const appD = index.appOf(pod.id);
       const nsName = pod.namespace;
       if (appD !== null) {
-        const app = appFor(index.labelOf(appD), nsName);
+        const app = appFor(index.labelOf(appD), nsName, pod.cluster);
         const e1 =
           direction === 'destination'
             ? derived(pod, app, nsName, 'pod-application')
@@ -84,7 +94,7 @@ export function buildEdges(ctx: BuildCtx): void {
         edges.push(e1);
         links.push(e1);
         if (nsName !== null) {
-          const ns = nsFor(nsName);
+          const ns = nsFor(nsName, pod.cluster);
           if (app.nsEdge === null) {
             app.nsEdge =
               direction === 'destination'
@@ -95,7 +105,7 @@ export function buildEdges(ctx: BuildCtx): void {
           links.push(app.nsEdge);
         }
       } else if (nsName !== null) {
-        const ns = nsFor(nsName);
+        const ns = nsFor(nsName, pod.cluster);
         const e2 =
           direction === 'destination'
             ? derived(pod, ns, nsName, 'pod-namespace')

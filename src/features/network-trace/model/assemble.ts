@@ -21,6 +21,8 @@ export function assemble(ctx: BuildCtx): TraceModelOk {
     ok: true,
     direction: ctx.direction,
     investigation: ctx.inv,
+    grouping: ctx.grouping,
+    clusters: ctx.clusters,
     minBps: ctx.minBps,
     filtered: { edges: ctx.filteredCount, bps: ctx.filteredBps },
     filteredNodes: ctx.filteredNodes,

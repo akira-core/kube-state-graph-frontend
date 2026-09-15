@@ -4,7 +4,7 @@ import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { nodeTooltipRows, type TooltipLine } from '../../sankey-canvas';
 import { bandOf, isClientPartition, k8sSubcol, type K8sSubcol } from '../model/bands';
 import { KIND_LABEL } from '../model/classify';
-import type { TraceDirection, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
+import type { TraceCluster, TraceDirection, TraceEdge, TraceModelOk, TraceNode } from '../model/types';
 import { mustGet, sum } from '../model/util';
 
 import { typeWord, usageText } from './text';
@@ -130,6 +130,15 @@ export function nodeTooltipLines(n: TraceNode, model: TraceModelOk, tokens: Them
           ),
     ...(!synthetic && n.id !== n.label ? { id: n.id } : {}),
   });
+}
+
+/** A cluster frame's tooltip: the cluster, how many cards it frames, the folded status. */
+export function clusterTooltipLines(c: TraceCluster): string[] {
+  return [
+    `cluster / ${c.label}`,
+    countWord(c.memberIds.length, 'card'),
+    ...(c.status !== null ? [`status ${c.status} (worst of member cards)`] : []),
+  ];
 }
 
 export function residualTooltipLines(n: TraceNode, side: 'in' | 'out', tokens: ThemeTokens): TooltipLine[] {

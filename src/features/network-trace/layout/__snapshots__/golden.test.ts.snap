@@ -2,6 +2,7 @@
 
 exports[`golden corpus > campus > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -339,6 +340,7 @@ exports[`golden corpus > campus > geometry barycenter 1`] = `
 
 exports[`golden corpus > campus > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -677,6 +679,7 @@ exports[`golden corpus > campus > geometry flow 1`] = `
 exports[`golden corpus > campus > model 1`] = `
 {
   "anchor": "e7",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -799,6 +802,7 @@ exports[`golden corpus > campus > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-dorm-b3",
       "isRoot": true,
@@ -815,6 +819,7 @@ exports[`golden corpus > campus > model 1`] = `
       "tracedOut": 22000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-agg-dorm",
       "isRoot": false,
@@ -831,6 +836,7 @@ exports[`golden corpus > campus > model 1`] = `
       "tracedOut": 24000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "sw-core-n",
       "isRoot": false,
@@ -847,6 +853,7 @@ exports[`golden corpus > campus > model 1`] = `
       "tracedOut": 16000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "fw-campus",
       "isRoot": false,
@@ -863,6 +870,7 @@ exports[`golden corpus > campus > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "sw-dc-spine",
       "isRoot": false,
@@ -879,6 +887,7 @@ exports[`golden corpus > campus > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "rtr-tanet",
       "isRoot": false,
@@ -896,6 +905,7 @@ exports[`golden corpus > campus > model 1`] = `
     },
     {
       "bps": 4000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-nas-01",
       "kind": "leaf",
@@ -909,6 +919,7 @@ exports[`golden corpus > campus > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -928,6 +939,7 @@ exports[`golden corpus > campus > model 1`] = `
 
 exports[`golden corpus > campus@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -1266,6 +1278,7 @@ exports[`golden corpus > campus@5e8 > geometry flow 1`] = `
 exports[`golden corpus > campus@5e8 > model 1`] = `
 {
   "anchor": "e7",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -1388,6 +1401,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-dorm-b3",
       "isRoot": true,
@@ -1404,6 +1418,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "tracedOut": 22000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-agg-dorm",
       "isRoot": false,
@@ -1420,6 +1435,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "tracedOut": 24000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "sw-core-n",
       "isRoot": false,
@@ -1436,6 +1452,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "tracedOut": 16000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "fw-campus",
       "isRoot": false,
@@ -1452,6 +1469,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "sw-dc-spine",
       "isRoot": false,
@@ -1468,6 +1486,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "rtr-tanet",
       "isRoot": false,
@@ -1485,6 +1504,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
     },
     {
       "bps": 4000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-nas-01",
       "kind": "leaf",
@@ -1498,6 +1518,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -1517,6 +1538,7 @@ exports[`golden corpus > campus@5e8 > model 1`] = `
 
 exports[`golden corpus > classic > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -1671,6 +1693,7 @@ exports[`golden corpus > classic > geometry barycenter 1`] = `
 
 exports[`golden corpus > classic > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -1826,6 +1849,7 @@ exports[`golden corpus > classic > geometry flow 1`] = `
 exports[`golden corpus > classic > model 1`] = `
 {
   "anchor": "e2",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -1878,6 +1902,7 @@ exports[`golden corpus > classic > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-a",
       "isRoot": true,
@@ -1894,6 +1919,7 @@ exports[`golden corpus > classic > model 1`] = `
       "tracedOut": 20000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-core-1",
       "isRoot": false,
@@ -1911,6 +1937,7 @@ exports[`golden corpus > classic > model 1`] = `
     },
     {
       "bps": 20000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-db-07",
       "kind": "leaf",
@@ -1924,6 +1951,7 @@ exports[`golden corpus > classic > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -1943,6 +1971,7 @@ exports[`golden corpus > classic > model 1`] = `
 
 exports[`golden corpus > classic@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -2098,6 +2127,7 @@ exports[`golden corpus > classic@5e8 > geometry flow 1`] = `
 exports[`golden corpus > classic@5e8 > model 1`] = `
 {
   "anchor": "e2",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -2150,6 +2180,7 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-a",
       "isRoot": true,
@@ -2166,6 +2197,7 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
       "tracedOut": 20000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-core-1",
       "isRoot": false,
@@ -2183,6 +2215,7 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
     },
     {
       "bps": 20000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-db-07",
       "kind": "leaf",
@@ -2196,6 +2229,7 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -2215,6 +2249,7 @@ exports[`golden corpus > classic@5e8 > model 1`] = `
 
 exports[`golden corpus > client > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -2728,6 +2763,7 @@ exports[`golden corpus > client > geometry barycenter 1`] = `
 
 exports[`golden corpus > client > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -3242,6 +3278,7 @@ exports[`golden corpus > client > geometry flow 1`] = `
 exports[`golden corpus > client > model 1`] = `
 {
   "anchor": "e14",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -3462,6 +3499,7 @@ exports[`golden corpus > client > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-tor-1",
       "isRoot": true,
@@ -3479,6 +3517,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 12000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/12",
       "kind": "leaf",
@@ -3492,6 +3531,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 12000000000,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:1",
       "kind": "leaf",
@@ -3505,6 +3545,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 8000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/13",
       "kind": "leaf",
@@ -3518,6 +3559,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 10000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/14",
       "kind": "leaf",
@@ -3531,6 +3573,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:2",
       "kind": "leaf",
@@ -3544,6 +3587,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/15",
       "kind": "leaf",
@@ -3557,6 +3601,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:3",
       "kind": "leaf",
@@ -3570,6 +3615,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 4000000000,
+      "cluster": null,
       "col": 2,
       "id": "srv-legacy-09",
       "kind": "leaf",
@@ -3583,6 +3629,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 7000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/17",
       "kind": "leaf",
@@ -3596,6 +3643,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:4",
       "kind": "leaf",
@@ -3609,6 +3657,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:5",
       "kind": "leaf",
@@ -3622,6 +3671,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/18",
       "kind": "leaf",
@@ -3635,6 +3685,7 @@ exports[`golden corpus > client > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -3654,6 +3705,7 @@ exports[`golden corpus > client > model 1`] = `
 
 exports[`golden corpus > client@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -4168,6 +4220,7 @@ exports[`golden corpus > client@5e8 > geometry flow 1`] = `
 exports[`golden corpus > client@5e8 > model 1`] = `
 {
   "anchor": "e14",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -4388,6 +4441,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-tor-1",
       "isRoot": true,
@@ -4405,6 +4459,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 12000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/12",
       "kind": "leaf",
@@ -4418,6 +4473,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 12000000000,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:1",
       "kind": "leaf",
@@ -4431,6 +4487,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 8000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/13",
       "kind": "leaf",
@@ -4444,6 +4501,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 10000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/14",
       "kind": "leaf",
@@ -4457,6 +4515,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:2",
       "kind": "leaf",
@@ -4470,6 +4529,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/15",
       "kind": "leaf",
@@ -4483,6 +4543,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:3",
       "kind": "leaf",
@@ -4496,6 +4557,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 4000000000,
+      "cluster": null,
       "col": 2,
       "id": "srv-legacy-09",
       "kind": "leaf",
@@ -4509,6 +4571,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 7000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/17",
       "kind": "leaf",
@@ -4522,6 +4585,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:4",
       "kind": "leaf",
@@ -4535,6 +4599,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:owner:5",
       "kind": "leaf",
@@ -4548,6 +4613,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 2,
       "id": "sw-tor-1:xe-0/0/18",
       "kind": "leaf",
@@ -4561,6 +4627,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -4580,6 +4647,7 @@ exports[`golden corpus > client@5e8 > model 1`] = `
 
 exports[`golden corpus > dci-tier > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -5875,6 +5943,7 @@ exports[`golden corpus > dci-tier > geometry barycenter 1`] = `
 
 exports[`golden corpus > dci-tier > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -7171,6 +7240,7 @@ exports[`golden corpus > dci-tier > geometry flow 1`] = `
 exports[`golden corpus > dci-tier > model 1`] = `
 {
   "anchor": "e46",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -7839,6 +7909,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "core-1",
       "isRoot": true,
@@ -7855,6 +7926,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 24000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-1",
       "isRoot": false,
@@ -7871,6 +7943,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-2",
       "isRoot": false,
@@ -7887,6 +7960,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-3",
       "isRoot": false,
@@ -7903,6 +7977,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "dci-1",
       "isRoot": false,
@@ -7919,6 +7994,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 3000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "dci-2",
       "isRoot": false,
@@ -7935,6 +8011,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 3000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-4",
       "isRoot": false,
@@ -7951,6 +8028,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-5",
       "isRoot": false,
@@ -7967,6 +8045,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-6",
       "isRoot": false,
@@ -7983,6 +8062,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-1",
       "isRoot": false,
@@ -7999,6 +8079,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-2",
       "isRoot": false,
@@ -8015,6 +8096,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-3",
       "isRoot": false,
@@ -8031,6 +8113,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-1",
       "isRoot": false,
@@ -8047,6 +8130,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-2",
       "isRoot": false,
@@ -8063,6 +8147,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-3",
       "isRoot": false,
@@ -8079,6 +8164,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-4",
       "isRoot": false,
@@ -8096,6 +8182,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-01",
       "kind": "leaf",
@@ -8109,6 +8196,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-02",
       "kind": "leaf",
@@ -8122,6 +8210,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-03",
       "kind": "leaf",
@@ -8135,6 +8224,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-04",
       "kind": "leaf",
@@ -8148,6 +8238,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -8167,6 +8258,7 @@ exports[`golden corpus > dci-tier > model 1`] = `
 
 exports[`golden corpus > dci-tier@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -9463,6 +9555,7 @@ exports[`golden corpus > dci-tier@5e8 > geometry flow 1`] = `
 exports[`golden corpus > dci-tier@5e8 > model 1`] = `
 {
   "anchor": "e46",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -10131,6 +10224,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "core-1",
       "isRoot": true,
@@ -10147,6 +10241,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 24000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-1",
       "isRoot": false,
@@ -10163,6 +10258,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-2",
       "isRoot": false,
@@ -10179,6 +10275,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-3",
       "isRoot": false,
@@ -10195,6 +10292,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 4000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "dci-1",
       "isRoot": false,
@@ -10211,6 +10309,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 3000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "dci-2",
       "isRoot": false,
@@ -10227,6 +10326,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 3000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-4",
       "isRoot": false,
@@ -10243,6 +10343,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-5",
       "isRoot": false,
@@ -10259,6 +10360,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-6",
       "isRoot": false,
@@ -10275,6 +10377,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-1",
       "isRoot": false,
@@ -10291,6 +10394,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-2",
       "isRoot": false,
@@ -10307,6 +10411,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-3",
       "isRoot": false,
@@ -10323,6 +10428,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-1",
       "isRoot": false,
@@ -10339,6 +10445,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-2",
       "isRoot": false,
@@ -10355,6 +10462,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-3",
       "isRoot": false,
@@ -10371,6 +10479,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-4",
       "isRoot": false,
@@ -10388,6 +10497,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-01",
       "kind": "leaf",
@@ -10401,6 +10511,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-02",
       "kind": "leaf",
@@ -10414,6 +10525,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-03",
       "kind": "leaf",
@@ -10427,6 +10539,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-a-04",
       "kind": "leaf",
@@ -10440,6 +10553,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -10459,6 +10573,7 @@ exports[`golden corpus > dci-tier@5e8 > model 1`] = `
 
 exports[`golden corpus > dci-uturn > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -11501,6 +11616,7 @@ exports[`golden corpus > dci-uturn > geometry barycenter 1`] = `
 
 exports[`golden corpus > dci-uturn > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -12544,6 +12660,7 @@ exports[`golden corpus > dci-uturn > geometry flow 1`] = `
 exports[`golden corpus > dci-uturn > model 1`] = `
 {
   "anchor": "e34",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -13044,6 +13161,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "core-1",
       "isRoot": true,
@@ -13060,6 +13178,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 24000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-1",
       "isRoot": false,
@@ -13076,6 +13195,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-2",
       "isRoot": false,
@@ -13092,6 +13212,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-3",
       "isRoot": false,
@@ -13108,6 +13229,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-4",
       "isRoot": false,
@@ -13124,6 +13246,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-5",
       "isRoot": false,
@@ -13140,6 +13263,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-6",
       "isRoot": false,
@@ -13156,6 +13280,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "dci-1",
       "isRoot": false,
@@ -13172,6 +13297,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 2000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "dci-2",
       "isRoot": false,
@@ -13188,6 +13314,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 2000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "dci-3",
       "isRoot": false,
@@ -13204,6 +13331,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 2000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-1",
       "isRoot": false,
@@ -13220,6 +13348,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-2",
       "isRoot": false,
@@ -13236,6 +13365,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-3",
       "isRoot": false,
@@ -13252,6 +13382,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-1",
       "isRoot": false,
@@ -13268,6 +13399,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-2",
       "isRoot": false,
@@ -13284,6 +13416,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-3",
       "isRoot": false,
@@ -13300,6 +13433,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-4",
       "isRoot": false,
@@ -13317,6 +13451,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-1",
       "kind": "leaf",
@@ -13330,6 +13465,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-2",
       "kind": "leaf",
@@ -13343,6 +13479,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-3",
       "kind": "leaf",
@@ -13356,6 +13493,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-4",
       "kind": "leaf",
@@ -13369,6 +13507,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -13390,6 +13529,7 @@ exports[`golden corpus > dci-uturn > model 1`] = `
 
 exports[`golden corpus > dci-uturn@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -14433,6 +14573,7 @@ exports[`golden corpus > dci-uturn@5e8 > geometry flow 1`] = `
 exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
 {
   "anchor": "e34",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -14933,6 +15074,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "core-1",
       "isRoot": true,
@@ -14949,6 +15091,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 24000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-1",
       "isRoot": false,
@@ -14965,6 +15108,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-2",
       "isRoot": false,
@@ -14981,6 +15125,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-3",
       "isRoot": false,
@@ -14997,6 +15142,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-4",
       "isRoot": false,
@@ -15013,6 +15159,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-5",
       "isRoot": false,
@@ -15029,6 +15176,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "bdr-6",
       "isRoot": false,
@@ -15045,6 +15193,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 5000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "dci-1",
       "isRoot": false,
@@ -15061,6 +15210,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 2000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "dci-2",
       "isRoot": false,
@@ -15077,6 +15227,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 2000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "dci-3",
       "isRoot": false,
@@ -15093,6 +15244,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 2000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-1",
       "isRoot": false,
@@ -15109,6 +15261,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-2",
       "isRoot": false,
@@ -15125,6 +15278,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "spn-3",
       "isRoot": false,
@@ -15141,6 +15295,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-1",
       "isRoot": false,
@@ -15157,6 +15312,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-2",
       "isRoot": false,
@@ -15173,6 +15329,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-3",
       "isRoot": false,
@@ -15189,6 +15346,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
       "tracedOut": 6000000000,
     },
     {
+      "cluster": null,
       "col": 4,
       "id": "tor-4",
       "isRoot": false,
@@ -15206,6 +15364,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-1",
       "kind": "leaf",
@@ -15219,6 +15378,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-2",
       "kind": "leaf",
@@ -15232,6 +15392,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-3",
       "kind": "leaf",
@@ -15245,6 +15406,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 5,
       "id": "srv-4",
       "kind": "leaf",
@@ -15258,6 +15420,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -15279,6 +15442,7 @@ exports[`golden corpus > dci-uturn@5e8 > model 1`] = `
 
 exports[`golden corpus > dual-uplink > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -15525,6 +15689,7 @@ exports[`golden corpus > dual-uplink > geometry barycenter 1`] = `
 
 exports[`golden corpus > dual-uplink > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -15772,6 +15937,7 @@ exports[`golden corpus > dual-uplink > geometry flow 1`] = `
 exports[`golden corpus > dual-uplink > model 1`] = `
 {
   "anchor": "e5",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -15866,6 +16032,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-a",
       "isRoot": true,
@@ -15882,6 +16049,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
       "tracedOut": 10000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-core-1",
       "isRoot": false,
@@ -15898,6 +16066,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
       "tracedOut": 16000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "sw-agg-9",
       "isRoot": false,
@@ -15915,6 +16084,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
     },
     {
       "bps": 11000000000,
+      "cluster": null,
       "col": 4,
       "id": "srv-cache-02",
       "kind": "leaf",
@@ -15928,6 +16098,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
     },
     {
       "bps": 5000000000,
+      "cluster": null,
       "col": 4,
       "id": "srv-cache-03",
       "kind": "leaf",
@@ -15941,6 +16112,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -15960,6 +16132,7 @@ exports[`golden corpus > dual-uplink > model 1`] = `
 
 exports[`golden corpus > dual-uplink@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -16207,6 +16380,7 @@ exports[`golden corpus > dual-uplink@5e8 > geometry flow 1`] = `
 exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
 {
   "anchor": "e5",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -16301,6 +16475,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-a",
       "isRoot": true,
@@ -16317,6 +16492,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
       "tracedOut": 10000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-core-1",
       "isRoot": false,
@@ -16333,6 +16509,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
       "tracedOut": 16000000000,
     },
     {
+      "cluster": null,
       "col": 3,
       "id": "sw-agg-9",
       "isRoot": false,
@@ -16350,6 +16527,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
     },
     {
       "bps": 11000000000,
+      "cluster": null,
       "col": 4,
       "id": "srv-cache-02",
       "kind": "leaf",
@@ -16363,6 +16541,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
     },
     {
       "bps": 5000000000,
+      "cluster": null,
       "col": 4,
       "id": "srv-cache-03",
       "kind": "leaf",
@@ -16376,6 +16555,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -16395,6 +16575,7 @@ exports[`golden corpus > dual-uplink@5e8 > model 1`] = `
 
 exports[`golden corpus > k8s > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -16876,6 +17057,7 @@ exports[`golden corpus > k8s > geometry barycenter 1`] = `
 
 exports[`golden corpus > k8s > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -17358,6 +17540,7 @@ exports[`golden corpus > k8s > geometry flow 1`] = `
 exports[`golden corpus > k8s > model 1`] = `
 {
   "anchor": "e12",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -17550,6 +17733,7 @@ exports[`golden corpus > k8s > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-tor-k8s",
       "isRoot": true,
@@ -17566,6 +17750,7 @@ exports[`golden corpus > k8s > model 1`] = `
       "tracedOut": 30000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-11",
       "isRoot": false,
@@ -17582,6 +17767,7 @@ exports[`golden corpus > k8s > model 1`] = `
       "tracedOut": 11500000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-12",
       "isRoot": false,
@@ -17598,6 +17784,7 @@ exports[`golden corpus > k8s > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-13",
       "isRoot": false,
@@ -17615,6 +17802,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 4,
       "id": "srv-log-01",
       "kind": "leaf",
@@ -17628,6 +17816,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 8000000000,
+      "cluster": null,
       "col": 3,
       "id": "ingest-7d9c",
       "kind": "leaf",
@@ -17641,6 +17830,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 13500000000,
+      "cluster": null,
       "col": 4,
       "id": "trace:ns:1",
       "kind": "leaf",
@@ -17654,6 +17844,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 3500000000,
+      "cluster": null,
       "col": 3,
       "id": "kafka-2",
       "kind": "leaf",
@@ -17667,6 +17858,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 3500000000,
+      "cluster": null,
       "col": 4,
       "id": "trace:ns:2",
       "kind": "leaf",
@@ -17680,6 +17872,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 5500000000,
+      "cluster": null,
       "col": 3,
       "id": "ingest-4f11",
       "kind": "leaf",
@@ -17693,6 +17886,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 2500000000,
+      "cluster": null,
       "col": 3,
       "id": "debug-shell",
       "kind": "leaf",
@@ -17706,6 +17900,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 2500000000,
+      "cluster": null,
       "col": 4,
       "id": "trace:ns:3",
       "kind": "leaf",
@@ -17719,6 +17914,7 @@ exports[`golden corpus > k8s > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -17738,6 +17934,7 @@ exports[`golden corpus > k8s > model 1`] = `
 
 exports[`golden corpus > k8s@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -18220,6 +18417,7 @@ exports[`golden corpus > k8s@5e8 > geometry flow 1`] = `
 exports[`golden corpus > k8s@5e8 > model 1`] = `
 {
   "anchor": "e12",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -18412,6 +18610,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-tor-k8s",
       "isRoot": true,
@@ -18428,6 +18627,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "tracedOut": 30000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-11",
       "isRoot": false,
@@ -18444,6 +18644,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "tracedOut": 11500000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-12",
       "isRoot": false,
@@ -18460,6 +18661,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
       "tracedOut": 8000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-13",
       "isRoot": false,
@@ -18477,6 +18679,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 4,
       "id": "srv-log-01",
       "kind": "leaf",
@@ -18490,6 +18693,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 8000000000,
+      "cluster": null,
       "col": 3,
       "id": "ingest-7d9c",
       "kind": "leaf",
@@ -18503,6 +18707,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 13500000000,
+      "cluster": null,
       "col": 4,
       "id": "trace:ns:1",
       "kind": "leaf",
@@ -18516,6 +18721,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 3500000000,
+      "cluster": null,
       "col": 3,
       "id": "kafka-2",
       "kind": "leaf",
@@ -18529,6 +18735,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 3500000000,
+      "cluster": null,
       "col": 4,
       "id": "trace:ns:2",
       "kind": "leaf",
@@ -18542,6 +18749,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 5500000000,
+      "cluster": null,
       "col": 3,
       "id": "ingest-4f11",
       "kind": "leaf",
@@ -18555,6 +18763,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 2500000000,
+      "cluster": null,
       "col": 3,
       "id": "debug-shell",
       "kind": "leaf",
@@ -18568,6 +18777,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 2500000000,
+      "cluster": null,
       "col": 4,
       "id": "trace:ns:3",
       "kind": "leaf",
@@ -18581,6 +18791,7 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -18598,8 +18809,3437 @@ exports[`golden corpus > k8s@5e8 > model 1`] = `
 }
 `;
 
+exports[`golden corpus > k8s-clusters > geometry barycenter 1`] = `
+{
+  "clusters": [],
+  "cols": [
+    [
+      "trace:anchor",
+    ],
+    [
+      "sw-tor-c",
+    ],
+    [
+      "node-w-11",
+      "node-w-12",
+      "node-w-13",
+    ],
+    [
+      "kafka-a",
+      "ingest-a",
+      "ingest-b",
+      "debug-c",
+    ],
+    [
+      "trace:app:1",
+    ],
+    [
+      "trace:ns:2",
+      "trace:ns:1",
+      "trace:ns:3",
+      "trace:ns:4",
+      "srv-log-01",
+    ],
+  ],
+  "columns": [
+    {
+      "label": "Trace start (in)",
+      "x": 122,
+    },
+    {
+      "label": "Hop 1",
+      "x": 498,
+    },
+    {
+      "label": "k8s node",
+      "x": 922,
+    },
+    {
+      "label": "pod",
+      "x": 1298,
+    },
+    {
+      "label": "application",
+      "x": 1674,
+    },
+    {
+      "label": "namespace / client",
+      "x": 2050,
+    },
+  ],
+  "edges": [
+    {
+      "backNear": false,
+      "id": "e0",
+      "t": 28.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 94.4,
+      "y2": 106,
+    },
+    {
+      "backNear": false,
+      "id": "e1",
+      "t": 25.2,
+      "x1": 706,
+      "x2": 922,
+      "y1": 129.4,
+      "y2": 216.6,
+    },
+    {
+      "backNear": false,
+      "id": "e2",
+      "t": 10.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 161,
+      "y2": 313.2,
+    },
+    {
+      "backNear": false,
+      "id": "e3",
+      "t": 7.2,
+      "x1": 706,
+      "x2": 2050,
+      "y1": 191,
+      "y2": 497.5,
+    },
+    {
+      "backNear": false,
+      "id": "e4",
+      "t": 18,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 121,
+      "y2": 176,
+    },
+    {
+      "backNear": false,
+      "id": "e5",
+      "t": 18,
+      "x1": 1458,
+      "x2": 1674,
+      "y1": 176,
+      "y2": 84.5,
+    },
+    {
+      "backNear": false,
+      "id": "e6",
+      "t": 18,
+      "x1": 1834,
+      "x2": 2050,
+      "y1": 84.5,
+      "y2": 176,
+    },
+    {
+      "backNear": false,
+      "id": "e7",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 91,
+      "y2": 78,
+    },
+    {
+      "backNear": false,
+      "id": "e8",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 78,
+      "y2": 78,
+    },
+    {
+      "backNear": false,
+      "id": "e9",
+      "t": 25.2,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 216.6,
+      "y2": 274,
+    },
+    {
+      "backNear": false,
+      "id": "e10",
+      "t": 25.2,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 274,
+      "y2": 274,
+    },
+    {
+      "backNear": false,
+      "id": "e11",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 313.2,
+      "y2": 372,
+    },
+    {
+      "backNear": false,
+      "id": "e12",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 372,
+      "y2": 372,
+    },
+    {
+      "backNear": false,
+      "id": "e13",
+      "t": 72,
+      "x1": 274,
+      "x2": 498,
+      "y1": 126,
+      "y2": 141,
+    },
+  ],
+  "height": 553,
+  "nodes": [
+    {
+      "h": 172,
+      "id": "sw-tor-c",
+      "left": [
+        {
+          "cy": 141,
+          "e": "e13",
+          "role": "in",
+          "t": 72,
+        },
+      ],
+      "right": [
+        {
+          "cy": 94.4,
+          "e": "e0",
+          "role": "out",
+          "t": 28.8,
+        },
+        {
+          "cy": 129.4,
+          "e": "e1",
+          "role": "out",
+          "t": 25.2,
+        },
+        {
+          "cy": 161,
+          "e": "e2",
+          "role": "out",
+          "t": 10.8,
+        },
+        {
+          "cy": 191,
+          "e": "e3",
+          "role": "out",
+          "t": 7.2,
+        },
+      ],
+      "w": 208,
+      "x": 498,
+      "y": 40,
+    },
+    {
+      "h": 102,
+      "id": "node-w-11",
+      "left": [
+        {
+          "cy": 106,
+          "e": "e0",
+          "role": "in",
+          "t": 28.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 91,
+          "e": "e7",
+          "role": "out",
+          "t": 10.8,
+        },
+        {
+          "cy": 121,
+          "e": "e4",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 40,
+    },
+    {
+      "h": 75.2,
+      "id": "node-w-12",
+      "left": [
+        {
+          "cy": 216.6,
+          "e": "e1",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 216.6,
+          "e": "e9",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 164,
+    },
+    {
+      "h": 74,
+      "id": "node-w-13",
+      "left": [
+        {
+          "cy": 313.2,
+          "e": "e2",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 313.2,
+          "e": "e11",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 261.2,
+    },
+    {
+      "h": 63,
+      "id": "srv-log-01",
+      "left": [
+        {
+          "cy": 497.5,
+          "e": "e3",
+          "role": "in",
+          "t": 7.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 466,
+    },
+    {
+      "h": 76,
+      "id": "ingest-a",
+      "left": [
+        {
+          "cy": 176,
+          "e": "e4",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 176,
+          "e": "e5",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 138,
+    },
+    {
+      "h": 89,
+      "id": "trace:app:1",
+      "left": [
+        {
+          "cy": 84.5,
+          "e": "e5",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 84.5,
+          "e": "e6",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1674,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:1",
+      "left": [
+        {
+          "cy": 176,
+          "e": "e6",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 138,
+    },
+    {
+      "h": 76,
+      "id": "kafka-a",
+      "left": [
+        {
+          "cy": 78,
+          "e": "e7",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 78,
+          "e": "e8",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:2",
+      "left": [
+        {
+          "cy": 78,
+          "e": "e8",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "ingest-b",
+      "left": [
+        {
+          "cy": 274,
+          "e": "e9",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 274,
+          "e": "e10",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 236,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:3",
+      "left": [
+        {
+          "cy": 274,
+          "e": "e10",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 236,
+    },
+    {
+      "h": 76,
+      "id": "debug-c",
+      "left": [
+        {
+          "cy": 372,
+          "e": "e11",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 372,
+          "e": "e12",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 334,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:4",
+      "left": [
+        {
+          "cy": 372,
+          "e": "e12",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 334,
+    },
+    {
+      "h": 77,
+      "id": "trace:anchor",
+      "left": [],
+      "right": [
+        {
+          "cy": 126,
+          "e": "e13",
+          "role": "out",
+          "t": 72,
+        },
+      ],
+      "w": 152,
+      "x": 122,
+      "y": 87.5,
+    },
+  ],
+  "width": 2380,
+}
+`;
+
+exports[`golden corpus > k8s-clusters > geometry flow 1`] = `
+{
+  "clusters": [],
+  "cols": [
+    [
+      "trace:anchor",
+    ],
+    [
+      "sw-tor-c",
+    ],
+    [
+      "node-w-11",
+      "node-w-12",
+      "node-w-13",
+    ],
+    [
+      "ingest-b",
+      "ingest-a",
+      "kafka-a",
+      "debug-c",
+    ],
+    [
+      "trace:app:1",
+    ],
+    [
+      "trace:ns:3",
+      "trace:ns:1",
+      "trace:ns:2",
+      "trace:ns:4",
+      "srv-log-01",
+    ],
+  ],
+  "columns": [
+    {
+      "label": "Trace start (in)",
+      "x": 122,
+    },
+    {
+      "label": "Hop 1",
+      "x": 498,
+    },
+    {
+      "label": "k8s node",
+      "x": 922,
+    },
+    {
+      "label": "pod",
+      "x": 1298,
+    },
+    {
+      "label": "application",
+      "x": 1674,
+    },
+    {
+      "label": "namespace / client",
+      "x": 2050,
+    },
+  ],
+  "edges": [
+    {
+      "backNear": false,
+      "id": "e0",
+      "t": 28.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 94.4,
+      "y2": 106,
+    },
+    {
+      "backNear": false,
+      "id": "e1",
+      "t": 25.2,
+      "x1": 706,
+      "x2": 922,
+      "y1": 129.4,
+      "y2": 216.6,
+    },
+    {
+      "backNear": false,
+      "id": "e2",
+      "t": 10.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 161,
+      "y2": 313.2,
+    },
+    {
+      "backNear": false,
+      "id": "e3",
+      "t": 7.2,
+      "x1": 706,
+      "x2": 2050,
+      "y1": 191,
+      "y2": 497.5,
+    },
+    {
+      "backNear": false,
+      "id": "e4",
+      "t": 18,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 91,
+      "y2": 176,
+    },
+    {
+      "backNear": false,
+      "id": "e5",
+      "t": 18,
+      "x1": 1458,
+      "x2": 1674,
+      "y1": 176,
+      "y2": 84.5,
+    },
+    {
+      "backNear": false,
+      "id": "e6",
+      "t": 18,
+      "x1": 1834,
+      "x2": 2050,
+      "y1": 84.5,
+      "y2": 176,
+    },
+    {
+      "backNear": false,
+      "id": "e7",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 121,
+      "y2": 274,
+    },
+    {
+      "backNear": false,
+      "id": "e8",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 274,
+      "y2": 274,
+    },
+    {
+      "backNear": false,
+      "id": "e9",
+      "t": 25.2,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 216.6,
+      "y2": 78,
+    },
+    {
+      "backNear": false,
+      "id": "e10",
+      "t": 25.2,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 78,
+      "y2": 78,
+    },
+    {
+      "backNear": false,
+      "id": "e11",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 313.2,
+      "y2": 372,
+    },
+    {
+      "backNear": false,
+      "id": "e12",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 372,
+      "y2": 372,
+    },
+    {
+      "backNear": false,
+      "id": "e13",
+      "t": 72,
+      "x1": 274,
+      "x2": 498,
+      "y1": 126,
+      "y2": 141,
+    },
+  ],
+  "height": 553,
+  "nodes": [
+    {
+      "h": 172,
+      "id": "sw-tor-c",
+      "left": [
+        {
+          "cy": 141,
+          "e": "e13",
+          "role": "in",
+          "t": 72,
+        },
+      ],
+      "right": [
+        {
+          "cy": 94.4,
+          "e": "e0",
+          "role": "out",
+          "t": 28.8,
+        },
+        {
+          "cy": 129.4,
+          "e": "e1",
+          "role": "out",
+          "t": 25.2,
+        },
+        {
+          "cy": 161,
+          "e": "e2",
+          "role": "out",
+          "t": 10.8,
+        },
+        {
+          "cy": 191,
+          "e": "e3",
+          "role": "out",
+          "t": 7.2,
+        },
+      ],
+      "w": 208,
+      "x": 498,
+      "y": 40,
+    },
+    {
+      "h": 102,
+      "id": "node-w-11",
+      "left": [
+        {
+          "cy": 106,
+          "e": "e0",
+          "role": "in",
+          "t": 28.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 91,
+          "e": "e4",
+          "role": "out",
+          "t": 18,
+        },
+        {
+          "cy": 121,
+          "e": "e7",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 40,
+    },
+    {
+      "h": 75.2,
+      "id": "node-w-12",
+      "left": [
+        {
+          "cy": 216.6,
+          "e": "e1",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 216.6,
+          "e": "e9",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 164,
+    },
+    {
+      "h": 74,
+      "id": "node-w-13",
+      "left": [
+        {
+          "cy": 313.2,
+          "e": "e2",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 313.2,
+          "e": "e11",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 261.2,
+    },
+    {
+      "h": 63,
+      "id": "srv-log-01",
+      "left": [
+        {
+          "cy": 497.5,
+          "e": "e3",
+          "role": "in",
+          "t": 7.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 466,
+    },
+    {
+      "h": 76,
+      "id": "ingest-a",
+      "left": [
+        {
+          "cy": 176,
+          "e": "e4",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 176,
+          "e": "e5",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 138,
+    },
+    {
+      "h": 89,
+      "id": "trace:app:1",
+      "left": [
+        {
+          "cy": 84.5,
+          "e": "e5",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 84.5,
+          "e": "e6",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1674,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:1",
+      "left": [
+        {
+          "cy": 176,
+          "e": "e6",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 138,
+    },
+    {
+      "h": 76,
+      "id": "kafka-a",
+      "left": [
+        {
+          "cy": 274,
+          "e": "e7",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 274,
+          "e": "e8",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 236,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:2",
+      "left": [
+        {
+          "cy": 274,
+          "e": "e8",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 236,
+    },
+    {
+      "h": 76,
+      "id": "ingest-b",
+      "left": [
+        {
+          "cy": 78,
+          "e": "e9",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 78,
+          "e": "e10",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:3",
+      "left": [
+        {
+          "cy": 78,
+          "e": "e10",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "debug-c",
+      "left": [
+        {
+          "cy": 372,
+          "e": "e11",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 372,
+          "e": "e12",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 334,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:4",
+      "left": [
+        {
+          "cy": 372,
+          "e": "e12",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 334,
+    },
+    {
+      "h": 77,
+      "id": "trace:anchor",
+      "left": [],
+      "right": [
+        {
+          "cy": 126,
+          "e": "e13",
+          "role": "out",
+          "t": 72,
+        },
+      ],
+      "w": 152,
+      "x": 122,
+      "y": 87.5,
+    },
+  ],
+  "width": 2380,
+}
+`;
+
+exports[`golden corpus > k8s-clusters > model 1`] = `
+{
+  "anchor": "e13",
+  "clusters": [],
+  "direction": "destination",
+  "edges": [
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 8000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/11",
+      "from": "sw-tor-c",
+      "id": "e0",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-11",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/12",
+      "from": "sw-tor-c",
+      "id": "e1",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-12",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/13",
+      "from": "sw-tor-c",
+      "id": "e2",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-13",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 2000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/20",
+      "from": "sw-tor-c",
+      "id": "e3",
+      "lateral": false,
+      "owns": false,
+      "ti": "eno1",
+      "to": "srv-log-01",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-11",
+      "id": "e4",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "ingest-a",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "ingest-a",
+      "id": "e5",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:app:1",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "trace:app:1",
+      "id": "e6",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:1",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-11",
+      "id": "e7",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "kafka-a",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "kafka-a",
+      "id": "e8",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:2",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-12",
+      "id": "e9",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "ingest-b",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "ingest-b",
+      "id": "e10",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:3",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-13",
+      "id": "e11",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "debug-c",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "debug-c",
+      "id": "e12",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:4",
+    },
+    {
+      "anchor": true,
+      "backward": false,
+      "bps": 20000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "et-0/0/48",
+      "from": "trace:anchor",
+      "id": "e13",
+      "lateral": false,
+      "owns": false,
+      "ti": "et-0/0/48",
+      "to": "sw-tor-c",
+    },
+  ],
+  "filtered": {
+    "bps": 0,
+    "edges": 0,
+  },
+  "filteredNodes": [],
+  "nodes": [
+    {
+      "cluster": null,
+      "col": 1,
+      "id": "sw-tor-c",
+      "isRoot": true,
+      "kind": "node",
+      "label": "ToR clusters",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "switch",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 20000000000,
+      "tracedOut": 20000000000,
+    },
+    {
+      "cluster": "east",
+      "col": 2,
+      "id": "node-w-11",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-11",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 8000000000,
+      "tracedOut": 8000000000,
+    },
+    {
+      "cluster": "west",
+      "col": 2,
+      "id": "node-w-12",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-12",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 7000000000,
+      "tracedOut": 7000000000,
+    },
+    {
+      "cluster": null,
+      "col": 2,
+      "id": "node-w-13",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-13",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 3000000000,
+      "tracedOut": 3000000000,
+    },
+    {
+      "bps": 2000000000,
+      "cluster": null,
+      "col": 5,
+      "id": "srv-log-01",
+      "kind": "leaf",
+      "label": "srv-log-01",
+      "namespace": null,
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "leaf",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 3,
+      "id": "ingest-a",
+      "kind": "leaf",
+      "label": "ingest-a",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 4,
+      "id": "trace:app:1",
+      "kind": "leaf",
+      "label": "ingest",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "app",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 5,
+      "id": "trace:ns:1",
+      "kind": "leaf",
+      "label": "telemetry",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": "east",
+      "col": 3,
+      "id": "kafka-a",
+      "kind": "leaf",
+      "label": "kafka-a",
+      "namespace": "stream",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": "east",
+      "col": 5,
+      "id": "trace:ns:2",
+      "kind": "leaf",
+      "label": "stream",
+      "namespace": "stream",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 7000000000,
+      "cluster": "west",
+      "col": 3,
+      "id": "ingest-b",
+      "kind": "leaf",
+      "label": "ingest-b",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 7000000000,
+      "cluster": "west",
+      "col": 5,
+      "id": "trace:ns:3",
+      "kind": "leaf",
+      "label": "telemetry",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": null,
+      "col": 3,
+      "id": "debug-c",
+      "kind": "leaf",
+      "label": "debug-c",
+      "namespace": "debug",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": null,
+      "col": 5,
+      "id": "trace:ns:4",
+      "kind": "leaf",
+      "label": "debug",
+      "namespace": "debug",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 0,
+      "cluster": null,
+      "col": 0,
+      "id": "trace:anchor",
+      "kind": "anchor",
+      "label": "Trace start",
+      "namespace": null,
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "anchor",
+      "subOrder": 0,
+      "tier": null,
+    },
+  ],
+  "root": "sw-tor-c",
+  "warnings": [],
+}
+`;
+
+exports[`golden corpus > k8s-clusters@5e8 > geometry flow 1`] = `
+{
+  "clusters": [],
+  "cols": [
+    [
+      "trace:anchor",
+    ],
+    [
+      "sw-tor-c",
+    ],
+    [
+      "node-w-11",
+      "node-w-12",
+      "node-w-13",
+    ],
+    [
+      "ingest-b",
+      "ingest-a",
+      "kafka-a",
+      "debug-c",
+    ],
+    [
+      "trace:app:1",
+    ],
+    [
+      "trace:ns:3",
+      "trace:ns:1",
+      "trace:ns:2",
+      "trace:ns:4",
+      "srv-log-01",
+    ],
+  ],
+  "columns": [
+    {
+      "label": "Trace start (in)",
+      "x": 122,
+    },
+    {
+      "label": "Hop 1",
+      "x": 498,
+    },
+    {
+      "label": "k8s node",
+      "x": 922,
+    },
+    {
+      "label": "pod",
+      "x": 1298,
+    },
+    {
+      "label": "application",
+      "x": 1674,
+    },
+    {
+      "label": "namespace / client",
+      "x": 2050,
+    },
+  ],
+  "edges": [
+    {
+      "backNear": false,
+      "id": "e0",
+      "t": 28.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 94.4,
+      "y2": 106,
+    },
+    {
+      "backNear": false,
+      "id": "e1",
+      "t": 25.2,
+      "x1": 706,
+      "x2": 922,
+      "y1": 129.4,
+      "y2": 216.6,
+    },
+    {
+      "backNear": false,
+      "id": "e2",
+      "t": 10.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 161,
+      "y2": 313.2,
+    },
+    {
+      "backNear": false,
+      "id": "e3",
+      "t": 7.2,
+      "x1": 706,
+      "x2": 2050,
+      "y1": 191,
+      "y2": 497.5,
+    },
+    {
+      "backNear": false,
+      "id": "e4",
+      "t": 18,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 91,
+      "y2": 176,
+    },
+    {
+      "backNear": false,
+      "id": "e5",
+      "t": 18,
+      "x1": 1458,
+      "x2": 1674,
+      "y1": 176,
+      "y2": 84.5,
+    },
+    {
+      "backNear": false,
+      "id": "e6",
+      "t": 18,
+      "x1": 1834,
+      "x2": 2050,
+      "y1": 84.5,
+      "y2": 176,
+    },
+    {
+      "backNear": false,
+      "id": "e7",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 121,
+      "y2": 274,
+    },
+    {
+      "backNear": false,
+      "id": "e8",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 274,
+      "y2": 274,
+    },
+    {
+      "backNear": false,
+      "id": "e9",
+      "t": 25.2,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 216.6,
+      "y2": 78,
+    },
+    {
+      "backNear": false,
+      "id": "e10",
+      "t": 25.2,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 78,
+      "y2": 78,
+    },
+    {
+      "backNear": false,
+      "id": "e11",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 313.2,
+      "y2": 372,
+    },
+    {
+      "backNear": false,
+      "id": "e12",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 372,
+      "y2": 372,
+    },
+    {
+      "backNear": false,
+      "id": "e13",
+      "t": 72,
+      "x1": 274,
+      "x2": 498,
+      "y1": 126,
+      "y2": 141,
+    },
+  ],
+  "height": 553,
+  "nodes": [
+    {
+      "h": 172,
+      "id": "sw-tor-c",
+      "left": [
+        {
+          "cy": 141,
+          "e": "e13",
+          "role": "in",
+          "t": 72,
+        },
+      ],
+      "right": [
+        {
+          "cy": 94.4,
+          "e": "e0",
+          "role": "out",
+          "t": 28.8,
+        },
+        {
+          "cy": 129.4,
+          "e": "e1",
+          "role": "out",
+          "t": 25.2,
+        },
+        {
+          "cy": 161,
+          "e": "e2",
+          "role": "out",
+          "t": 10.8,
+        },
+        {
+          "cy": 191,
+          "e": "e3",
+          "role": "out",
+          "t": 7.2,
+        },
+      ],
+      "w": 208,
+      "x": 498,
+      "y": 40,
+    },
+    {
+      "h": 102,
+      "id": "node-w-11",
+      "left": [
+        {
+          "cy": 106,
+          "e": "e0",
+          "role": "in",
+          "t": 28.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 91,
+          "e": "e4",
+          "role": "out",
+          "t": 18,
+        },
+        {
+          "cy": 121,
+          "e": "e7",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 40,
+    },
+    {
+      "h": 75.2,
+      "id": "node-w-12",
+      "left": [
+        {
+          "cy": 216.6,
+          "e": "e1",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 216.6,
+          "e": "e9",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 164,
+    },
+    {
+      "h": 74,
+      "id": "node-w-13",
+      "left": [
+        {
+          "cy": 313.2,
+          "e": "e2",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 313.2,
+          "e": "e11",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 261.2,
+    },
+    {
+      "h": 63,
+      "id": "srv-log-01",
+      "left": [
+        {
+          "cy": 497.5,
+          "e": "e3",
+          "role": "in",
+          "t": 7.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 466,
+    },
+    {
+      "h": 76,
+      "id": "ingest-a",
+      "left": [
+        {
+          "cy": 176,
+          "e": "e4",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 176,
+          "e": "e5",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 138,
+    },
+    {
+      "h": 89,
+      "id": "trace:app:1",
+      "left": [
+        {
+          "cy": 84.5,
+          "e": "e5",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 84.5,
+          "e": "e6",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1674,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:1",
+      "left": [
+        {
+          "cy": 176,
+          "e": "e6",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 138,
+    },
+    {
+      "h": 76,
+      "id": "kafka-a",
+      "left": [
+        {
+          "cy": 274,
+          "e": "e7",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 274,
+          "e": "e8",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 236,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:2",
+      "left": [
+        {
+          "cy": 274,
+          "e": "e8",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 236,
+    },
+    {
+      "h": 76,
+      "id": "ingest-b",
+      "left": [
+        {
+          "cy": 78,
+          "e": "e9",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 78,
+          "e": "e10",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:3",
+      "left": [
+        {
+          "cy": 78,
+          "e": "e10",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 40,
+    },
+    {
+      "h": 76,
+      "id": "debug-c",
+      "left": [
+        {
+          "cy": 372,
+          "e": "e11",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 372,
+          "e": "e12",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 334,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:4",
+      "left": [
+        {
+          "cy": 372,
+          "e": "e12",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 334,
+    },
+    {
+      "h": 77,
+      "id": "trace:anchor",
+      "left": [],
+      "right": [
+        {
+          "cy": 126,
+          "e": "e13",
+          "role": "out",
+          "t": 72,
+        },
+      ],
+      "w": 152,
+      "x": 122,
+      "y": 87.5,
+    },
+  ],
+  "width": 2380,
+}
+`;
+
+exports[`golden corpus > k8s-clusters@5e8 > model 1`] = `
+{
+  "anchor": "e13",
+  "clusters": [],
+  "direction": "destination",
+  "edges": [
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 8000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/11",
+      "from": "sw-tor-c",
+      "id": "e0",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-11",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/12",
+      "from": "sw-tor-c",
+      "id": "e1",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-12",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/13",
+      "from": "sw-tor-c",
+      "id": "e2",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-13",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 2000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/20",
+      "from": "sw-tor-c",
+      "id": "e3",
+      "lateral": false,
+      "owns": false,
+      "ti": "eno1",
+      "to": "srv-log-01",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-11",
+      "id": "e4",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "ingest-a",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "ingest-a",
+      "id": "e5",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:app:1",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "trace:app:1",
+      "id": "e6",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:1",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-11",
+      "id": "e7",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "kafka-a",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "kafka-a",
+      "id": "e8",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:2",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-12",
+      "id": "e9",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "ingest-b",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "ingest-b",
+      "id": "e10",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:3",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-13",
+      "id": "e11",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "debug-c",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "debug-c",
+      "id": "e12",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:4",
+    },
+    {
+      "anchor": true,
+      "backward": false,
+      "bps": 20000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "et-0/0/48",
+      "from": "trace:anchor",
+      "id": "e13",
+      "lateral": false,
+      "owns": false,
+      "ti": "et-0/0/48",
+      "to": "sw-tor-c",
+    },
+  ],
+  "filtered": {
+    "bps": 0,
+    "edges": 0,
+  },
+  "filteredNodes": [],
+  "nodes": [
+    {
+      "cluster": null,
+      "col": 1,
+      "id": "sw-tor-c",
+      "isRoot": true,
+      "kind": "node",
+      "label": "ToR clusters",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "switch",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 20000000000,
+      "tracedOut": 20000000000,
+    },
+    {
+      "cluster": "east",
+      "col": 2,
+      "id": "node-w-11",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-11",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 8000000000,
+      "tracedOut": 8000000000,
+    },
+    {
+      "cluster": "west",
+      "col": 2,
+      "id": "node-w-12",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-12",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 7000000000,
+      "tracedOut": 7000000000,
+    },
+    {
+      "cluster": null,
+      "col": 2,
+      "id": "node-w-13",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-13",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 3000000000,
+      "tracedOut": 3000000000,
+    },
+    {
+      "bps": 2000000000,
+      "cluster": null,
+      "col": 5,
+      "id": "srv-log-01",
+      "kind": "leaf",
+      "label": "srv-log-01",
+      "namespace": null,
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "leaf",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 3,
+      "id": "ingest-a",
+      "kind": "leaf",
+      "label": "ingest-a",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 4,
+      "id": "trace:app:1",
+      "kind": "leaf",
+      "label": "ingest",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "app",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 5,
+      "id": "trace:ns:1",
+      "kind": "leaf",
+      "label": "telemetry",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": "east",
+      "col": 3,
+      "id": "kafka-a",
+      "kind": "leaf",
+      "label": "kafka-a",
+      "namespace": "stream",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": "east",
+      "col": 5,
+      "id": "trace:ns:2",
+      "kind": "leaf",
+      "label": "stream",
+      "namespace": "stream",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 7000000000,
+      "cluster": "west",
+      "col": 3,
+      "id": "ingest-b",
+      "kind": "leaf",
+      "label": "ingest-b",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 7000000000,
+      "cluster": "west",
+      "col": 5,
+      "id": "trace:ns:3",
+      "kind": "leaf",
+      "label": "telemetry",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": null,
+      "col": 3,
+      "id": "debug-c",
+      "kind": "leaf",
+      "label": "debug-c",
+      "namespace": "debug",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": null,
+      "col": 5,
+      "id": "trace:ns:4",
+      "kind": "leaf",
+      "label": "debug",
+      "namespace": "debug",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 0,
+      "cluster": null,
+      "col": 0,
+      "id": "trace:anchor",
+      "kind": "anchor",
+      "label": "Trace start",
+      "namespace": null,
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "anchor",
+      "subOrder": 0,
+      "tier": null,
+    },
+  ],
+  "root": "sw-tor-c",
+  "warnings": [],
+}
+`;
+
+exports[`golden corpus > k8s-clusters@cluster > geometry flow 1`] = `
+{
+  "clusters": [
+    {
+      "h": 224,
+      "id": "trace:cluster:east",
+      "w": 1356,
+      "x": 912,
+      "y": 40,
+    },
+    {
+      "h": 126,
+      "id": "trace:cluster:west",
+      "w": 1356,
+      "x": 912,
+      "y": 286,
+    },
+  ],
+  "cols": [
+    [
+      "trace:anchor",
+    ],
+    [
+      "sw-tor-c",
+    ],
+    [
+      "node-w-11",
+      "node-w-12",
+      "node-w-13",
+    ],
+    [
+      "ingest-a",
+      "kafka-a",
+      "ingest-b",
+      "debug-c",
+    ],
+    [
+      "trace:app:1",
+    ],
+    [
+      "trace:ns:1",
+      "trace:ns:2",
+      "trace:ns:3",
+      "trace:ns:4",
+      "srv-log-01",
+    ],
+  ],
+  "columns": [
+    {
+      "label": "Trace start (in)",
+      "x": 122,
+    },
+    {
+      "label": "Hop 1",
+      "x": 498,
+    },
+    {
+      "label": "k8s node",
+      "x": 922,
+    },
+    {
+      "label": "pod",
+      "x": 1298,
+    },
+    {
+      "label": "application",
+      "x": 1674,
+    },
+    {
+      "label": "namespace / client",
+      "x": 2050,
+    },
+  ],
+  "edges": [
+    {
+      "backNear": false,
+      "id": "e0",
+      "t": 28.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 94.4,
+      "y2": 146,
+    },
+    {
+      "backNear": false,
+      "id": "e1",
+      "t": 25.2,
+      "x1": 706,
+      "x2": 922,
+      "y1": 129.4,
+      "y2": 378.6,
+    },
+    {
+      "backNear": false,
+      "id": "e2",
+      "t": 10.8,
+      "x1": 706,
+      "x2": 922,
+      "y1": 161,
+      "y2": 486,
+    },
+    {
+      "backNear": false,
+      "id": "e3",
+      "t": 7.2,
+      "x1": 706,
+      "x2": 2050,
+      "y1": 191,
+      "y2": 597.5,
+    },
+    {
+      "backNear": false,
+      "id": "e4",
+      "t": 18,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 131,
+      "y2": 118,
+    },
+    {
+      "backNear": false,
+      "id": "e5",
+      "t": 18,
+      "x1": 1458,
+      "x2": 1674,
+      "y1": 118,
+      "y2": 124.5,
+    },
+    {
+      "backNear": false,
+      "id": "e6",
+      "t": 18,
+      "x1": 1834,
+      "x2": 2050,
+      "y1": 124.5,
+      "y2": 118,
+    },
+    {
+      "backNear": false,
+      "id": "e7",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 161,
+      "y2": 216,
+    },
+    {
+      "backNear": false,
+      "id": "e8",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 216,
+      "y2": 216,
+    },
+    {
+      "backNear": false,
+      "id": "e9",
+      "t": 25.2,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 378.6,
+      "y2": 364,
+    },
+    {
+      "backNear": false,
+      "id": "e10",
+      "t": 25.2,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 364,
+      "y2": 364,
+    },
+    {
+      "backNear": false,
+      "id": "e11",
+      "t": 10.8,
+      "x1": 1130,
+      "x2": 1298,
+      "y1": 486,
+      "y2": 472,
+    },
+    {
+      "backNear": false,
+      "id": "e12",
+      "t": 10.8,
+      "x1": 1458,
+      "x2": 2050,
+      "y1": 472,
+      "y2": 472,
+    },
+    {
+      "backNear": false,
+      "id": "e13",
+      "t": 72,
+      "x1": 274,
+      "x2": 498,
+      "y1": 126,
+      "y2": 141,
+    },
+  ],
+  "height": 653,
+  "nodes": [
+    {
+      "h": 172,
+      "id": "sw-tor-c",
+      "left": [
+        {
+          "cy": 141,
+          "e": "e13",
+          "role": "in",
+          "t": 72,
+        },
+      ],
+      "right": [
+        {
+          "cy": 94.4,
+          "e": "e0",
+          "role": "out",
+          "t": 28.8,
+        },
+        {
+          "cy": 129.4,
+          "e": "e1",
+          "role": "out",
+          "t": 25.2,
+        },
+        {
+          "cy": 161,
+          "e": "e2",
+          "role": "out",
+          "t": 10.8,
+        },
+        {
+          "cy": 191,
+          "e": "e3",
+          "role": "out",
+          "t": 7.2,
+        },
+      ],
+      "w": 208,
+      "x": 498,
+      "y": 40,
+    },
+    {
+      "h": 102,
+      "id": "node-w-11",
+      "left": [
+        {
+          "cy": 146,
+          "e": "e0",
+          "role": "in",
+          "t": 28.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 131,
+          "e": "e4",
+          "role": "out",
+          "t": 18,
+        },
+        {
+          "cy": 161,
+          "e": "e7",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 80,
+    },
+    {
+      "h": 75.2,
+      "id": "node-w-12",
+      "left": [
+        {
+          "cy": 378.6,
+          "e": "e1",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 378.6,
+          "e": "e9",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 326,
+    },
+    {
+      "h": 74,
+      "id": "node-w-13",
+      "left": [
+        {
+          "cy": 486,
+          "e": "e2",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 486,
+          "e": "e11",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 208,
+      "x": 922,
+      "y": 434,
+    },
+    {
+      "h": 63,
+      "id": "srv-log-01",
+      "left": [
+        {
+          "cy": 597.5,
+          "e": "e3",
+          "role": "in",
+          "t": 7.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 566,
+    },
+    {
+      "h": 76,
+      "id": "ingest-a",
+      "left": [
+        {
+          "cy": 118,
+          "e": "e4",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 118,
+          "e": "e5",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 80,
+    },
+    {
+      "h": 89,
+      "id": "trace:app:1",
+      "left": [
+        {
+          "cy": 124.5,
+          "e": "e5",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [
+        {
+          "cy": 124.5,
+          "e": "e6",
+          "role": "out",
+          "t": 18,
+        },
+      ],
+      "w": 160,
+      "x": 1674,
+      "y": 80,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:1",
+      "left": [
+        {
+          "cy": 118,
+          "e": "e6",
+          "role": "in",
+          "t": 18,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 80,
+    },
+    {
+      "h": 76,
+      "id": "kafka-a",
+      "left": [
+        {
+          "cy": 216,
+          "e": "e7",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 216,
+          "e": "e8",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 178,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:2",
+      "left": [
+        {
+          "cy": 216,
+          "e": "e8",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 178,
+    },
+    {
+      "h": 76,
+      "id": "ingest-b",
+      "left": [
+        {
+          "cy": 364,
+          "e": "e9",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [
+        {
+          "cy": 364,
+          "e": "e10",
+          "role": "out",
+          "t": 25.2,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 326,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:3",
+      "left": [
+        {
+          "cy": 364,
+          "e": "e10",
+          "role": "in",
+          "t": 25.2,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 326,
+    },
+    {
+      "h": 76,
+      "id": "debug-c",
+      "left": [
+        {
+          "cy": 472,
+          "e": "e11",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [
+        {
+          "cy": 472,
+          "e": "e12",
+          "role": "out",
+          "t": 10.8,
+        },
+      ],
+      "w": 160,
+      "x": 1298,
+      "y": 434,
+    },
+    {
+      "h": 76,
+      "id": "trace:ns:4",
+      "left": [
+        {
+          "cy": 472,
+          "e": "e12",
+          "role": "in",
+          "t": 10.8,
+        },
+      ],
+      "right": [],
+      "w": 160,
+      "x": 2050,
+      "y": 434,
+    },
+    {
+      "h": 77,
+      "id": "trace:anchor",
+      "left": [],
+      "right": [
+        {
+          "cy": 126,
+          "e": "e13",
+          "role": "out",
+          "t": 72,
+        },
+      ],
+      "w": 152,
+      "x": 122,
+      "y": 87.5,
+    },
+  ],
+  "width": 2380,
+}
+`;
+
+exports[`golden corpus > k8s-clusters@cluster > model 1`] = `
+{
+  "anchor": "e13",
+  "clusters": [
+    {
+      "id": "trace:cluster:east",
+      "members": [
+        "node-w-11",
+        "ingest-a",
+        "trace:app:1",
+        "trace:ns:1",
+        "kafka-a",
+        "trace:ns:2",
+      ],
+      "status": "warning",
+    },
+    {
+      "id": "trace:cluster:west",
+      "members": [
+        "node-w-12",
+        "ingest-b",
+        "trace:ns:3",
+      ],
+      "status": null,
+    },
+  ],
+  "direction": "destination",
+  "edges": [
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 8000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/11",
+      "from": "sw-tor-c",
+      "id": "e0",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-11",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/12",
+      "from": "sw-tor-c",
+      "id": "e1",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-12",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/13",
+      "from": "sw-tor-c",
+      "id": "e2",
+      "lateral": false,
+      "owns": false,
+      "ti": "bond0",
+      "to": "node-w-13",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 2000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "xe-0/0/20",
+      "from": "sw-tor-c",
+      "id": "e3",
+      "lateral": false,
+      "owns": false,
+      "ti": "eno1",
+      "to": "srv-log-01",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-11",
+      "id": "e4",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "ingest-a",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "ingest-a",
+      "id": "e5",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:app:1",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 5000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "trace:app:1",
+      "id": "e6",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:1",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-11",
+      "id": "e7",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "kafka-a",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "kafka-a",
+      "id": "e8",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:2",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-12",
+      "id": "e9",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "ingest-b",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 7000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "ingest-b",
+      "id": "e10",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:3",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "",
+      "from": "node-w-13",
+      "id": "e11",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "debug-c",
+    },
+    {
+      "anchor": false,
+      "backward": false,
+      "bps": 3000000000,
+      "derived": true,
+      "dropped": false,
+      "fi": "",
+      "from": "debug-c",
+      "id": "e12",
+      "lateral": false,
+      "owns": false,
+      "ti": "",
+      "to": "trace:ns:4",
+    },
+    {
+      "anchor": true,
+      "backward": false,
+      "bps": 20000000000,
+      "derived": false,
+      "dropped": false,
+      "fi": "et-0/0/48",
+      "from": "trace:anchor",
+      "id": "e13",
+      "lateral": false,
+      "owns": false,
+      "ti": "et-0/0/48",
+      "to": "sw-tor-c",
+    },
+  ],
+  "filtered": {
+    "bps": 0,
+    "edges": 0,
+  },
+  "filteredNodes": [],
+  "nodes": [
+    {
+      "cluster": null,
+      "col": 1,
+      "id": "sw-tor-c",
+      "isRoot": true,
+      "kind": "node",
+      "label": "ToR clusters",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "switch",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 20000000000,
+      "tracedOut": 20000000000,
+    },
+    {
+      "cluster": "east",
+      "col": 2,
+      "id": "node-w-11",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-11",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 8000000000,
+      "tracedOut": 8000000000,
+    },
+    {
+      "cluster": "west",
+      "col": 2,
+      "id": "node-w-12",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-12",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 7000000000,
+      "tracedOut": 7000000000,
+    },
+    {
+      "cluster": null,
+      "col": 2,
+      "id": "node-w-13",
+      "isRoot": false,
+      "kind": "node",
+      "label": "node-w-13",
+      "namespace": null,
+      "noFlow": false,
+      "otherIn": 0,
+      "otherOut": 0,
+      "role": "node",
+      "subOrder": 0,
+      "tier": null,
+      "tracedIn": 3000000000,
+      "tracedOut": 3000000000,
+    },
+    {
+      "bps": 2000000000,
+      "cluster": null,
+      "col": 5,
+      "id": "srv-log-01",
+      "kind": "leaf",
+      "label": "srv-log-01",
+      "namespace": null,
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "leaf",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 3,
+      "id": "ingest-a",
+      "kind": "leaf",
+      "label": "ingest-a",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 4,
+      "id": "trace:app:1",
+      "kind": "leaf",
+      "label": "ingest",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "app",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 5000000000,
+      "cluster": "east",
+      "col": 5,
+      "id": "trace:ns:1",
+      "kind": "leaf",
+      "label": "telemetry",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": "east",
+      "col": 3,
+      "id": "kafka-a",
+      "kind": "leaf",
+      "label": "kafka-a",
+      "namespace": "stream",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": "east",
+      "col": 5,
+      "id": "trace:ns:2",
+      "kind": "leaf",
+      "label": "stream",
+      "namespace": "stream",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 7000000000,
+      "cluster": "west",
+      "col": 3,
+      "id": "ingest-b",
+      "kind": "leaf",
+      "label": "ingest-b",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 7000000000,
+      "cluster": "west",
+      "col": 5,
+      "id": "trace:ns:3",
+      "kind": "leaf",
+      "label": "telemetry",
+      "namespace": "telemetry",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": null,
+      "col": 3,
+      "id": "debug-c",
+      "kind": "leaf",
+      "label": "debug-c",
+      "namespace": "debug",
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "pod",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 3000000000,
+      "cluster": null,
+      "col": 5,
+      "id": "trace:ns:4",
+      "kind": "leaf",
+      "label": "debug",
+      "namespace": "debug",
+      "ownerLinked": false,
+      "podCount": 1,
+      "role": "ns",
+      "subOrder": 0,
+      "tier": null,
+    },
+    {
+      "bps": 0,
+      "cluster": null,
+      "col": 0,
+      "id": "trace:anchor",
+      "kind": "anchor",
+      "label": "Trace start",
+      "namespace": null,
+      "ownerLinked": false,
+      "podCount": 0,
+      "role": "anchor",
+      "subOrder": 0,
+      "tier": null,
+    },
+  ],
+  "root": "sw-tor-c",
+  "warnings": [],
+}
+`;
+
 exports[`golden corpus > k8s-source > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:ns:1",
@@ -18993,6 +22633,7 @@ exports[`golden corpus > k8s-source > geometry barycenter 1`] = `
 
 exports[`golden corpus > k8s-source > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:ns:1",
@@ -19387,6 +23028,7 @@ exports[`golden corpus > k8s-source > geometry flow 1`] = `
 exports[`golden corpus > k8s-source > model 1`] = `
 {
   "anchor": "e10",
+  "clusters": [],
   "direction": "source",
   "edges": [
     {
@@ -19551,6 +23193,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 3,
       "id": "sw-tor-k8s",
       "isRoot": true,
@@ -19567,6 +23210,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "tracedOut": 18000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-21",
       "isRoot": false,
@@ -19583,6 +23227,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
       "tracedOut": 12000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-22",
       "isRoot": false,
@@ -19600,6 +23245,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 7000000000,
+      "cluster": null,
       "col": 1,
       "id": "web-6f8d",
       "kind": "leaf",
@@ -19613,6 +23259,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 10000000000,
+      "cluster": null,
       "col": 0,
       "id": "trace:ns:1",
       "kind": "leaf",
@@ -19626,6 +23273,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 1,
       "id": "cache-1",
       "kind": "leaf",
@@ -19639,6 +23287,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 2000000000,
+      "cluster": null,
       "col": 1,
       "id": "batch-9k",
       "kind": "leaf",
@@ -19652,6 +23301,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 8000000000,
+      "cluster": null,
       "col": 0,
       "id": "trace:ns:2",
       "kind": "leaf",
@@ -19665,6 +23315,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 1,
       "id": "job-runner-5c",
       "kind": "leaf",
@@ -19678,6 +23329,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 4,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -19697,6 +23349,7 @@ exports[`golden corpus > k8s-source > model 1`] = `
 
 exports[`golden corpus > k8s-source@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:ns:1",
@@ -20091,6 +23744,7 @@ exports[`golden corpus > k8s-source@5e8 > geometry flow 1`] = `
 exports[`golden corpus > k8s-source@5e8 > model 1`] = `
 {
   "anchor": "e10",
+  "clusters": [],
   "direction": "source",
   "edges": [
     {
@@ -20255,6 +23909,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 3,
       "id": "sw-tor-k8s",
       "isRoot": true,
@@ -20271,6 +23926,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "tracedOut": 18000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-21",
       "isRoot": false,
@@ -20287,6 +23943,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
       "tracedOut": 12000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "node-w-22",
       "isRoot": false,
@@ -20304,6 +23961,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 7000000000,
+      "cluster": null,
       "col": 1,
       "id": "web-6f8d",
       "kind": "leaf",
@@ -20317,6 +23975,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 10000000000,
+      "cluster": null,
       "col": 0,
       "id": "trace:ns:1",
       "kind": "leaf",
@@ -20330,6 +23989,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 1,
       "id": "cache-1",
       "kind": "leaf",
@@ -20343,6 +24003,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 2000000000,
+      "cluster": null,
       "col": 1,
       "id": "batch-9k",
       "kind": "leaf",
@@ -20356,6 +24017,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 8000000000,
+      "cluster": null,
       "col": 0,
       "id": "trace:ns:2",
       "kind": "leaf",
@@ -20369,6 +24031,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 1,
       "id": "job-runner-5c",
       "kind": "leaf",
@@ -20382,6 +24045,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 4,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -20401,6 +24065,7 @@ exports[`golden corpus > k8s-source@5e8 > model 1`] = `
 
 exports[`golden corpus > pruned > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -20663,6 +24328,7 @@ exports[`golden corpus > pruned > geometry barycenter 1`] = `
 
 exports[`golden corpus > pruned > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -20926,6 +24592,7 @@ exports[`golden corpus > pruned > geometry flow 1`] = `
 exports[`golden corpus > pruned > model 1`] = `
 {
   "anchor": "e5",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -21020,6 +24687,7 @@ exports[`golden corpus > pruned > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-tor-14",
       "isRoot": true,
@@ -21036,6 +24704,7 @@ exports[`golden corpus > pruned > model 1`] = `
       "tracedOut": 33000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-leaf-3",
       "isRoot": false,
@@ -21053,6 +24722,7 @@ exports[`golden corpus > pruned > model 1`] = `
     },
     {
       "bps": 9000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-app-11",
       "kind": "leaf",
@@ -21066,6 +24736,7 @@ exports[`golden corpus > pruned > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-app-12",
       "kind": "leaf",
@@ -21079,6 +24750,7 @@ exports[`golden corpus > pruned > model 1`] = `
     },
     {
       "bps": 10000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-log-01",
       "kind": "leaf",
@@ -21092,6 +24764,7 @@ exports[`golden corpus > pruned > model 1`] = `
     },
     {
       "bps": 5000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-log-02",
       "kind": "leaf",
@@ -21105,6 +24778,7 @@ exports[`golden corpus > pruned > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -21124,6 +24798,7 @@ exports[`golden corpus > pruned > model 1`] = `
 
 exports[`golden corpus > pruned@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "trace:anchor",
@@ -21387,6 +25062,7 @@ exports[`golden corpus > pruned@5e8 > geometry flow 1`] = `
 exports[`golden corpus > pruned@5e8 > model 1`] = `
 {
   "anchor": "e5",
+  "clusters": [],
   "direction": "destination",
   "edges": [
     {
@@ -21481,6 +25157,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-tor-14",
       "isRoot": true,
@@ -21497,6 +25174,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
       "tracedOut": 33000000000,
     },
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-leaf-3",
       "isRoot": false,
@@ -21514,6 +25192,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
     },
     {
       "bps": 9000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-app-11",
       "kind": "leaf",
@@ -21527,6 +25206,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
     },
     {
       "bps": 6000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-app-12",
       "kind": "leaf",
@@ -21540,6 +25220,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
     },
     {
       "bps": 10000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-log-01",
       "kind": "leaf",
@@ -21553,6 +25234,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
     },
     {
       "bps": 5000000000,
+      "cluster": null,
       "col": 3,
       "id": "srv-log-02",
       "kind": "leaf",
@@ -21566,6 +25248,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 0,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -21585,6 +25268,7 @@ exports[`golden corpus > pruned@5e8 > model 1`] = `
 
 exports[`golden corpus > source > geometry barycenter 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "lab-gpu-01",
@@ -21848,6 +25532,7 @@ exports[`golden corpus > source > geometry barycenter 1`] = `
 
 exports[`golden corpus > source > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "lab-gpu-01",
@@ -22112,6 +25797,7 @@ exports[`golden corpus > source > geometry flow 1`] = `
 exports[`golden corpus > source > model 1`] = `
 {
   "anchor": "e5",
+  "clusters": [],
   "direction": "source",
   "edges": [
     {
@@ -22206,6 +25892,7 @@ exports[`golden corpus > source > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-core-1",
       "isRoot": true,
@@ -22222,6 +25909,7 @@ exports[`golden corpus > source > model 1`] = `
       "tracedOut": 20000000000,
     },
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-a",
       "isRoot": false,
@@ -22238,6 +25926,7 @@ exports[`golden corpus > source > model 1`] = `
       "tracedOut": 12000000000,
     },
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-b",
       "isRoot": false,
@@ -22255,6 +25944,7 @@ exports[`golden corpus > source > model 1`] = `
     },
     {
       "bps": 7000000000,
+      "cluster": null,
       "col": 0,
       "id": "lab-gpu-01",
       "kind": "leaf",
@@ -22268,6 +25958,7 @@ exports[`golden corpus > source > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 0,
       "id": "lab-gpu-02",
       "kind": "leaf",
@@ -22281,6 +25972,7 @@ exports[`golden corpus > source > model 1`] = `
     },
     {
       "bps": 4000000000,
+      "cluster": null,
       "col": 0,
       "id": "backup-relay",
       "kind": "leaf",
@@ -22294,6 +25986,7 @@ exports[`golden corpus > source > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:anchor",
       "kind": "anchor",
@@ -22313,6 +26006,7 @@ exports[`golden corpus > source > model 1`] = `
 
 exports[`golden corpus > source@5e8 > geometry flow 1`] = `
 {
+  "clusters": [],
   "cols": [
     [
       "lab-gpu-01",
@@ -22577,6 +26271,7 @@ exports[`golden corpus > source@5e8 > geometry flow 1`] = `
 exports[`golden corpus > source@5e8 > model 1`] = `
 {
   "anchor": "e5",
+  "clusters": [],
   "direction": "source",
   "edges": [
     {
@@ -22671,6 +26366,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
   "filteredNodes": [],
   "nodes": [
     {
+      "cluster": null,
       "col": 2,
       "id": "sw-core-1",
       "isRoot": true,
@@ -22687,6 +26383,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
       "tracedOut": 20000000000,
     },
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-a",
       "isRoot": false,
@@ -22703,6 +26400,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
       "tracedOut": 12000000000,
     },
     {
+      "cluster": null,
       "col": 1,
       "id": "sw-edge-b",
       "isRoot": false,
@@ -22720,6 +26418,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
     },
     {
       "bps": 7000000000,
+      "cluster": null,
       "col": 0,
       "id": "lab-gpu-01",
       "kind": "leaf",
@@ -22733,6 +26432,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
     },
     {
       "bps": 3000000000,
+      "cluster": null,
       "col": 0,
       "id": "lab-gpu-02",
       "kind": "leaf",
@@ -22746,6 +26446,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
     },
     {
       "bps": 4000000000,
+      "cluster": null,
       "col": 0,
       "id": "backup-relay",
       "kind": "leaf",
@@ -22759,6 +26460,7 @@ exports[`golden corpus > source@5e8 > model 1`] = `
     },
     {
       "bps": 0,
+      "cluster": null,
       "col": 3,
       "id": "trace:anchor",
       "kind": "anchor",

@@ -32,9 +32,10 @@ export function namespaceAggs(model: TraceModelOk): NamespaceAgg[] {
   }
   for (const n of model.nodes) {
     if (n.role === 'ns') {
+      // One card per namespace per cluster: the table sums a namespace over its clusters.
       const a = touch(n.label);
-      a.pods = n.podCount;
-      a.total = n.bps;
+      a.pods += n.podCount;
+      a.total += n.bps;
     }
   }
   return [...byNs.values()].sort((a, b) => b.total - a.total || a.namespace.localeCompare(b.namespace));
