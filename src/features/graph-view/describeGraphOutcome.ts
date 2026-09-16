@@ -9,6 +9,7 @@
  * differently.
  */
 export type GraphOutcome =
+  | { kind: 'unconfigured'; message: string }
   | { kind: 'awaiting'; message: string }
   | { kind: 'cancelled'; message: string }
   | { kind: 'loading' }
@@ -21,6 +22,11 @@ export interface GraphOutcomeInput {
   status: 'idle' | 'loading' | 'ready' | 'error';
   hasPayload: boolean;
   cancelled?: boolean;
+  /**
+   * Set when the page's endpoint is not configured, worded by the page: nothing can be
+   * requested, so Query commits and sends nothing and "awaiting Query" would be a lie.
+   */
+  unconfiguredMessage?: string;
   /** The load error, if any. Already carries the URL and status from the loader. */
   firstError: string | undefined;
   elementCount: number;
@@ -40,11 +46,15 @@ export function describeGraphOutcome({
   status,
   hasPayload,
   cancelled = false,
+  unconfiguredMessage,
   firstError,
   elementCount,
   visibleNodeCount,
   allTogglableKindsHidden,
 }: GraphOutcomeInput): GraphOutcome {
+  if (unconfiguredMessage !== undefined) {
+    return { kind: 'unconfigured', message: unconfiguredMessage };
+  }
   if (status === 'idle' && !hasPayload) {
     return cancelled
       ? { kind: 'cancelled', message: CANCELLED_QUERY_MESSAGE }

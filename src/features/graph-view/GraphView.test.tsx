@@ -51,6 +51,7 @@ function view(
     hasPayload?: boolean;
     status?: 'idle' | 'loading' | 'ready' | 'error';
     cancelled?: boolean;
+    unconfiguredMessage?: string;
   } = {}
 ): JSX.Element {
   return (
@@ -67,6 +68,7 @@ function view(
         onAlertTimeClick={vi.fn()}
         locateNodeId={props.locateNodeId ?? null}
         onLocateConsumed={props.onLocateConsumed ?? vi.fn()}
+        {...(props.unconfiguredMessage === undefined ? {} : { unconfiguredMessage: props.unconfiguredMessage })}
       />
     </ThemeProvider>
   );
@@ -77,6 +79,13 @@ describe('GraphView', () => {
     render(view({ status: 'idle', hasPayload: false }));
     expect(screen.getByTestId('graph-awaiting-query')).toHaveTextContent('Query');
     expect(screen.queryByTestId('loading-overlay')).not.toBeInTheDocument();
+  });
+
+  it('explains an unconfigured endpoint instead of awaiting Query, and draws nothing', () => {
+    render(view({ status: 'idle', hasPayload: false, unconfiguredMessage: 'Trace endpoint is not configured.' }));
+    expect(screen.getByTestId('graph-unconfigured')).toHaveTextContent('Trace endpoint is not configured.');
+    expect(screen.queryByTestId('graph-awaiting-query')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument();
   });
 
   it('explains a cancelled first request instead of showing the loading overlay', () => {
