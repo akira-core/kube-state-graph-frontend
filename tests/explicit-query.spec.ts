@@ -87,6 +87,21 @@ test('Cancel during a slow response keeps the previous drawing', async ({ page }
   await expect(page.getByRole('button', { name: 'Query' })).toBeVisible();
 });
 
+test('Sankey Weight switch after Query writes the URL and issues no extra request', async ({ page }) => {
+  const urls = await stubLiveConfig(page);
+  await page.goto('/sankey?az=local-a&env=demo&aggr=aggr1&weight=iops');
+  await expect(page.getByRole('radio', { name: 'IOPS' })).toBeChecked();
+  expect(urls.storage).toHaveLength(0);
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(page.getByTestId('sankey-svg')).toBeVisible({ timeout: 30_000 });
+  expect(urls.storage).toHaveLength(1);
+  await expect(page).toHaveURL(/weight=iops/);
+  await page.getByTestId('sankey-weight').getByText('Throughput', { exact: true }).click();
+  await expect(page).not.toHaveURL(/weight=/);
+  expect(urls.storage).toHaveLength(1);
+  await expect(page.getByTestId('query-button')).not.toHaveAttribute('data-dirty', 'true');
+});
+
 test('sankey mount with a complete URL scope issues 0 requests until Query', async ({ page }) => {
   const urls = await stubLiveConfig(page);
   await page.goto('/sankey?az=local-a&env=demo&aggr=aggr1');

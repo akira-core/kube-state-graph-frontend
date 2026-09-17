@@ -12,7 +12,7 @@ import {
   WRAPPER_HEADER_H,
 } from '../sankey-canvas';
 
-import { deriveSankey, formatBytesPerSec } from './deriveSankey';
+import { deriveSankey, formatBytesPerSec, formatWeight } from './deriveSankey';
 import { cardText, layoutSankey } from './layoutSankey';
 
 const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
@@ -395,6 +395,14 @@ describe('layoutSankey card text', () => {
     expect(prod?.extraLines[1]).toBe(`total ${formatBytesPerSec(inflow)}`);
     expect(prod?.width).toBe(LEAF_W);
     expect(prod?.rightSlots).toEqual([]);
+  });
+
+  it('IOPS labels use ops/s on the leaf total', () => {
+    const graph = deriveSankey(elements, 'both', undefined, 'column', 'iops');
+    const layout = layoutSankey(graph, PALETTE, 'flat', 'column', 'iops');
+    const prod = layout.nodes.find((n) => n.kind === 'namespace' && n.label === 'prod');
+    const inflow = graph.links.filter((l) => l.target === prod?.id).reduce((sum, l) => sum + l.value, 0);
+    expect(prod?.extraLines[1]).toBe(`total ${formatWeight(inflow, 'iops')}`);
   });
 
   it('names the ONTAP cluster on a NetApp subtitle and nothing else there', () => {

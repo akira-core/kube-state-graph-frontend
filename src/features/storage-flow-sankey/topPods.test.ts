@@ -103,6 +103,40 @@ describe('cutTopPods', () => {
     expect(idsOf(read.elements, 'pod')).toEqual(['pod/other']);
   });
 
+  it('re-ranks when the weight family changes', () => {
+    const elements = [
+      { group: 'nodes' as const, data: { id: 'pvc/a', label: 'a', kind: 'pvc' } },
+      { group: 'nodes' as const, data: { id: 'pod/tiny-blocks', label: 'tiny-blocks', kind: 'pod' } },
+      { group: 'nodes' as const, data: { id: 'pod/other', label: 'other', kind: 'pod' } },
+      {
+        group: 'edges' as const,
+        data: {
+          id: 'e1',
+          source: 'pvc/a',
+          target: 'pod/tiny-blocks',
+          edgeType: 'storage-flow',
+          labels: { tier: 'pvc-pod' },
+          metrics: { readOps: 1000, readBytesPerSec: 1 },
+        },
+      },
+      {
+        group: 'edges' as const,
+        data: {
+          id: 'e2',
+          source: 'pvc/a',
+          target: 'pod/other',
+          edgeType: 'storage-flow',
+          labels: { tier: 'pvc-pod' },
+          metrics: { readOps: 1, readBytesPerSec: 1000 },
+        },
+      },
+    ];
+    const iops = cutTopPods(elements, 'read', 1, 'iops');
+    expect(idsOf(iops.elements, 'pod')).toEqual(['pod/tiny-blocks']);
+    const throughput = cutTopPods(elements, 'read', 1, 'throughput');
+    expect(idsOf(throughput.elements, 'pod')).toEqual(['pod/other']);
+  });
+
   describe('claim-aware aggregate keeping', () => {
     const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 

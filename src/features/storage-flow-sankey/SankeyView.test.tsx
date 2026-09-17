@@ -11,7 +11,7 @@ import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
 import { SankeyCard } from '../sankey-canvas';
 import { ThemeProvider } from '../theme';
 
-import { deriveSankey, type SankeyMode, type SankeySvmDisplay } from './deriveSankey';
+import { deriveSankey, type SankeyMode, type SankeySvmDisplay, type SankeyWeight } from './deriveSankey';
 import { layoutSankey, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart } from './SankeyChart';
 import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
@@ -60,10 +60,12 @@ function withoutClaimAggregates(): cytoscape.ElementDefinition[] {
  * controls the scope bar carries, and the transient state they switch. The view itself is
  * prop-driven; these tests exercise it the way the page drives it.
  */
-interface HarnessProps extends Omit<SankeyViewProps, 'mode' | 'podLayout' | 'svmDisplay'> {
+interface HarnessProps extends Omit<SankeyViewProps, 'mode' | 'weight' | 'podLayout' | 'svmDisplay'> {
   topPods?: number;
   mode?: SankeyMode;
+  weight?: SankeyWeight;
   onModeChange?: (next: SankeyMode) => void;
+  onWeightChange?: (next: SankeyWeight) => void;
   onPodLayoutChange?: (next: SankeyPodLayout) => void;
   onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
 }
@@ -89,16 +91,19 @@ function baseProps(overrides: Overrides = {}): HarnessProps {
 function Harness({
   topPods = DEFAULT_TOP_PODS,
   mode: initialMode = 'both',
+  weight: initialWeight = 'throughput',
   onModeChange,
+  onWeightChange,
   onPodLayoutChange,
   onSvmDisplayChange,
   ...view
 }: Readonly<HarnessProps>): JSX.Element {
   const [mode, setMode] = useState<SankeyMode>(initialMode);
+  const [weight, setWeight] = useState<SankeyWeight>(initialWeight);
   const [podLayout, setPodLayout] = useState<SankeyPodLayout>('flat');
   const [svmDisplay, setSvmDisplay] = useState<SankeySvmDisplay>('column');
   const roots = view.roots ?? EMPTY_STORAGE_GRAPH_ROOTS;
-  const projection = useSankeyProjection({ elements: view.elements, mode, topPods, roots });
+  const projection = useSankeyProjection({ elements: view.elements, mode, weight, topPods, roots });
   const effectiveSvmDisplay = projection.svmAvailable ? svmDisplay : 'column';
   return (
     <>
@@ -108,6 +113,11 @@ function Harness({
           onModeChange={(next) => {
             setMode(next);
             onModeChange?.(next);
+          }}
+          weight={weight}
+          onWeightChange={(next) => {
+            setWeight(next);
+            onWeightChange?.(next);
           }}
           podLayout={podLayout}
           onPodLayoutChange={(next) => {
@@ -127,6 +137,7 @@ function Harness({
         {...view}
         elements={projection.elements}
         mode={mode}
+        weight={weight}
         podLayout={podLayout}
         svmDisplay={effectiveSvmDisplay}
       />
@@ -384,7 +395,9 @@ describe('SankeyView', () => {
     }).elements;
     renderSankey({ elements: writeOnly });
     fireEvent.click(screen.getByRole('radio', { name: /read/i }));
-    expect(screen.getByTestId('sankey-empty-mode')).toHaveTextContent('Read direction has no measurements');
+    expect(screen.getByTestId('sankey-empty-mode')).toHaveTextContent(
+      'Read direction has no throughput measurements. Switch Mode or Weight.'
+    );
     fireEvent.click(screen.getByRole('radio', { name: /write/i }));
     expect(screen.queryByTestId('sankey-empty-mode')).not.toBeInTheDocument();
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
@@ -392,10 +405,56 @@ describe('SankeyView', () => {
     // The host was unmounted by the empty state and mounted again by the mode switch, with
     // nothing about the view's status changing: the wheel listener must follow the element,
     // not the status, or zoom is dead for the rest of the session.
-    const host = screen.getByTestId('sankey-chart-host');
-    const before = screen.getByTestId('sankey-zoom-controls').textContent;
-    fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
-    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(before);
+    const hostAfterMode = screen.getByTestId('sankey-chart-host');
+    const beforeMode = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.wheel(hostAfterMode, { deltaY: -600, clientX: 100, clientY: 100 });
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).not.toBe(beforeMode);
+  });
+
+  it('prompts to switch Weight when IOPS has no measurements', () => {
+    const bytesOnly = normalizeGraph({
+      elements: {
+        nodes: [
+          { data: { id: 'a', name: 'a', type: 'netapp-aggr' } },
+          { data: { id: 's', name: 's', type: 'netapp-svm' } },
+        ],
+        edges: [
+          {
+            data: {
+              id: 'e',
+              type: 'storage-flow',
+              source: 'a',
+              target: 's',
+              labels: { tier: 'aggr-svm' },
+              metrics: { read_bytes_per_sec: 100 },
+            },
+          },
+        ],
+      },
+    }).elements;
+    renderSankey({ elements: bytesOnly, mode: 'read' });
+    fireEvent.click(screen.getByRole('radio', { name: 'IOPS' }));
+    expect(screen.getByTestId('sankey-empty-mode')).toHaveTextContent(
+      'Read direction has no IOPS measurements. Switch Mode or Weight.'
+    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Throughput' }));
+    expect(screen.queryByTestId('sankey-empty-mode')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+  });
+
+  it('IOPS draws the ops pair as weight and labels in ops/s', () => {
+    renderSankey({ mode: 'read', weight: 'iops' });
+    expect(screen.getByTestId('sankey-svg')).toHaveTextContent('150 ops/s');
+    expect(screen.getByTestId('sankey-svg')).not.toHaveTextContent('5.24 MB/s');
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr1'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('150 ops/s');
+    expect(screen.queryByTestId('sankey-node-data-scratch')).not.toBeInTheDocument();
+  });
+
+  it('Throughput tooltip figures on the fixture still read 5.24 MB/s', () => {
+    renderSankey({ mode: 'read' });
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr1'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('5.24 MB/s');
   });
 
   it('locates a storage node on click but not an SVM', () => {
@@ -701,7 +760,7 @@ describe('SankeyView', () => {
     render(
       <ThemeProvider>
         <div style={{ width: 800, height: 480 }}>
-          <SankeyView {...baseProps()} mode="both" podLayout="flat" svmDisplay="column" />
+          <SankeyView {...baseProps()} mode="both" weight="throughput" podLayout="flat" svmDisplay="column" />
         </div>
       </ThemeProvider>
     );

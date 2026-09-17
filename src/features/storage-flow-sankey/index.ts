@@ -12,6 +12,7 @@ export {
   rootValueOptions,
   EMPTY_SANKEY_ROOT_OPTIONS,
   SANKEY_KIND_ORDER,
+  formatWeight,
 } from './deriveSankey';
 export type {
   SankeyGraph,
@@ -23,6 +24,7 @@ export type {
   SankeyRootOptions,
   SankeySvmDisplay,
   SankeySvmFrame,
+  SankeyWeight,
   StorageFlowTier,
 } from './deriveSankey';
 export type { SankeyPodLayout } from './layoutSankey';

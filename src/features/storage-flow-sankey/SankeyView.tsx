@@ -25,11 +25,13 @@ import {
   DERIVED_TIER_LABEL,
   deriveSankey,
   formatBytesPerSec,
+  formatWeight,
   isDerivedTier,
   type SankeyDirection,
   type SankeyMode,
   type SankeyNode,
   type SankeySvmDisplay,
+  type SankeyWeight,
 } from './deriveSankey';
 import { layoutSankey, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart } from './SankeyChart';
@@ -45,6 +47,7 @@ export interface SankeyViewProps {
   focusMode: boolean;
   onFocusModeChange: (next: boolean) => void;
   mode: SankeyMode;
+  weight: SankeyWeight;
   /** `endpoints.storageGraph` is configured (or demo mode supplies a fixture). */
   endpointConfigured: boolean;
   /** Both halves of the required estate are chosen. */
@@ -67,7 +70,12 @@ export interface SankeyViewProps {
 
 type SankeyEmptyKind = ShellEmptyKind | 'mode' | 'response';
 
-function emptyCopy(kind: SankeyEmptyKind, demoMode: boolean, mode: SankeyMode): { testId: string; text: string } {
+function emptyCopy(
+  kind: SankeyEmptyKind,
+  demoMode: boolean,
+  mode: SankeyMode,
+  weight: SankeyWeight
+): { testId: string; text: string } {
   switch (kind) {
     case 'unconfigured':
       return {
@@ -94,16 +102,18 @@ function emptyCopy(kind: SankeyEmptyKind, demoMode: boolean, mode: SankeyMode): 
         testId: 'sankey-empty-response',
         text: `No storage flow for this estimate and root in the current time range. The root name may not exist, this estate may have no NetApp-backed claims, or the window may be outside retention.${demoMode ? ' Currently showing demo fixture data.' : ''}`,
       };
-    default:
+    default: {
+      const family = weight === 'iops' ? 'IOPS' : 'throughput';
       return {
         testId: 'sankey-empty-mode',
         text:
           mode === 'read'
-            ? 'Read direction has no measurements. Switch to Write or Both.'
+            ? `Read direction has no ${family} measurements. Switch Mode or Weight.`
             : mode === 'write'
-              ? 'Write direction has no measurements. Switch to Read or Both.'
-              : 'The current direction has no measurements. Switch to Read, Write, or Both.',
+              ? `Write direction has no ${family} measurements. Switch Mode or Weight.`
+              : `The current direction has no ${family} measurements. Switch Mode or Weight.`,
       };
+    }
   }
 }
 
@@ -230,6 +240,7 @@ export function SankeyView({
   focusMode,
   onFocusModeChange,
   mode,
+  weight,
   endpointConfigured,
   azEnvReady,
   hasRoot,
@@ -243,7 +254,10 @@ export function SankeyView({
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
   // weight conservation, which is why this view has no cluster selector of its own.
-  const graph = useMemo(() => deriveSankey(elements, mode, roots, svmDisplay), [elements, mode, roots, svmDisplay]);
+  const graph = useMemo(
+    () => deriveSankey(elements, mode, roots, svmDisplay, weight),
+    [elements, mode, roots, svmDisplay, weight]
+  );
   const scopeComplete = azEnvReady && (hasRoot ?? hasAnyRoot(roots));
   // Layout depends only on the derived graph and the theme's namespace palette — never on
   // container size or the pan/zoom viewport, so a resize or a drag can never re-run it
@@ -259,8 +273,8 @@ export function SankeyView({
     [tokens]
   );
   const layout = useMemo(
-    () => layoutSankey(graph, namespacePalette, podLayout, svmDisplay),
-    [graph, namespacePalette, podLayout, svmDisplay]
+    () => layoutSankey(graph, namespacePalette, podLayout, svmDisplay, weight),
+    [graph, namespacePalette, podLayout, svmDisplay, weight]
   );
 
   const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
@@ -317,7 +331,7 @@ export function SankeyView({
     }
     return null;
   })();
-  const empty = emptyKind === null ? null : emptyCopy(emptyKind, demoMode, mode);
+  const empty = emptyKind === null ? null : emptyCopy(emptyKind, demoMode, mode, weight);
   const chartReady = emptyKind === null;
 
   const onNodeEnter = (id: string, evt: MouseEvent): void => {
@@ -340,14 +354,14 @@ export function SankeyView({
     const flowLines: FlowLine[] =
       mode === 'both'
         ? [
-            flowLine(`in read ${formatBytesPerSec(sum(inboundLinks, 'read'))}`, 'read', tokens),
-            flowLine(`in write ${formatBytesPerSec(sum(inboundLinks, 'write'))}`, 'write', tokens),
-            flowLine(`out read ${formatBytesPerSec(sum(outboundLinks, 'read'))}`, 'read', tokens),
-            flowLine(`out write ${formatBytesPerSec(sum(outboundLinks, 'write'))}`, 'write', tokens),
+            flowLine(`in read ${formatWeight(sum(inboundLinks, 'read'), weight)}`, 'read', tokens),
+            flowLine(`in write ${formatWeight(sum(inboundLinks, 'write'), weight)}`, 'write', tokens),
+            flowLine(`out read ${formatWeight(sum(outboundLinks, 'read'), weight)}`, 'read', tokens),
+            flowLine(`out write ${formatWeight(sum(outboundLinks, 'write'), weight)}`, 'write', tokens),
           ]
         : [
-            flowLine(`in ${formatBytesPerSec(sum(inboundLinks))}`, mode, tokens),
-            flowLine(`out ${formatBytesPerSec(sum(outboundLinks))}`, mode, tokens),
+            flowLine(`in ${formatWeight(sum(inboundLinks), weight)}`, mode, tokens),
+            flowLine(`out ${formatWeight(sum(outboundLinks), weight)}`, mode, tokens),
           ];
     if (wrapper !== undefined) {
       setTip(
@@ -382,7 +396,7 @@ export function SankeyView({
     const dst = graph.nodes.find((g) => g.id === link.target);
     const derived = link.derived === true || isDerivedTier(link.tier);
     const ceilingTier = link.tier === 'svm-pvc';
-    const value = flowLine(`${link.direction}: ${formatBytesPerSec(link.value)}`, link.direction, tokens);
+    const value = flowLine(`${link.direction}: ${formatWeight(link.value, weight)}`, link.direction, tokens);
     const lines: TooltipLine[] = derived
       ? [
           `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
@@ -432,6 +446,7 @@ export function SankeyView({
           <div className="relative min-h-0 flex-1">
             <SankeyChart
               layout={layout}
+              weight={weight}
               tokens={tokens}
               viewport={zoom.viewport}
               hostProps={zoom.hostProps}

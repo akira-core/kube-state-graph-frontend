@@ -10,9 +10,9 @@
 // The significant-digit and byte helpers live in `shared/format/measurements` because the
 // promoted node attributes need them too, and `shared/` must not import a feature.
 
-import { RATIO_TO_PERCENT, formatBytes, formatSignificant } from '../../shared/format/measurements';
+import { RATIO_TO_PERCENT, formatBytes, formatOps, formatSignificant } from '../../shared/format/measurements';
 
-export { formatSignificant };
+export { formatOps, formatSignificant };
 
 // Above this many milliseconds the duration reads better in seconds: `2.5 s` is grasped at
 // a glance where `2500 ms` invites a decimal-place miscount.
@@ -41,11 +41,6 @@ export function formatDurationMs(durationMs: number): string {
     return `${formatSignificant(durationMs / MS_PER_SECOND)} s`;
   }
   return `${formatSignificant(durationMs)} ms`;
-}
-
-/** Storage IOPS, e.g. `150 ops/s`. Same significant-digit rule as the RED rate. */
-export function formatOps(ops: number): string {
-  return `${formatSignificant(ops)} ops/s`;
 }
 
 // Harvest reports volume latency in microseconds. Below this it reads better as µs; at or

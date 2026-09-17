@@ -2,10 +2,12 @@ import type cytoscape from 'cytoscape';
 
 import { isNodeStatus, worstStatus } from '../../shared/constants/colorByStatus';
 import type { NodeStatus } from '../../shared/constants/types';
-import { formatBytes } from '../../shared/format/measurements';
+import { formatBytes, formatOps } from '../../shared/format/measurements';
 import { EMPTY_STORAGE_GRAPH_ROOTS, recKind, type StorageGraphRoots } from '../graph-data';
 
 export type SankeyMode = 'read' | 'write' | 'both';
+/** Which measured pair becomes ribbon weight. Independent of `SankeyMode`. */
+export type SankeyWeight = 'throughput' | 'iops';
 /**
  * How SVMs are presented. `column` draws today's `netapp-svm` card column; `group` removes
  * it and wraps each SVM's PVCs into a frame in the PVC column instead — see "SVM display
@@ -213,14 +215,22 @@ export function resolveClaimAggregates(elements: readonly cytoscape.ElementDefin
   return resolved;
 }
 
-function metricOf(
+export function metricOf(
   metrics: cytoscape.EdgeIoMetrics | cytoscape.EdgeRedMetrics | undefined,
-  direction: SankeyDirection
+  direction: SankeyDirection,
+  weight: SankeyWeight = 'throughput'
 ): number | undefined {
   if (metrics === undefined || 'rate' in metrics) {
     return undefined;
   }
-  const value = direction === 'read' ? metrics.readBytesPerSec : metrics.writeBytesPerSec;
+  const value =
+    weight === 'iops'
+      ? direction === 'read'
+        ? metrics.readOps
+        : metrics.writeOps
+      : direction === 'read'
+        ? metrics.readBytesPerSec
+        : metrics.writeBytesPerSec;
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
@@ -440,7 +450,8 @@ export function deriveSankey(
   elements: readonly cytoscape.ElementDefinition[],
   mode: SankeyMode,
   roots: StorageGraphRoots = EMPTY_STORAGE_GRAPH_ROOTS,
-  svmDisplay: SankeySvmDisplay = 'column'
+  svmDisplay: SankeySvmDisplay = 'column',
+  weight: SankeyWeight = 'throughput'
 ): SankeyGraph {
   const nodes = indexNodes(elements);
   const claimAggregates = resolveClaimAggregates(elements);
@@ -540,7 +551,7 @@ export function deriveSankey(
 
   for (const edge of flowEdges) {
     for (const direction of directions) {
-      const value = metricOf(edge.metrics, direction);
+      const value = metricOf(edge.metrics, direction, weight);
       if (value === undefined) {
         continue;
       }
@@ -811,6 +822,10 @@ function sortSankey(graph: SankeyGraph): SankeyGraph {
 // unit table and the round-then-promote rule; this only appends the `/s`.
 export function formatBytesPerSec(value: number): string {
   return `${formatBytes(value)}/s`;
+}
+
+export function formatWeight(value: number, weight: SankeyWeight): string {
+  return weight === 'iops' ? formatOps(value) : formatBytesPerSec(value);
 }
 
 interface LinkIndex {

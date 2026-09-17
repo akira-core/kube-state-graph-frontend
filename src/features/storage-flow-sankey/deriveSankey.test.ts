@@ -841,4 +841,35 @@ describe('deriveSankey', () => {
       expect(graph.links.every((l) => l.source === aggr1.id)).toBe(true);
     });
   });
+
+  describe('weight family', () => {
+    it('IOPS weights taken as-is', () => {
+      const graph = deriveSankey(elements, 'read', undefined, 'column', 'iops');
+      const link = graph.links.find((l) => l.tier === 'svm-pvc' && l.target.includes('data-mongo-0'));
+      expect(link?.value).toBe(150);
+    });
+
+    it('Throughput is unchanged', () => {
+      const graph = deriveSankey(elements, 'read');
+      const link = graph.links.find((l) => l.tier === 'svm-pvc' && l.target.includes('data-mongo-0'));
+      expect(link?.value).toBe(5242880);
+    });
+
+    it('Bytes without ops is absent under IOPS', () => {
+      const iops = deriveSankey(elements, 'read', undefined, 'column', 'iops');
+      expect(iops.links.some((l) => l.target.includes('data-scratch'))).toBe(false);
+      const throughput = deriveSankey(elements, 'read');
+      expect(throughput.links.some((l) => l.target.includes('data-scratch') && l.tier === 'svm-pvc')).toBe(true);
+    });
+
+    it('Switching weight recomputes immediately', () => {
+      const throughput = deriveSankey(elements, 'read');
+      const iops = deriveSankey(elements, 'read', undefined, 'column', 'iops');
+      expect(throughput.links.find((l) => l.tier === 'svm-pvc' && l.target.includes('data-mongo-0'))?.value).toBe(
+        5242880
+      );
+      expect(iops.links.find((l) => l.tier === 'svm-pvc' && l.target.includes('data-mongo-0'))?.value).toBe(150);
+      expect(iops.links.find((l) => l.tier === 'pod-application' && l.source.includes('mongo-0'))?.value).toBe(150);
+    });
+  });
 });

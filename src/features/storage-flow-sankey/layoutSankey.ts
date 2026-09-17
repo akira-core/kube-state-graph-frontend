@@ -26,7 +26,7 @@ import {
 } from '../sankey-canvas';
 
 import {
-  formatBytesPerSec,
+  formatWeight,
   SANKEY_KIND_ORDER,
   type SankeyDirection,
   type SankeyGraph,
@@ -36,6 +36,7 @@ import {
   type SankeyNode,
   type SankeySvmDisplay,
   type SankeySvmFrame,
+  type SankeyWeight,
 } from './deriveSankey';
 import { locatableKind } from './locatable';
 
@@ -232,7 +233,11 @@ const NETAPP_KINDS: ReadonlySet<SankeyKind> = new Set(['netapp-node', 'netapp-ag
  * ONTAP cluster for the NetApp kinds, and `no flow` for a no-flow root), then one attribute
  * per line. Flow figures, status, health and perf are the tooltip's, never the card's.
  */
-export function cardText(node: SankeyNode, flow: ReadonlyMap<string, number>): SankeyCardText {
+export function cardText(
+  node: SankeyNode,
+  flow: ReadonlyMap<string, number>,
+  weight: SankeyWeight = 'throughput'
+): SankeyCardText {
   const cluster = NETAPP_KINDS.has(node.kind) && node.ontapCluster !== undefined ? ` · ${node.ontapCluster}` : '';
   const noFlow = node.noFlow === true ? ' · no flow' : '';
   const lines: string[] = [];
@@ -251,7 +256,7 @@ export function cardText(node: SankeyNode, flow: ReadonlyMap<string, number>): S
     lines.push(countWord(node.memberPodCount, 'pod'));
   }
   if (node.kind === LEAF_KIND) {
-    lines.push(`total ${formatBytesPerSec(flow.get(node.id) ?? 0)}`);
+    lines.push(`total ${formatWeight(flow.get(node.id) ?? 0, weight)}`);
   }
   return { subtitle: `${node.kind}${cluster}${noFlow}`, extraLines: lines };
 }
@@ -272,6 +277,7 @@ interface PlaceCtx {
    *  label, and a linear scan of `graph.nodes` inside that comparator is quadratic in the
    *  node count on every layout. */
   labelById: Map<string, string>;
+  weight: SankeyWeight;
   namespaceColor: Map<string, string>;
   leftSlotCy: Map<string, number>;
   rightSlotCy: Map<string, number>;
@@ -293,7 +299,7 @@ function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: P
         thickness: ctx.thickness(l.value),
       }));
 
-  const text = cardText(node, ctx.flow);
+  const text = cardText(node, ctx.flow, ctx.weight);
   // The slot stacks start below the attribute lines, as a trace hop's do below its header.
   const headerH = cardHeaderH(text.extraLines.length);
   const contentH = Math.max(stackHeight(incoming), stackHeight(outgoing), BODY_MIN);
@@ -468,7 +474,8 @@ export function layoutSankey(
   graph: SankeyGraph,
   namespacePalette: readonly string[],
   podLayout: SankeyPodLayout = 'flat',
-  svmDisplay: SankeySvmDisplay = 'column'
+  svmDisplay: SankeySvmDisplay = 'column',
+  weight: SankeyWeight = 'throughput'
 ): SankeyLayout {
   const flow = computeFlow(graph.links);
 
@@ -546,6 +553,7 @@ export function layoutSankey(
     incomingByNode,
     outgoingByNode,
     labelById: new Map(graph.nodes.map((n) => [n.id, n.label])),
+    weight,
     namespaceColor: podOrder.namespaceColor,
     leftSlotCy,
     rightSlotCy,

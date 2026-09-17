@@ -42,6 +42,18 @@ describe('sankey URL scope', () => {
     expect(parseSankeyScope(parse('mode=left')).mode).toBe('both');
   });
 
+  it('round-trips weight=iops and omits the default throughput', () => {
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&aggr=aggr1&weight=iops'));
+    expect(scope.weight).toBe('iops');
+    const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '6h' });
+    expect(qs).toContain('weight=iops');
+    expect(parseSankeyScope(parse('weight=bytes')).weight).toBe('throughput');
+    expect(parseSankeyScope(parse('az=zone-a&env=prod')).weight).toBe('throughput');
+    expect(
+      buildSearchString(serializeSankeyScope(EMPTY_SANKEY_URL_SCOPE), { kind: 'relative', window: '24h' })
+    ).not.toContain('weight');
+  });
+
   it('round-trips no layout key — layout is not URL state', () => {
     const scope = parseSankeyScope(parse('az=zone-a&env=prod&layout=node&group=node'));
     const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '24h' });

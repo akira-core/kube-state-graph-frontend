@@ -3,12 +3,13 @@ import { useMemo } from 'react';
 
 import type { StorageGraphRoots } from '../graph-data';
 
-import { resolveClaimAggregates, type SankeyMode } from './deriveSankey';
+import { resolveClaimAggregates, type SankeyMode, type SankeyWeight } from './deriveSankey';
 import { cutTopPods } from './topPods';
 
 export interface SankeyProjectionInputs {
   elements: cytoscape.ElementDefinition[];
   mode: SankeyMode;
+  weight?: SankeyWeight;
   topPods: number;
   /** The roots the drawn payload was requested with — the APPLIED ones. */
   roots: StorageGraphRoots;
@@ -62,13 +63,14 @@ export function reportsClaimAggregates(elements: readonly cytoscape.ElementDefin
 export function useSankeyProjection({
   elements,
   mode,
+  weight = 'throughput',
   topPods,
   roots,
 }: Readonly<SankeyProjectionInputs>): SankeyProjection {
   const podRootPresent = roots.pod.length > 0;
   const cut = useMemo(
-    () => (podRootPresent ? { elements, shown: 0, total: 0 } : cutTopPods(elements, mode, topPods)),
-    [elements, mode, podRootPresent, topPods]
+    () => (podRootPresent ? { elements, shown: 0, total: 0 } : cutTopPods(elements, mode, topPods, weight)),
+    [elements, mode, podRootPresent, topPods, weight]
   );
   const svmAvailable = useMemo(() => reportsClaimAggregates(cut.elements), [cut.elements]);
   const podCut = useMemo(

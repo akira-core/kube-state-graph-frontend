@@ -5,7 +5,7 @@ import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
 import { StatusLegend, Swatch } from '../sankey-canvas';
 import { useThemeTokens } from '../theme';
 
-import type { SankeyMode, SankeySvmDisplay } from './deriveSankey';
+import type { SankeyMode, SankeySvmDisplay, SankeyWeight } from './deriveSankey';
 import type { SankeyPodLayout } from './layoutSankey';
 import type { SankeyPodCut } from './useSankeyProjection';
 
@@ -13,6 +13,11 @@ const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
   { value: 'read', label: 'Read' },
   { value: 'write', label: 'Write' },
   { value: 'both', label: 'Both' },
+];
+
+const WEIGHT_OPTIONS: ReadonlyArray<SegmentedOption<SankeyWeight>> = [
+  { value: 'throughput', label: 'Throughput' },
+  { value: 'iops', label: 'IOPS' },
 ];
 
 const LAYOUT_OPTIONS: ReadonlyArray<SegmentedOption<SankeyPodLayout>> = [
@@ -37,6 +42,8 @@ const NOTE_CLASS = 'flex h-8 items-center whitespace-nowrap text-[11px] text-sec
 export interface SankeyViewControlsProps {
   mode: SankeyMode;
   onModeChange: (next: SankeyMode) => void;
+  weight: SankeyWeight;
+  onWeightChange: (next: SankeyWeight) => void;
   podLayout: SankeyPodLayout;
   onPodLayoutChange: (next: SankeyPodLayout) => void;
   /** The display drawn — `column` whenever `Group` is unavailable. */
@@ -49,13 +56,16 @@ export interface SankeyViewControlsProps {
 
 /**
  * The Storage Sankey's view controls, after the Query action in the scope bar: the mode,
- * how pods and SVMs are presented, what the Top pods cut hid, and what the marks mean.
+ * the weight family, how pods and SVMs are presented, what the Top pods cut hid, and what
+ * the marks mean.
  * None of them edits the draft or issues a request, and all stay operable in every empty
  * state.
  */
 export function SankeyViewControls({
   mode,
   onModeChange,
+  weight,
+  onWeightChange,
   podLayout,
   onPodLayoutChange,
   svmDisplay,
@@ -75,6 +85,17 @@ export function SankeyViewControls({
           options={MODE_OPTIONS}
           onChange={onModeChange}
           data-testid="sankey-mode"
+        />
+      </ControlField>
+      <ControlField label="Weight">
+        <Segmented
+          name="sankey-weight"
+          aria-label="Sankey weight"
+          size="md"
+          value={weight}
+          options={WEIGHT_OPTIONS}
+          onChange={onWeightChange}
+          data-testid="sankey-weight"
         />
       </ControlField>
       <ControlField label="Layout">

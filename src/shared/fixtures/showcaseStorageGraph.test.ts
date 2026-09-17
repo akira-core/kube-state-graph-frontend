@@ -120,4 +120,70 @@ describe('SHOWCASE_STORAGE_GRAPH', () => {
     expect(io(nodeAggr1?.metrics).read).toBe(mongo0Flow.read);
     expect(io(aggr1Svm?.metrics).read).toBe(mongo0Flow.read);
   });
+
+  const opsOf = (
+    metrics: cytoscape.EdgeDataDefinition['metrics']
+  ): { read: number | undefined; write: number | undefined } => {
+    if (metrics === undefined || 'rate' in metrics) {
+      return { read: undefined, write: undefined };
+    }
+    return { read: metrics.readOps, write: metrics.writeOps };
+  };
+
+  // dev-environment spec: "The storage fixture conserves ops on the mongo claims"
+  it('conserves ops on the mongo claims and keeps FlexGroup / orphan / pending bytes-only', () => {
+    const mongo0 = [
+      edges.find((e) => e.labels?.tier === 'node-aggr' && e.target === 'netapp/ontap-prod/aggr/aggr1'),
+      edges.find((e) => e.labels?.tier === 'aggr-svm' && e.source === 'netapp/ontap-prod/aggr/aggr1'),
+      edges.find((e) => e.target === 'pvc/data-mongo-0' && e.labels?.tier === 'svm-pvc'),
+      edges.find((e) => e.source === 'pvc/data-mongo-0' && e.labels?.tier === 'pvc-pod'),
+      edges.find((e) => e.source === 'pod/mongo-0' && e.labels?.tier === 'pod-node'),
+    ];
+    for (const edge of mongo0) {
+      expect(opsOf(edge?.metrics), edge?.id).toEqual({ read: 150, write: 40 });
+    }
+
+    const mongo1 = [
+      edges.find((e) => e.labels?.tier === 'node-aggr' && e.target === 'netapp/ontap-prod/aggr/aggr2'),
+      edges.find((e) => e.labels?.tier === 'aggr-svm' && e.source === 'netapp/ontap-prod/aggr/aggr2'),
+      edges.find((e) => e.target === 'pvc/data-mongo-1' && e.labels?.tier === 'svm-pvc'),
+      edges.find((e) => e.source === 'pvc/data-mongo-1' && e.labels?.tier === 'pvc-pod'),
+      edges.find((e) => e.source === 'pod/mongo-1' && e.labels?.tier === 'pod-node'),
+    ];
+    for (const edge of mongo1) {
+      expect(opsOf(edge?.metrics), edge?.id).toEqual({ read: 12, write: 3 });
+    }
+
+    const bytesOnly = [
+      edges.find((e) => e.target === 'pvc/data-scratch' && e.labels?.tier === 'svm-pvc'),
+      edges.find((e) => e.source === 'pvc/data-scratch' && e.target === 'pod/mongo-0'),
+      edges.find((e) => e.target === 'pvc/data-orphan'),
+      edges.find((e) => e.target === 'pvc/data-pending'),
+    ];
+    for (const edge of bytesOnly) {
+      const metrics = edge?.metrics;
+      expect(metrics, edge?.id).toBeDefined();
+      expect(metrics && !('rate' in metrics) ? metrics.readBytesPerSec : undefined, edge?.id).toBeGreaterThan(0);
+      expect(opsOf(metrics), edge?.id).toEqual({ read: undefined, write: undefined });
+    }
+  });
+
+  it('covers a storage-flow hop with both ops and one with throughput and neither ops field', () => {
+    const bothOps = edges.filter((e) => {
+      const m = e.metrics;
+      return m !== undefined && !('rate' in m) && m.readOps !== undefined && m.writeOps !== undefined;
+    });
+    const throughputNoOps = edges.filter((e) => {
+      const m = e.metrics;
+      return (
+        m !== undefined &&
+        !('rate' in m) &&
+        (m.readBytesPerSec !== undefined || m.writeBytesPerSec !== undefined) &&
+        m.readOps === undefined &&
+        m.writeOps === undefined
+      );
+    });
+    expect(bothOps.length).toBeGreaterThan(0);
+    expect(throughputNoOps.length).toBeGreaterThan(0);
+  });
 });
