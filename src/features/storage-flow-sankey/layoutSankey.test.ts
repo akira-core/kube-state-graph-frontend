@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
-import { CARD_W, LEAF_W, MIN_THICKNESS, ROW_MIN_H } from '../sankey-canvas';
+import {
+  CARD_LINE_H,
+  CARD_W,
+  endChevronPath,
+  LEAF_W,
+  MIN_THICKNESS,
+  ROW_MIN_H,
+  WRAPPER_HEADER_H,
+} from '../sankey-canvas';
 
-import { deriveSankey } from './deriveSankey';
-import { layoutSankey } from './layoutSankey';
+import { deriveSankey, formatBytesPerSec } from './deriveSankey';
+import { cardText, layoutSankey } from './layoutSankey';
 
 const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 const PALETTE = ['#111111', '#222222', '#333333'];
@@ -329,6 +337,141 @@ describe('layoutSankey', () => {
       expect(svmFrame!.locatable).toBe(false);
       expect(nodeWrapper!.locatable).toBe(true);
     });
+  });
+});
+
+describe('layoutSankey card text', () => {
+  /** Two claims with identical slots, one carrying usage and one not. */
+  function claimsWithAndWithoutUsage() {
+    return [
+      node('svm-u', 'netapp-svm'),
+      node('data-mongo-0', 'pvc', {
+        namespace: 'prod',
+        usage: { usedBytes: 700_000_000_000, capacityBytes: 1_000_000_000_000 },
+      }),
+      node('pvc-half', 'pvc', { namespace: 'prod', usage: { usedBytes: 500_000_000 } }),
+      node('pvc-none', 'pvc', { namespace: 'prod' }),
+      node('pod-full', 'pod', { namespace: 'prod' }),
+      node('pod-half', 'pod', { namespace: 'prod' }),
+      node('pod-none', 'pod', { namespace: 'prod' }),
+      flow('svm-u', 'data-mongo-0', 'svm-pvc', 100, 0),
+      flow('svm-u', 'pvc-half', 'svm-pvc', 100, 0),
+      flow('svm-u', 'pvc-none', 'svm-pvc', 100, 0),
+      flow('data-mongo-0', 'pod-full', 'pvc-pod', 100, 0),
+      flow('pvc-half', 'pod-half', 'pvc-pod', 100, 0),
+      flow('pvc-none', 'pod-none', 'pvc-pod', 100, 0),
+    ];
+  }
+
+  it('The three rows of a pvc box card', () => {
+    const layout = layoutSankey(deriveSankey(claimsWithAndWithoutUsage(), 'read'), PALETTE);
+    const card = layout.nodes.find((n) => n.label === 'data-mongo-0');
+    expect(card?.subtitle).toBe('pvc');
+    expect(card?.extraLines).toEqual(['ns/prod', 'usage 700 GB / 1 TB (70%)']);
+    // Both slot stacks start below the attribute lines.
+    for (const slot of [...(card?.leftSlots ?? []), ...(card?.rightSlots ?? [])]) {
+      expect(slot.cy - ROW_MIN_H / 2).toBeGreaterThanOrEqual((card?.y ?? 0) + 40 + 2 * CARD_LINE_H);
+    }
+  });
+
+  it('A card missing usage does not fill in zero', () => {
+    const layout = layoutSankey(deriveSankey(claimsWithAndWithoutUsage(), 'read'), PALETTE);
+    const full = layout.nodes.find((n) => n.label === 'data-mongo-0');
+    for (const label of ['pvc-half', 'pvc-none']) {
+      const card = layout.nodes.find((n) => n.label === label);
+      expect(card?.extraLines).toEqual(['ns/prod']);
+      expect(card?.extraLines.join(' ')).not.toMatch(/\b0 B\b/);
+      expect((full?.height ?? 0) - (card?.height ?? 0)).toBe(CARD_LINE_H);
+    }
+  });
+
+  it('namespace is a leaf card', () => {
+    const graph = deriveSankey(elements, 'both');
+    const layout = layoutSankey(graph, PALETTE);
+    const prod = layout.nodes.find((n) => n.kind === 'namespace' && n.label === 'prod');
+    const inflow = graph.links.filter((l) => l.target === prod?.id).reduce((sum, l) => sum + l.value, 0);
+    expect(prod?.subtitle).toBe('namespace');
+    expect(prod?.extraLines[0]).toMatch(/^\d+ pods?$/);
+    expect(prod?.extraLines[1]).toBe(`total ${formatBytesPerSec(inflow)}`);
+    expect(prod?.width).toBe(LEAF_W);
+    expect(prod?.rightSlots).toEqual([]);
+  });
+
+  it('names the ONTAP cluster on a NetApp subtitle and nothing else there', () => {
+    const layout = layoutSankey(deriveSankey(elements, 'both'), PALETTE);
+    const controller = layout.nodes.find((n) => n.label === 'ontap-prod-01');
+    expect(controller?.subtitle).toBe('netapp-node · ontap-prod');
+    expect(controller?.extraLines).toEqual([]);
+    const aggr1 = layout.nodes.find((n) => n.label === 'aggr1');
+    expect(aggr1?.subtitle).toBe('netapp-aggr · ontap-prod');
+    expect(aggr1?.extraLines).toEqual(['usage 700 GB / 1 TB (70%)']);
+    const pod = layout.nodes.find((n) => n.label === 'mongo-0');
+    expect(pod?.subtitle).toBe('pod');
+    expect(pod?.extraLines).toEqual(['ns/prod']);
+    const app = layout.nodes.find((n) => n.kind === 'application');
+    expect(app?.subtitle).toBe('application');
+    expect(app?.extraLines).toEqual(['ns/prod', '2 pods']);
+  });
+
+  it('ends a no-flow root subtitle in no flow', () => {
+    const body = [node('aggr9', 'netapp-aggr')];
+    const graph = deriveSankey(body, 'read', { ...EMPTY_STORAGE_GRAPH_ROOTS, aggr: ['aggr9'] });
+    const card = layoutSankey(graph, PALETTE).nodes.find((n) => n.label === 'aggr9');
+    expect(card?.subtitle).toBe('netapp-aggr · no flow');
+    // The cluster, when the node names one, sits between the kind and the no-flow mark.
+    expect(cardText({ ...graph.nodes[0]!, ontapCluster: 'ontap-lab' }, new Map()).subtitle).toBe(
+      'netapp-aggr · ontap-lab · no flow'
+    );
+  });
+});
+
+describe('layoutSankey wrappers and scale', () => {
+  it('A wrapper holds its pod cards', () => {
+    const layout = layoutSankey(deriveSankey(elements, 'both'), PALETTE, 'node');
+    const wrapper = layout.wrappers.find((w) => w.label === 'worker-0');
+    expect(wrapper?.subtitle).toBe('node · 2 pods');
+    const members = layout.nodes.filter((n) => wrapper!.memberIds.includes(n.id));
+    expect(members.map((n) => n.label).sort()).toEqual(['mongo-0', 'orphan-0']);
+    for (const card of members) {
+      expect(card.x).toBeGreaterThan(wrapper!.x);
+      expect(card.x + card.width).toBeLessThan(wrapper!.x + wrapper!.width);
+      expect(card.y).toBeGreaterThanOrEqual(wrapper!.y + WRAPPER_HEADER_H);
+      expect(card.y + card.height).toBeLessThanOrEqual(wrapper!.y + wrapper!.height);
+    }
+    // Ribbons end on the pod card inside the frame, never on the wrapper.
+    const mongo0 = members.find((n) => n.label === 'mongo-0')!;
+    const inbound = layout.links.filter((l) => l.target === mongo0.id);
+    expect(inbound.length).toBeGreaterThan(0);
+    expect(inbound.every((l) => mongo0.leftSlots.some((s) => s.linkKey === l.key))).toBe(true);
+    expect(layout.links.some((l) => l.source === wrapper!.id || l.target === wrapper!.id)).toBe(false);
+  });
+
+  it('Switching mode recomputes the scale', () => {
+    const both = layoutSankey(deriveSankey(elements, 'both'), PALETTE);
+    const write = layoutSankey(deriveSankey(elements, 'write'), PALETTE);
+    const bothMax = Math.max(...both.links.map((l) => l.value));
+    const writeMax = Math.max(...write.links.map((l) => l.value));
+    expect(writeMax).toBeLessThan(bothMax);
+    const heaviestWrite = write.links.find((l) => l.value === writeMax)!;
+    expect(heaviestWrite.thickness).toBeCloseTo(72, 5);
+    // The same write ribbon was thinner on the Both scale.
+    expect(both.links.find((l) => l.key === heaviestWrite.key)!.thickness).toBeLessThan(heaviestWrite.thickness);
+    expect(write.links.every((l) => l.direction === 'write')).toBe(true);
+  });
+});
+
+describe('layoutSankey chevrons', () => {
+  it('ends every ribbon, zero-weight ones included, in a rightward chevron at its target slot', () => {
+    for (const body of [elements, withZeroValueLink()]) {
+      const layout = layoutSankey(deriveSankey(body, 'both'), PALETTE);
+      expect(layout.links.length).toBeGreaterThan(0);
+      for (const link of layout.links) {
+        const target = layout.nodes.find((n) => n.id === link.target);
+        const slot = target?.leftSlots.find((s) => s.linkKey === link.key);
+        expect(slot).toBeDefined();
+        expect(link.chevron).toBe(endChevronPath(target!.x, slot!.cy, link.thickness, 1));
+      }
+    }
   });
 });
 

@@ -1,5 +1,6 @@
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 
+import { TrailingControls } from '../../shared/ui/ControlField';
 import { FilterIcon } from '../../shared/ui/icons';
 import { QueryButton } from '../../shared/ui/QueryButton';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
@@ -21,6 +22,8 @@ export interface TraceScopeBarProps {
   onQuery?: () => void;
   onCancel?: () => void;
   hideQuery?: boolean;
+  /** The page's view controls, after the Query action in the same row. */
+  trailing?: ReactNode;
 }
 
 const NUMBER_INPUT_CLASS =
@@ -76,6 +79,7 @@ export function TraceScopeBar({
   onQuery = () => undefined,
   onCancel = () => undefined,
   hideQuery = false,
+  trailing,
 }: Readonly<TraceScopeBarProps>): JSX.Element {
   const disabledReason = problems[0];
   return (
@@ -148,6 +152,8 @@ export function TraceScopeBar({
             onCancel={onCancel}
           />
         )}
+
+        {trailing !== undefined && <TrailingControls>{trailing}</TrailingControls>}
       </div>
 
       {problems.length > 1 && (

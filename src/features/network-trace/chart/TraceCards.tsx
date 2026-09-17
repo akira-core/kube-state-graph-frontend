@@ -6,7 +6,6 @@ import type { ThemeTokens } from '../../../shared/theme/tokens';
 import { haloStyle, SankeyCard, SankeyWrapperBox, type SlotLabel } from '../../sankey-canvas';
 import { DEVICE_KINDS, RES_GAP, RES_LEN } from '../layout/constants';
 import type { ClusterGeom, NodeGeom, Slot } from '../layout/types';
-import { locatable } from '../model/locatable';
 import type { TraceNode } from '../model/types';
 
 export interface TraceCardProps {
@@ -16,7 +15,6 @@ export interface TraceCardProps {
   faded: boolean;
   onEnter: (id: string, evt: MouseEvent) => void;
   onLeave: () => void;
-  onClick: (id: string) => void;
 }
 
 function slotLabels(g: NodeGeom): { left: SlotLabel[]; right: SlotLabel[] } {
@@ -28,13 +26,19 @@ function slotLabels(g: NodeGeom): { left: SlotLabel[]; right: SlotLabel[] } {
 }
 
 /**
+ * No trace card navigates anywhere: the Storage Graph draws a different body, so there is
+ * nothing for a click to locate. The card search frames a card within the chart instead.
+ */
+const noLocate = (): void => undefined;
+
+/**
  * Every trace card is the shared `SankeyCard` — the same box, border weights, status
  * colours and text sizes as a storage card — fed different text. What varies per role is
  * only: the dashed "device" border (k8s node / pod / NetApp, and a trace-stop leaf) and
  * the interface names beside a hop's slots. The text comes with the geometry: the layout
  * formatted it once when it sized the card.
  */
-export function TraceCard({ n, g, tokens, faded, onEnter, onLeave, onClick }: Readonly<TraceCardProps>): JSX.Element {
+export function TraceCard({ n, g, tokens, faded, onEnter, onLeave }: Readonly<TraceCardProps>): JSX.Element {
   const { text } = g;
   const isHop = n.kind === 'node';
   const dashed =
@@ -55,7 +59,7 @@ export function TraceCard({ n, g, tokens, faded, onEnter, onLeave, onClick }: Re
       tokens={tokens}
       {...(n.status !== null ? { status: n.status } : {})}
       dashed={dashed}
-      locatable={locatable(n)}
+      locatable={false}
       faded={faded}
       extraLines={text.extraLines}
       {...(isHop ? { slotLabels: slotLabels(g) } : {})}
@@ -63,7 +67,7 @@ export function TraceCard({ n, g, tokens, faded, onEnter, onLeave, onClick }: Re
       testId={`trace-node-${text.label !== '' ? text.label : n.id}`}
       onEnter={onEnter}
       onLeave={onLeave}
-      onClick={onClick}
+      onClick={noLocate}
     />
   );
 }
@@ -77,8 +81,6 @@ export interface TraceClusterProps {
   onEnter: (id: string, evt: MouseEvent) => void;
   onLeave: () => void;
 }
-
-const noLocate = (): void => undefined;
 
 /** A cluster frame around its member cards across the k8s columns; the title row hovers, nothing locates. */
 export function TraceClusterBox({

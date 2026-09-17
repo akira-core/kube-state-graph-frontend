@@ -1,6 +1,6 @@
 import { countWord } from '../../../shared/format/countWord';
 import { formatDeltaBps, formatUsage } from '../../../shared/format/measurements';
-import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, HEADER_H, LEAF_W } from '../../sankey-canvas';
+import { BODY_MIN, BODY_PAD_BOTTOM, CARD_LINE_H, CARD_W, cardHeaderH, HEADER_H, LEAF_W } from '../../sankey-canvas';
 import type { NodeUsage, TraceDirection, TraceModelOk, TraceNode } from '../model/types';
 import { sum, tracedEdges } from '../model/util';
 
@@ -219,12 +219,12 @@ export function cardText(n: TraceNode, model: TraceModelOk, table?: readonly str
 
 /** Header height of a hop box: title + subtitle, then one line per attribute (its `cardText` lines). */
 export function hopHeaderH(text: CardText): number {
-  return HEADER_H + CARD_LINE_H * text.extraLines.length;
+  return cardHeaderH(text.extraLines.length);
 }
 
 /** Natural height of a leaf-style card from its text alone (slots may make it taller). */
 export function leafCardH(text: CardText): number {
-  return HEADER_H + CARD_LINE_H * text.extraLines.length + BODY_PAD_BOTTOM;
+  return cardHeaderH(text.extraLines.length) + BODY_PAD_BOTTOM;
 }
 
 export const ANCHOR_MIN_H = HEADER_H + CARD_LINE_H + BODY_MIN;

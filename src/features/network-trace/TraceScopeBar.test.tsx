@@ -138,6 +138,21 @@ describe('TraceScopeBar', () => {
     expect(screen.getByTestId('trace-hostname')).toBeInTheDocument();
   });
 
+  it('renders the trailing view controls after Query, in the same row of trace-controls', () => {
+    renderBar({ trailing: <span data-testid="slot-probe">view controls</span> });
+    const probe = screen.getByTestId('slot-probe');
+    const row = screen.getByRole('button', { name: 'Query' }).closest('[data-testid="trace-controls"] > div');
+    expect(row?.contains(probe)).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'Query' }).compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
+
+  it('keeps the trailing view controls inside trace-controls when Query is hidden', () => {
+    renderBar({ hideQuery: true, trailing: <span data-testid="slot-probe">view controls</span> });
+    expect(screen.getByTestId('trace-controls')).toContainElement(screen.getByTestId('slot-probe'));
+  });
+
   it('editing a field issues no request and calls nothing but onDraftChange', () => {
     const { onQuery, onCancel } = renderBar();
     fireEvent.change(screen.getByTestId('trace-max-hops'), { target: { value: '9' } });

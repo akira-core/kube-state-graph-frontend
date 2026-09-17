@@ -1,5 +1,8 @@
 export { SankeyView } from './SankeyView';
 export { SankeyScopeBar } from './SankeyScopeBar';
+export { SankeyViewControls } from './SankeyViewControls';
+export { useSankeyProjection } from './useSankeyProjection';
+export type { SankeyPodCut, SankeyProjection } from './useSankeyProjection';
 export { useSankeyQuery } from './useSankeyQuery';
 export {
   deriveSankey,

@@ -1,15 +1,23 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type cytoscape from 'cytoscape';
+import { useState, type JSX } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { STATUS_COLOR } from '../../shared/constants/colorByStatus';
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
+import { DARK_TOKENS } from '../../shared/theme/tokens';
 import { EMPTY_STORAGE_GRAPH_ROOTS, normalizeGraph } from '../graph-data';
+import { SankeyCard } from '../sankey-canvas';
 import { ThemeProvider } from '../theme';
 
-import { deriveSankey } from './deriveSankey';
-import { layoutSankey } from './layoutSankey';
+import { deriveSankey, type SankeyMode, type SankeySvmDisplay } from './deriveSankey';
+import { layoutSankey, type SankeyPodLayout } from './layoutSankey';
+import { SankeyChart } from './SankeyChart';
+import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
 import { SankeyView, type SankeyViewProps } from './SankeyView';
+import { SankeyViewControls } from './SankeyViewControls';
+import { useSankeyProjection } from './useSankeyProjection';
 
 const { elements } = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
 
@@ -47,9 +55,22 @@ function withoutClaimAggregates(): cytoscape.ElementDefinition[] {
   });
 }
 
-type Overrides = Partial<SankeyViewProps>;
+/**
+ * The Storage Sankey page's composition around the view: the projection hook, the view
+ * controls the scope bar carries, and the transient state they switch. The view itself is
+ * prop-driven; these tests exercise it the way the page drives it.
+ */
+interface HarnessProps extends Omit<SankeyViewProps, 'mode' | 'podLayout' | 'svmDisplay'> {
+  topPods?: number;
+  mode?: SankeyMode;
+  onModeChange?: (next: SankeyMode) => void;
+  onPodLayoutChange?: (next: SankeyPodLayout) => void;
+  onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
+}
 
-function baseProps(overrides: Overrides = {}): SankeyViewProps {
+type Overrides = Partial<HarnessProps>;
+
+function baseProps(overrides: Overrides = {}): HarnessProps {
   return {
     elements,
     status: 'ready',
@@ -65,9 +86,83 @@ function baseProps(overrides: Overrides = {}): SankeyViewProps {
   };
 }
 
-/** The summary opens folded; every assertion about a table has to open it first. */
-function openSummary(): void {
-  fireEvent.click(screen.getByTestId('sankey-summary-toggle'));
+function Harness({
+  topPods = DEFAULT_TOP_PODS,
+  mode: initialMode = 'both',
+  onModeChange,
+  onPodLayoutChange,
+  onSvmDisplayChange,
+  ...view
+}: Readonly<HarnessProps>): JSX.Element {
+  const [mode, setMode] = useState<SankeyMode>(initialMode);
+  const [podLayout, setPodLayout] = useState<SankeyPodLayout>('flat');
+  const [svmDisplay, setSvmDisplay] = useState<SankeySvmDisplay>('column');
+  const roots = view.roots ?? EMPTY_STORAGE_GRAPH_ROOTS;
+  const projection = useSankeyProjection({ elements: view.elements, mode, topPods, roots });
+  const effectiveSvmDisplay = projection.svmAvailable ? svmDisplay : 'column';
+  return (
+    <>
+      {!view.focusMode && (
+        <SankeyViewControls
+          mode={mode}
+          onModeChange={(next) => {
+            setMode(next);
+            onModeChange?.(next);
+          }}
+          podLayout={podLayout}
+          onPodLayoutChange={(next) => {
+            setPodLayout(next);
+            onPodLayoutChange?.(next);
+          }}
+          svmDisplay={effectiveSvmDisplay}
+          onSvmDisplayChange={(next) => {
+            setSvmDisplay(next);
+            onSvmDisplayChange?.(next);
+          }}
+          svmAvailable={projection.svmAvailable}
+          podCut={projection.podCut}
+        />
+      )}
+      <SankeyView
+        {...view}
+        elements={projection.elements}
+        mode={mode}
+        podLayout={podLayout}
+        svmDisplay={effectiveSvmDisplay}
+      />
+    </>
+  );
+}
+
+function wrap(props: HarnessProps, theme?: 'dark' | 'light'): JSX.Element {
+  return (
+    <ThemeProvider {...(theme !== undefined ? { configTheme: theme } : {})}>
+      <div style={{ width: 800, height: 480 }}>
+        <Harness {...props} />
+      </div>
+    </ThemeProvider>
+  );
+}
+
+/** The colour a CSS color value normalises to, so a token and an inline style compare. */
+function cssColor(value: string): string {
+  const probe = document.createElement('div');
+  probe.style.color = value;
+  return probe.style.color;
+}
+
+/** The tooltip's rows, each with the colour it is painted in ('' when plain). */
+function tooltipRows(): Array<{ text: string; color: string }> {
+  return [...screen.getByRole('tooltip').children].map((row) => ({
+    text: row.textContent ?? '',
+    color: (row as HTMLElement).style.color,
+  }));
+}
+
+function rowStarting(prefix: string): { text: string; color: string } {
+  const row = tooltipRows().find((r) => r.text.startsWith(prefix));
+  expect(row, `tooltip row starting "${prefix}"`).toBeDefined();
+  return row!;
 }
 
 /** Mirrors `UNMEASURED_CONTAINER` — what the zoom controls fall back to with no layout. */
@@ -91,26 +186,14 @@ function layoutSize(): { w: number; h: number } {
   return { w: width, h: height };
 }
 
-function renderSankey(overrides: Overrides = {}): { props: SankeyViewProps; unmount: () => void } {
+function renderSankey(overrides: Overrides = {}): { props: HarnessProps; unmount: () => void } {
   const props = baseProps(overrides);
-  const { unmount } = render(
-    <ThemeProvider>
-      <div style={{ width: 800, height: 480 }}>
-        <SankeyView {...props} />
-      </div>
-    </ThemeProvider>
-  );
+  const { unmount } = render(wrap(props));
   return { props, unmount };
 }
 
-function renderSankeyWithProps(props: SankeyViewProps): ReturnType<typeof render> {
-  return render(
-    <ThemeProvider>
-      <div style={{ width: 800, height: 480 }}>
-        <SankeyView {...props} />
-      </div>
-    </ThemeProvider>
-  );
+function renderSankeyWithProps(props: HarnessProps): ReturnType<typeof render> {
+  return render(wrap(props));
 }
 
 describe('SankeyView', () => {
@@ -130,13 +213,7 @@ describe('SankeyView', () => {
     );
     expect(screen.queryByTestId('sankey-chart-host')).not.toBeInTheDocument();
 
-    rerender(
-      <ThemeProvider>
-        <div style={{ width: 800, height: 480 }}>
-          <SankeyView {...baseProps({ demoMode: false, hasRoot: true })} />
-        </div>
-      </ThemeProvider>
-    );
+    rerender(wrap(baseProps({ demoMode: false, hasRoot: true })));
     const host = screen.getByTestId('sankey-chart-host');
     const before = screen.getByTestId('sankey-zoom-controls').textContent;
     fireEvent.wheel(host, { deltaY: -600, clientX: 100, clientY: 100 });
@@ -149,13 +226,7 @@ describe('SankeyView', () => {
 
     // The operator unchecks the last root pill. The APPLIED selection (what was drawn) has
     // not changed; only the draft has, and the Query button says "Changes not applied".
-    rerender(
-      <ThemeProvider>
-        <div style={{ width: 800, height: 480 }}>
-          <SankeyView {...baseProps({ demoMode: false, hasRoot: false })} />
-        </div>
-      </ThemeProvider>
-    );
+    rerender(wrap(baseProps({ demoMode: false, hasRoot: false })));
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
     expect(screen.queryByTestId('sankey-empty-scope')).not.toBeInTheDocument();
   });
@@ -234,8 +305,7 @@ describe('SankeyView', () => {
     expect(screen.getAllByTestId(/^sankey-node-/).filter((el) => el.getAttribute('data-kind') === 'pod')).toHaveLength(
       10
     );
-    expect(screen.getByTestId('sankey-top-pods-label')).toHaveTextContent('Top 10 pods');
-    expect(screen.getByTestId('sankey-summary')).toHaveTextContent('10 of 15 pods');
+    expect(screen.getByTestId('sankey-top-pods-label')).toHaveTextContent('10 of 15 pods');
   });
 
   it('does not cut when a pod root is present, and drops wrappers with no kept pods', () => {
@@ -255,7 +325,7 @@ describe('SankeyView', () => {
     expect(screen.getAllByTestId(/^sankey-wrapper-[^t]/).length).toBe(1);
   });
 
-  it('shows awaiting Query when the draft is complete but nothing has been committed', () => {
+  it('shows awaiting Query when the draft is complete but nothing has been committed, controls operable', () => {
     renderSankey({
       demoMode: false,
       azEnvReady: true,
@@ -265,6 +335,11 @@ describe('SankeyView', () => {
       elements: [],
     });
     expect(screen.getByTestId('sankey-empty-awaiting')).toHaveTextContent('Query');
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^write$/i }));
+    expect(screen.getByRole('radio', { name: /^node$/i })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^write$/i })).toBeChecked();
+    expect(screen.getByTestId('sankey-empty-awaiting')).toBeInTheDocument();
   });
 
   it('shows cancelled when the only request was cancelled', () => {
@@ -367,13 +442,7 @@ describe('SankeyView', () => {
     fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr1'));
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
 
-    rerender(
-      <ThemeProvider>
-        <div style={{ width: 800, height: 480 }}>
-          <SankeyView {...baseProps({ elements: withoutAggr1() })} />
-        </div>
-      </ThemeProvider>
-    );
+    rerender(wrap(baseProps({ elements: withoutAggr1() })));
 
     expect(screen.queryByTestId('sankey-node-aggr1')).not.toBeInTheDocument();
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
@@ -387,13 +456,7 @@ describe('SankeyView', () => {
     fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr2'));
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
 
-    rerender(
-      <ThemeProvider>
-        <div style={{ width: 800, height: 480 }}>
-          <SankeyView {...baseProps({ elements: withoutAggr1() })} />
-        </div>
-      </ThemeProvider>
-    );
+    rerender(wrap(baseProps({ elements: withoutAggr1() })));
 
     expect(screen.getByTestId('sankey-node-aggr2')).toBeInTheDocument();
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
@@ -416,12 +479,173 @@ describe('SankeyView', () => {
     expect(screen.getByTestId('sankey-node-mongo-1').style.opacity).toBe('1');
   });
 
-  it('renders nodes as box cards with a title and a subtitle line, not a bare thin rect', () => {
+  it('renders nodes as box cards: a title, the kind on the subtitle and one attribute per line', () => {
     renderSankey();
     const card = screen.getByTestId('sankey-node-aggr1');
     expect(within(card).getByText('aggr1')).toBeInTheDocument();
-    // Subtitle carries the kind (and usage, when both used/capacity are present).
-    expect(card.textContent).toContain('netapp-aggr');
+    expect(within(card).getByText('netapp-aggr · ontap-prod')).toBeInTheDocument();
+    expect(
+      within(card)
+        .getAllByTestId('sankey-card-line')
+        .map((el) => el.textContent)
+    ).toEqual(['usage 700 GB / 1 TB (70%)']);
+  });
+
+  it('The shared card draws the same SVG', () => {
+    const layout = layoutSankey(deriveSankey(elements, 'both'), ['#000', '#111', '#222', '#333', '#444']);
+    const pod = layout.nodes.find((n) => n.label === 'mongo-0');
+    expect(pod?.subtitle).toBe('pod');
+    expect(pod?.extraLines).toEqual(['ns/prod']);
+    const noop = (): void => undefined;
+    const chart = renderToStaticMarkup(
+      <SankeyChart
+        layout={layout}
+        tokens={DARK_TOKENS}
+        viewport={{ scale: 1, tx: 0, ty: 0 }}
+        hostProps={{ ref: noop, onPointerDown: noop, onPointerMove: noop, onPointerUp: noop, onPointerCancel: noop }}
+        dragging={false}
+        lit={null}
+        onNodeEnter={noop}
+        onNodeLeave={noop}
+        onNodeClick={noop}
+        onLinkEnter={noop}
+        onLinkLeave={noop}
+        onKeyDown={noop}
+      />
+    );
+    const doc = new DOMParser().parseFromString(chart, 'text/html');
+    const storageCard = doc.querySelector('[data-testid="sankey-node-mongo-0"]');
+    storageCard?.querySelector('[data-testid="sankey-ns-stripe"]')?.remove();
+    // A trace card handed the same title, subtitle and attribute line.
+    const traceCard = renderToStaticMarkup(
+      <svg>
+        <SankeyCard
+          id={pod!.id}
+          label="mongo-0"
+          subtitle="pod"
+          extraLines={['ns/prod']}
+          kind="pod"
+          x={pod!.x}
+          y={pod!.y}
+          width={pod!.width}
+          height={pod!.height}
+          tokens={DARK_TOKENS}
+          dashed={false}
+          locatable={pod!.locatable}
+          faded={false}
+          {...(pod!.status !== undefined ? { status: pod!.status } : {})}
+          onEnter={noop}
+          onLeave={noop}
+          onClick={noop}
+        />
+      </svg>
+    );
+    const traceDoc = new DOMParser().parseFromString(traceCard, 'text/html');
+    expect(storageCard?.outerHTML).toBe(traceDoc.querySelector('[data-testid="sankey-node-mongo-0"]')?.outerHTML);
+  });
+
+  it('Every ribbon ends in a chevron', () => {
+    renderSankey();
+    const ribbons = screen.getAllByTestId(/^sankey-link-(read|write)$/);
+    const chevrons = screen.getAllByTestId('sankey-link-chevron');
+    expect(chevrons).toHaveLength(ribbons.length);
+    for (const chevron of chevrons) {
+      expect(chevron.getAttribute('fill')).toBe('none');
+      expect(chevron.getAttribute('stroke-opacity')).toBe('0.9');
+    }
+    fireEvent.mouseEnter(screen.getByTestId('sankey-node-aggr2'));
+    const opacities = screen.getAllByTestId('sankey-link-chevron').map((el) => el.getAttribute('stroke-opacity'));
+    expect(opacities).toContain('0.9');
+    expect(opacities).toContain('0.2');
+    // Each chevron fades with the ribbon drawn just before it.
+    for (const chevron of screen.getAllByTestId('sankey-link-chevron')) {
+      const ribbon = chevron.previousElementSibling;
+      expect(ribbon?.getAttribute('data-testid')).toMatch(/^sankey-link-(read|write)$/);
+      if (ribbon?.getAttribute('fill-opacity') === '0.14') {
+        expect(chevron.getAttribute('stroke-opacity')).toBe('0.2');
+      }
+      if (ribbon?.getAttribute('fill-opacity') === '0.82') {
+        expect(chevron.getAttribute('stroke-opacity')).toBe('0.9');
+      }
+    }
+    fireEvent.mouseLeave(screen.getByTestId('sankey-node-aggr2'));
+    expect(
+      screen.getAllByTestId('sankey-link-chevron').every((el) => el.getAttribute('stroke-opacity') === '0.9')
+    ).toBe(true);
+  });
+
+  describe('Flow rows are painted like their ribbons', () => {
+    function ribbonColor(direction: 'read' | 'write'): string {
+      return cssColor(screen.getAllByTestId(`sankey-link-${direction}`)[0]?.getAttribute('stroke') ?? '');
+    }
+
+    it('paints a card’s read and write rows in Both mode and leaves the rest plain', () => {
+      renderSankey();
+      const read = ribbonColor('read');
+      const write = ribbonColor('write');
+      expect(read).not.toBe(write);
+      fireEvent.mouseEnter(screen.getByTestId('sankey-node-data-mongo-0'));
+      expect(rowStarting('in read').color).toBe(read);
+      expect(rowStarting('out read').color).toBe(read);
+      expect(rowStarting('in write').color).toBe(write);
+      expect(rowStarting('out write').color).toBe(write);
+      for (const prefix of ['pvc / data-mongo-0', 'namespace', 'SVM', 'aggregate', 'status']) {
+        expect(rowStarting(prefix).color).toBe('');
+      }
+      expect(tooltipRows().find((r) => r.text.includes(' / ') && r.text.includes('GB'))?.color ?? '').toBe('');
+      fireEvent.mouseLeave(screen.getByTestId('sankey-node-data-mongo-0'));
+      // Raw perf readings and health are never painted: they are not flow.
+      fireEvent.mouseEnter(screen.getByTestId('sankey-node-ontap-prod-02'));
+      expect(rowStarting('cpu_busy_pct').color).toBe('');
+      expect(rowStarting('health').color).toBe('');
+      expect(rowStarting('in read').color).toBe(read);
+    });
+
+    it('paints a write link’s value row and leaves tier and ceiling plain', () => {
+      renderSankey();
+      const write = ribbonColor('write');
+      const link = screen.getAllByTestId('sankey-link-write').find((el) => {
+        fireEvent.mouseEnter(el);
+        const text = screen.queryByRole('tooltip')?.textContent ?? '';
+        fireEvent.mouseLeave(el);
+        return text.includes('svm_shop → data-mongo-0');
+      });
+      expect(link).toBeDefined();
+      fireEvent.mouseEnter(link!);
+      expect(rowStarting('write:').color).toBe(write);
+      expect(rowStarting('tier').color).toBe('');
+      for (const row of tooltipRows().filter((r) => r.text.startsWith('QoS ceiling'))) {
+        expect(row.color).toBe('');
+      }
+    });
+
+    it('paints a derived card’s rows and a wrapper’s rows the same way', () => {
+      renderSankey({ mode: 'read' });
+      const read = ribbonColor('read');
+      fireEvent.mouseEnter(screen.getByTestId('sankey-node-mongodb'));
+      expect(rowStarting('in ').text).toContain('derived from member pods');
+      expect(rowStarting('in ').color).toBe(read);
+      expect(rowStarting('application / mongodb').color).toBe('');
+      fireEvent.mouseLeave(screen.getByTestId('sankey-node-mongodb'));
+      fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+      fireEvent.mouseEnter(screen.getByTestId('sankey-wrapper-title-worker-0'));
+      expect(rowStarting('in ').color).toBe(read);
+      expect(rowStarting('out ').color).toBe(read);
+      expect(rowStarting('status').color).toBe('');
+    });
+
+    it('takes the new theme’s token after a theme switch', () => {
+      const colors: string[] = [];
+      for (const theme of ['dark', 'light'] as const) {
+        const { unmount } = render(wrap(baseProps(), theme));
+        fireEvent.mouseEnter(screen.getByTestId('sankey-node-data-mongo-0'));
+        const row = rowStarting('in read');
+        expect(row.color).toBe(ribbonColor('read'));
+        colors.push(row.color);
+        unmount();
+      }
+      expect(colors[0]).not.toBe(colors[1]);
+    });
   });
 
   it('lists a column header for every tier that has drawn nodes', () => {
@@ -456,7 +680,7 @@ describe('SankeyView', () => {
     expect(Object.values(STATUS_COLOR)).not.toContain(svmStroke);
   });
 
-  it('names the three status bands in the toolbar so a coloured border is readable', () => {
+  it('names the three status bands in the scope bar legend so a coloured border is readable', () => {
     renderSankey();
     const legend = screen.getByTestId('sankey-status-legend');
     for (const status of Object.keys(STATUS_COLOR)) {
@@ -473,41 +697,20 @@ describe('SankeyView', () => {
     expect(tip).toHaveTextContent('health online');
   });
 
-  it('lists each drawn card status in the summary table', () => {
-    renderSankey();
-    openSummary();
-    expect(screen.getAllByTestId('sankey-summary-status-warning').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('sankey-summary-status-critical').length).toBeGreaterThan(0);
-    const rows = screen.getAllByRole('row');
-    const derived = rows.filter((row) => row.textContent?.includes('mongodb') || row.textContent?.includes('prod'));
-    for (const row of derived) {
-      if (row.textContent?.includes('application') || row.textContent?.includes('namespace')) {
-        expect(row.textContent).toContain('n/a');
-      }
-    }
-  });
-
-  it('shows the node flow summary table and hides it once the graph is empty', () => {
-    const { unmount } = renderSankey();
-    expect(screen.getByTestId('sankey-summary')).toBeInTheDocument();
-    unmount();
-    renderSankey({ elements: [] });
+  it('draws no title bar and no summary: the chart is all the view draws around its canvas', () => {
+    render(
+      <ThemeProvider>
+        <div style={{ width: 800, height: 480 }}>
+          <SankeyView {...baseProps()} mode="both" podLayout="flat" svmDisplay="column" />
+        </div>
+      </ThemeProvider>
+    );
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+    expect(screen.queryByText('Storage flow')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-status-legend')).not.toBeInTheDocument();
     expect(screen.queryByTestId('sankey-summary')).not.toBeInTheDocument();
-  });
-
-  it('opens the summary folded and draws its tables only once it is expanded', () => {
-    renderSankey();
-    const toggle = screen.getByTestId('sankey-summary-toggle');
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    // Folded is not hidden: the strip still says what the tables would hold, so an estate
-    // with no numbers stays distinguishable from a panel that was merely closed.
-    expect(screen.getByTestId('sankey-summary')).toHaveTextContent(/nodes/);
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getAllByRole('table').length).toBeGreaterThan(0);
-    fireEvent.click(toggle);
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-summary-toggle')).not.toBeInTheDocument();
   });
 
   it('shows the zoom control bar only while a chart is actually drawn', () => {
@@ -639,10 +842,9 @@ describe('SankeyView', () => {
     expect(onFocusModeChange).toHaveBeenCalledWith(true);
   });
 
-  it('hides the toolbar and summary tables while focusMode is true', () => {
+  it('keeps the zoom control bar reachable while focusMode is true', () => {
     renderSankey({ focusMode: true });
     expect(screen.queryByRole('radio', { name: /both/i })).not.toBeInTheDocument();
-    expect(screen.queryByTestId('sankey-summary')).not.toBeInTheDocument();
     // The exit affordance stays reachable.
     expect(screen.getByTestId('sankey-zoom-controls')).toBeInTheDocument();
   });
@@ -679,13 +881,17 @@ describe('SankeyView', () => {
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
   });
 
-  it("shows the pod's namespace on its subtitle line", () => {
+  it("shows the pod's namespace on an attribute line", () => {
     renderSankey();
     const pod = screen.getByTestId('sankey-node-mongo-0');
-    expect(pod.textContent).toContain('ns/prod');
+    expect(
+      within(pod)
+        .getAllByTestId('sankey-card-line')
+        .map((el) => el.textContent)
+    ).toEqual(['ns/prod']);
   });
 
-  describe('box card subtitle: usage requires both fields, never a bare zero', () => {
+  describe('box card usage line: requires both fields, never a bare zero', () => {
     function node(id: string, kind: string, extra: Record<string, unknown> = {}): cytoscape.ElementDefinition {
       return { group: 'nodes', data: { id, label: id, kind, ...extra } };
     }
@@ -738,19 +944,31 @@ describe('SankeyView', () => {
   it('draws the read/write legend swatches from theme tokens, not a hardcoded color, in both themes', () => {
     const readByTheme: Record<'dark' | 'light', string | null> = { dark: null, light: null };
     for (const theme of ['dark', 'light'] as const) {
-      const { unmount } = render(
-        <ThemeProvider configTheme={theme}>
-          <div style={{ width: 800, height: 480 }}>
-            <SankeyView {...baseProps()} />
-          </div>
-        </ThemeProvider>
-      );
+      const { unmount } = render(wrap(baseProps(), theme));
       readByTheme[theme] = screen.getAllByTestId('sankey-link-read')[0]?.getAttribute('stroke') ?? null;
       unmount();
     }
     expect(readByTheme.dark).not.toBeNull();
     expect(readByTheme.light).not.toBeNull();
     expect(readByTheme.dark).not.toBe(readByTheme.light);
+  });
+
+  it('draws a wrapper as a solid frame titled with its pod count', () => {
+    renderSankey();
+    fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
+    const frame = screen.getByTestId('sankey-wrapper-worker-0').querySelector('rect');
+    expect(frame?.getAttribute('stroke-dasharray')).toBeNull();
+    expect(screen.getByTestId('sankey-wrapper-title-worker-0')).toHaveTextContent('node · 2 pods');
+  });
+
+  it('Switching mode recomputes immediately', () => {
+    renderSankey();
+    expect(screen.getAllByTestId('sankey-link-read').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('radio', { name: /^write$/i }));
+    expect(screen.queryAllByTestId('sankey-link-read')).toHaveLength(0);
+    expect(screen.getAllByTestId('sankey-link-write').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('sankey-legend-read')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-legend-write')).toBeInTheDocument();
   });
 
   it('defaults the layout control to Flat and remounts back to Flat', () => {
@@ -819,34 +1037,6 @@ describe('SankeyView', () => {
       return text.includes('derived from member pods') && text.includes('application');
     });
     expect(derivedLink).toBeDefined();
-  });
-
-  it('lists derived application rows in the summary and hides the table when no pod has an application', () => {
-    const { unmount } = renderSankey();
-    openSummary();
-    const table = screen.getByTestId('sankey-application-subtotal');
-    expect(table).toHaveTextContent('mongodb');
-    expect(table).toHaveTextContent('prod');
-    unmount();
-    renderSankey({
-      elements: [
-        { group: 'nodes', data: { id: 'c', label: 'c', kind: 'pvc' } },
-        { group: 'nodes', data: { id: 'p', label: 'p', kind: 'pod', namespace: 'jobs' } },
-        {
-          group: 'edges',
-          data: {
-            id: 'e',
-            source: 'c',
-            target: 'p',
-            edgeType: 'storage-flow',
-            labels: { tier: 'pvc-pod' },
-            metrics: { readBytesPerSec: 10, writeBytesPerSec: 0 },
-          },
-        },
-      ],
-    });
-    openSummary();
-    expect(screen.queryByTestId('sankey-application-subtotal')).not.toBeInTheDocument();
   });
 
   it('hides the layout control in focus mode', () => {
@@ -1021,33 +1211,6 @@ describe('SankeyView', () => {
     expect(screen.getByTestId('sankey-node-svmB').style.opacity).toBe('0.3');
   });
 
-  it('lists namespace subtotals in the summary and hides the table when no pod carries a namespace', () => {
-    const { unmount } = renderSankey();
-    openSummary();
-    expect(screen.getByText('Namespace flow subtotal')).toBeInTheDocument();
-    expect(screen.getByTestId('sankey-summary')).toHaveTextContent('prod');
-    unmount();
-    renderSankey({
-      elements: [
-        { group: 'nodes', data: { id: 'c', label: 'c', kind: 'pvc' } },
-        { group: 'nodes', data: { id: 'p', label: 'p', kind: 'pod' } },
-        {
-          group: 'edges',
-          data: {
-            id: 'e',
-            source: 'c',
-            target: 'p',
-            edgeType: 'storage-flow',
-            labels: { tier: 'pvc-pod' },
-            metrics: { readBytesPerSec: 10, writeBytesPerSec: 0 },
-          },
-        },
-      ],
-    });
-    openSummary();
-    expect(screen.queryByText('Namespace flow subtotal')).not.toBeInTheDocument();
-  });
-
   describe('SVM display', () => {
     it('defaults to Column and remounts back to Column', () => {
       const { unmount } = renderSankey();
@@ -1151,15 +1314,6 @@ describe('SankeyView', () => {
       expect(ribbon).toBeDefined();
       fireEvent.mouseEnter(ribbon!);
       expect(screen.getByRole('tooltip')).toHaveTextContent('SVM svm_shop');
-    });
-
-    it('emits one summary row per frame in place of the SVM card rows', () => {
-      renderSankey();
-      fireEvent.click(screen.getByRole('radio', { name: /^group$/i }));
-      openSummary();
-      const summary = screen.getByTestId('sankey-summary');
-      expect(summary).toHaveTextContent('svm_shop');
-      expect(within(summary).queryAllByText('svm_shop')).toHaveLength(1);
     });
 
     it('is transient and independent of the Layout switch', () => {
@@ -1289,13 +1443,7 @@ describe('SankeyView card search', () => {
   it('keeps the query across a refresh and drops hits the new body has no card for', () => {
     const { rerender } = renderSankeyWithProps(baseProps());
     type('aggr');
-    rerender(
-      <ThemeProvider>
-        <div style={{ width: 800, height: 480 }}>
-          <SankeyView {...baseProps({ elements: withoutAggr1() })} />
-        </div>
-      </ThemeProvider>
-    );
+    rerender(wrap(baseProps({ elements: withoutAggr1() })));
     expect(screen.getByTestId('sankey-search-input')).toHaveValue('aggr');
     expect(opacityOf('sankey-node-aggr2')).toBe('1');
     expect(opacityOf('sankey-node-mongo-1')).toBe('1');

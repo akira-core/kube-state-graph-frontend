@@ -171,7 +171,9 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 
 ### Requirement: Top pods projection
 
-The scope bar SHALL carry a **Top pods** control: an integer of at least `1`, default `10`, with an accessible name, applied by the app to the normalized storage-graph body after every successful load and **before** derivation. It keeps the K pods with the highest total inflow in the current mode (Both mode counts read plus write), ties broken by `label` ascending (`localeCompare`), among the pods that have at least one inbound `pvc-pod` link; pods with no such link (a no-flow root) are outside the ranking and unaffected. Every other pod is dropped, and with it every `pvc` / `netapp-svm` / `netapp-aggr` / `netapp-node` that no longer lies on a path to a kept pod, the dropped pods' `pod-node` edges, and under the `Node` layout any wrapper left without a kept pod. The derived `application` / `namespace` columns are computed from the kept pods only.
+The scope bar SHALL carry a **Top pods** control: an integer of at least `1`, default `10`, with an accessible name, applied by the app to the normalized storage-graph body after every successful load and **before** derivation. It keeps the K pods with the highest total inflow in the current mode (Both mode counts read plus write), ties broken by `label` ascending (`localeCompare`), among the pods that have at least one inbound `pvc-pod` link; pods with no such link (a no-flow root) are outside the ranking and unaffected. Every other pod is dropped, and with it every `pvc` / `netapp-svm` / `netapp-aggr` / `netapp-node` that no longer lies on a path to a kept pod, the dropped pods' `pod-node` edges, under the `Node` layout any wrapper left without a kept pod, and under the SVM display's `Group` any frame left without a kept PVC. The derived `application` / `namespace` columns are computed from the kept pods only.
+
+When the body reports claim aggregates (see "Flow chain and tier structure"), a kept claim's path runs through its claim aggregate only: an aggregate is kept when it is the claim aggregate of a kept PVC, not merely because it feeds a kept SVM, and a kept PVC without a claim aggregate keeps no aggregate. A body that reports no claim aggregates keeps every aggregate feeding a kept SVM, which is all such a body can say.
 
 This is the **one** client-side narrowing the view performs, and it narrows membership only: every kept link MUST keep the weight the backend gave it, and the app MUST NOT rescale, split or re-sum any hop — so a kept upstream ribbon may carry more than the kept downstream shows, which is the truth (the hidden pods still flow through that aggregate). The summary's header strip and the "Empty states" hints MUST therefore state how many pods are shown out of how many the body carried whenever the cut hid any, and the chart toolbar MUST name the cut (`Top 10 pods`) while it is in effect. When K is at least the number of ranked pods nothing is hidden and no such statement is shown. The cut MUST NOT mutate the normalized result (the deep-equality rule of "Input is its own storage-graph fetch" holds across it), MUST be re-applied on every refresh, and MUST be re-ranked on a mode switch, since the ranking is per direction.
 
@@ -202,11 +204,16 @@ The control MUST be unavailable — presented disabled, with text saying why —
 - **WHEN** the body carries 4 ranked pods and Top pods is `10`
 - **THEN** all 4 are drawn, the header strip states no hidden count, and the toolbar does not name a cut
 
+#### Scenario: The cut keeps only the kept claims' aggregates
+
+- **WHEN**, on the fixture, Top pods is `1` and `mongo-0` has the largest inflow, so `data-mongo-0` (claim aggregate `aggr1`) and the FlexGroup claim `data-scratch` are kept while `data-mongo-1` (claim aggregate `aggr2`) is not
+- **THEN** `aggr1` and `ontap-prod-01` are drawn; `aggr2`, its `aggr2 → svm_shop` link and `ontap-prod-02` are not, although `aggr2` feeds the kept `svm_shop`; and every drawn link carries the weight the backend gave it
+
 ### Requirement: Flow chain and tier structure
 
-The Sankey SHALL present seven columns from left to right, in the direction **storage → workload**: `netapp-node` → `netapp-aggr` → `netapp-svm` → `pvc` → `pod` → `application` → `namespace`. The first five are the backend's `storage-flow` tiers; the last two are **derived columns** walked up from each pod's `data.parent` chain (see "Derived columns" below). The Kubernetes `node` is **not a column under either layout**: the `pod-node` hop is a physical placement rather than a further flow, and its weights only restate the `pvc-pod` weights of the pods on that node. Under the `Node` layout a Kubernetes node is drawn as a wrapper around its pods inside the pod column instead (see "Layout switch: flat and node grouping"); under the `Flat` layout it is not drawn at all.
+The Sankey SHALL present seven columns from left to right, in the direction **storage → workload**: `netapp-node` → `netapp-aggr` → `netapp-svm` → `pvc` → `pod` → `application` → `namespace`. The first five are the backend's `storage-flow` tiers; the last two are **derived columns** walked up from each pod's `data.parent` chain (see "Derived columns" below). The Kubernetes `node` is **not a column under either layout**: the `pod-node` hop is a physical placement rather than a further flow, and its weights only restate the `pvc-pod` weights of the pods on that node. Under the `Node` layout a Kubernetes node is drawn as a wrapper around its pods inside the pod column instead (see "Layout switch: flat and node grouping"); under the `Flat` layout it is not drawn at all. Under the SVM display's `Group` the `netapp-svm` column is not drawn either: SVMs become frames around their PVCs inside the PVC column (see "SVM display switch: column and group").
 
-Links on the backend tiers MUST correspond one-to-one to the `storage-flow` edges in the body whose `labels.tier` is `node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod`; tier membership MUST be read from that label and MUST NOT be inferred from the endpoints' kinds. A `pod-node` edge MUST NOT produce a ribbon under either layout; it is consumed only to decide which wrapper a pod belongs to under the `Node` layout:
+Links on the backend tiers MUST correspond one-to-one to the `storage-flow` edges in the body whose `labels.tier` is `node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod`; tier membership MUST be read from that label and MUST NOT be inferred from the endpoints' kinds. Under `Group` an `aggr-svm` edge draws no ribbon, and an `svm-pvc` edge is drawn from its PVC's claim aggregate rather than from the SVM. A `pod-node` edge MUST NOT produce a ribbon under either layout; it is consumed only to decide which wrapper a pod belongs to under the `Node` layout:
 
 - The path of a **FlexGroup claim** starts at `svm-pvc` (no `node-aggr` / `aggr-svm`); its SVM has no inbound edge on the aggregate tier — this is a normal shape, MUST NOT be treated as a gap, and MUST NOT have a substitute node synthesized.
 - An **unscheduled pod** has no `pod-node` edge; it is drawn like any other pod, and under the `Node` layout it sits outside every wrapper.
@@ -214,7 +221,9 @@ Links on the backend tiers MUST correspond one-to-one to the `storage-flow` edge
   - This covers **two** shapes: a node with no edges at all, and a node that has edges but none of whose edges carries a measurement (see "Missing-value handling"). The latter cannot be decided by "has no edges".
   - The response's wire format **carries no root marker**, so the app MUST decide rootness from **the root selection at the time that request was issued**, with matching rules consistent with the backend: `node` matches the names of both `netapp-node` and Kubernetes `node`, `ontap_cluster` covers every controller / aggregate / SVM under it, `pod` matches `<namespace>/<pod>`; `pvc` is not a root kind, so a claim is never retained on this basis.
   - This decision is used only to **retain** nodes already present in the projection; it MUST NOT be used to remove any node — that would be the forbidden client-side root filtering, which breaks weight conservation. With all roots empty no node is retained on this basis, reverting to the single "no edges at all" shape.
-  - A `node` root that matched a **Kubernetes** node has a column only under the `Node` layout, where it is retained as a wrapper; under the `Flat` layout it is announced by a hint instead of drawn (see "Layout switch: flat and node grouping").
+  - A `node` root that matched a **Kubernetes** node has a column only under the `Node` layout, where it is retained as a wrapper; under the `Flat` layout it is not drawn, and no hint announces it (see "Layout switch: flat and node grouping").
+
+**Claim aggregates.** A PVC's **claim aggregate** is the `netapp-aggr` node its `labels.aggr` names, when that node is in the body: the backend sets the label to the id of the aggregate the claim's volume sits on, and omits it for a FlexGroup claim. A body **reports claim aggregates** when at least one PVC with an inbound `svm-pvc` edge carries `labels.aggr`. An `aggr-svm` edge is shared by every claim an SVM holds on that aggregate, so once an SVM spans aggregates only the claim aggregate says which one a PVC sits on. The hover walk, the Top pods cut, the `Group` presentation and the PVC tooltip read it, and the app MUST NOT infer it from the SVM's inbound hops.
 
 **Derived columns.** For every pod that has at least one drawn inbound `pvc-pod` link, the view SHALL walk that pod's `data.parent` chain upward and take the first ancestor whose kind is `application` and the first whose kind is `namespace`:
 
@@ -226,12 +235,12 @@ Links on the backend tiers MUST correspond one-to-one to the `storage-flow` edge
 
 Because every derived weight is a per-direction sum of values the backend already conserved, the derived columns are conserved by construction. The application and namespace cards are the only cards not produced by any edge in the body, and the derived links are the only links not backed by a `storage-flow` edge; both MUST be marked as derived in **the tooltip and the summary tables** (see "Labels and tooltips for nodes and links" and "Numeric summary outside the chart"). The mid-ribbon value label carries no marker: it is a bare formatted rate with room for nothing else, and a marker abbreviated to fit there would say less than the tooltip one hover away.
 
-An edge's `source` / `target` MUST resolve by id to nodes actually present in the body; otherwise that edge MUST be ignored. `storage-cluster`, `cluster`, `controller`, `service` and `switch` MUST NOT appear as cards; they exist only as `data.parent`. `application` and `namespace` appear **only** as derived-column cards, never from an edge; a Kubernetes `node` appears **only** as a wrapper under the `Node` layout.
+An edge's `source` / `target` MUST resolve by id to nodes actually present in the body; otherwise that edge MUST be ignored. `storage-cluster`, `cluster`, `controller`, `service` and `switch` MUST NOT appear as cards; they exist only as `data.parent`. `application` and `namespace` appear **only** as derived-column cards, never from an edge; a Kubernetes `node` appears **only** as a wrapper under the `Node` layout; an SVM appears as a card under the SVM display's `Column` and as a frame under `Group`.
 
 #### Scenario: The fixture derives seven columns
 
 - **WHEN** the Sankey is derived from the storage fixture (`SHOWCASE_STORAGE_GRAPH`) in Both mode
-- **THEN** the seven columns are respectively `ontap-prod-01` / `ontap-prod-02`, `aggr1` / `aggr2`, `svm_shop` / `svm_dr`, `data-mongo-0` / `data-mongo-1`, `mongo-0` / `mongo-1`, `mongodb`, `prod`
+- **THEN** the seven columns are respectively `ontap-prod-01` / `ontap-prod-02`, `aggr1` / `aggr2`, `svm_shop`, `data-mongo-0` / `data-mongo-1`, `mongo-0` / `mongo-1`, `mongodb`, `prod`
 - **AND** the backend-tier links fall into four groups by `labels.tier` (`node-aggr` / `aggr-svm` / `svm-pvc` / `pvc-pod`), the derived links are `mongo-0 → mongodb`, `mongo-1 → mongodb` and `mongodb → prod`, the `pod-node` edges produce no ribbon, and none of `storage-cluster/ontap-prod`, `prod/ctrl/StatefulSet/mongodb`, `node/worker-0`, `node/worker-1` appears as a card
 
 #### Scenario: Derived weights are per-direction sums of drawn links
@@ -258,6 +267,11 @@ An edge's `source` / `target` MUST resolve by id to nodes actually present in th
 
 - **WHEN** the user uses `aggr: aggr9` as root, and the body contains the `aggr9` node and its controller but no edges at all
 - **THEN** both nodes are drawn on their respective columns, marked as no-flow, and the view MUST NOT show the "no data" empty state
+
+#### Scenario: A claim aggregate is read from the PVC, never inferred
+
+- **WHEN** `svm_shop` has inbound `aggr-svm` edges from `aggr1` and `aggr2`, `data-mongo-0` carries a `labels.aggr` naming `aggr1`, `data-mongo-1` one naming `aggr2`, and the FlexGroup claim `data-scratch` carries none
+- **THEN** the claim aggregates of `data-mongo-0` and `data-mongo-1` are `aggr1` and `aggr2`, `data-scratch` has none, and none of the three is given an aggregate from `svm_shop`'s inbound edges
 
 ### Requirement: Layout switch: flat and node grouping
 
@@ -317,7 +331,7 @@ A link's weight MUST be read directly from that `storage-flow` edge's `data.metr
 
 For a `pvc-pod` link whose `labels.attribution` is `"split"`, the weight is the **attributed value** after evenly splitting an RWX claim, not a measured value; that link's tooltip MUST mark it as "split estimate". A link lacking that label MUST NOT be marked as an estimate.
 
-The **only** client-side summation is the one producing the derived `application` / `namespace` columns (see "Flow chain and tier structure"): it sums, per direction, the weights of links that are already drawn; it MUST NOT replace or adjust any backend link's weight, MUST NOT feed back into the five backend tiers, and MUST NOT be used to reconcile one backend tier against another. A derived link's value MUST be marked as derived from member pods in its tooltip and in the summary tables; the mid-ribbon value label is exempt (see "Flow chain and tier structure").
+The **only** client-side summations are the one producing the derived `application` / `namespace` columns (see "Flow chain and tier structure") and the totals of an SVM frame under the SVM display's `Group` (see "SVM display switch: column and group"): they sum, per direction, the weights of links that are already drawn; they MUST NOT replace or adjust any backend link's weight, MUST NOT feed back into the five backend tiers, and MUST NOT be used to reconcile one backend tier against another. Under `Group` an aggregate → PVC ribbon is the claim's `svm-pvc` edge drawn from its claim aggregate: its weight is that edge's own, re-sourced and never re-summed, and the `aggr-svm` weight it no longer passes through is drawn nowhere. A derived link's value and a frame's totals MUST be marked as derived from their members in the tooltip and in the summary tables; the mid-ribbon value label is exempt (see "Flow chain and tier structure").
 
 #### Scenario: Derived sums never touch backend weights
 
@@ -355,6 +369,11 @@ The view SHALL provide a mode selector with the options **Read** / **Write** / *
 
 - **WHEN** the user switches from Both to Write
 - **THEN** each edge keeps only its write link, the legend no longer shows the read item, and the app MUST NOT refetch
+
+#### Scenario: Group re-sources a claim's weight without re-summing
+
+- **WHEN** in Read mode under `Group`, SVM `svm_a` holds claims `pvc-1` (its `svm-pvc` edge read `700`) and `pvc-2` (read `300`), both with claim aggregate `aggr1`, and the `aggr1 → svm_a` edge carries read `1000`
+- **THEN** the ribbons `aggr1 → pvc-1` and `aggr1 → pvc-2` carry `700` and `300`, no drawn ribbon carries `1000`, and the `svm_a` frame's inflow of `1000` is marked derived from its PVCs
 
 ### Requirement: Missing-value handling (absent ≠ 0)
 
@@ -458,6 +477,8 @@ The `Node` layout's wrapper, which HIDES the Kubernetes node it stands for, MUST
 
 No text inside a box card MUST receive pointer events (`pointer-events: none`): text that takes events would cut off the hover highlight and tooltip of the ribbon beneath it.
 
+The box card and the wrapper are the shared `SankeyCard` and `SankeyWrapperBox` primitives of `sankey-canvas`, and the slot-stack placement (`stackHeight`, `placeStack`, the row minimum, the gap, the card widths and header height) comes from `sankey-canvas/geometry`; this view passes them its labels, subtitles, status, stroke style and slot positions and MUST NOT draw a card of its own. The rendered SVG for a given input is the same as before the primitives were shared.
+
 #### Scenario: The three rows of a pvc box card
 
 - **WHEN** the user views `data-mongo-0` (whose `usage` is `usedBytes` `700` GB and `capacityBytes` `1` TB)
@@ -498,6 +519,11 @@ No text inside a box card MUST receive pointer events (`pointer-events: none`): 
 - **WHEN** the layout is `Node` and the user views `worker-0`
 - **THEN** a solid-stroked wrapper titled `worker-0` with the subtitle `1 pod` encloses the `mongo-0` card; the `svm_shop → data-mongo-0 → mongo-0` ribbon ends at the `mongo-0` card's left edge inside the wrapper, and the wrapper itself has no slots
 
+#### Scenario: The shared card draws the same SVG
+
+- **WHEN** the storage fixture is rendered through `SankeyChart` before and after the card primitives moved to `sankey-canvas`
+- **THEN** the static markup of every card and wrapper is byte-identical
+
 ### Requirement: Links are gradient ribbons on a shared scale
 
 The thickness of every link MUST come from **one and the same** scale: the scale is the maximum thickness divided by the maximum weight among all **drawn** links in the current mode, and a link's thickness is max(minimum thickness, weight × scale). In Both mode the read and write families MUST share this one scale — scaling each separately would make their thicknesses incomparable. After a mode switch or a refetch the scale MUST be recomputed from the new maximum.
@@ -505,6 +531,8 @@ The thickness of every link MUST come from **one and the same** scale: the scale
 A ribbon MUST be a **filled area** bounded by cubic Bézier curves (not a constant-width stroked path), anchored at each end to the centre of the source and target slots, and filled with a linear gradient from the source end to the target end; both gradient stops MUST belong to that direction's (read / write) color family so that the direction remains recognisable.
 
 Hover highlighting MUST be done by a style switch driven by a class or CSS `:hover`, and MUST still revert in cases where `mouseleave` does not fire (the pointer leaving the browser window directly, a touch being interrupted, a pan starting): no link MUST ever be stuck in the highlighted style.
+
+The ribbon path generator and the thickness scale (`ribbonPath`, `thicknessScale`, `MIN_THICKNESS`, `MAX_THICKNESS`, `LABEL_MIN_THICKNESS`) are the shared ones in `sankey-canvas/geometry`, used by the network Sankey too; this view keeps its own gradients and mode colours.
 
 #### Scenario: Shared scale
 
@@ -537,12 +565,12 @@ Every drawn link MUST label the formatted bytes/sec value for its direction at t
 
 ### Requirement: Column headers
 
-Each of the seven columns MUST carry one header line at the top of its column, left to right `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Application`, `Namespace`; under the `Node` layout the pod column's header reads `Node / Pod` instead of `Pod`. Headers MUST be rendered in the secondary foreground color with wider letter spacing, and MUST NOT occupy node layout space (they do not push the box cards). When a column has no drawn node under the current mode, layout and estate / root selection, that column's header MUST NOT be drawn **and that column MUST NOT reserve horizontal space** — the remaining columns close up and the chart's intrinsic width shrinks with them. Not every estate resolves every column (a pod need not have an `application` ancestor), and a reserved empty column would put a gutter through the middle of the diagram and make "fit to window" scale the whole chart down to enclose it.
+Each of the seven columns MUST carry one header line at the top of its column, left to right `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Application`, `Namespace`; under the `Node` layout the pod column's header reads `Node / Pod` instead of `Pod`, and under the SVM display's `Group` the SVM column and its header are not drawn and the PVC column's header reads `SVM / PVC` instead of `PVC`. Headers MUST be rendered in the secondary foreground color with wider letter spacing, and MUST NOT occupy node layout space (they do not push the box cards). When a column has no drawn node under the current mode, layout and estate / root selection, that column's header MUST NOT be drawn **and that column MUST NOT reserve horizontal space** — the remaining columns close up and the chart's intrinsic width shrinks with them. Not every estate resolves every column (a pod need not have an `application` ancestor), and a reserved empty column would put a gutter through the middle of the diagram and make "fit to window" scale the whole chart down to enclose it.
 
 #### Scenario: Seven column headers
 
 - **WHEN** the Sankey is opened with the fixture in Both mode
-- **THEN** the seven column headers `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Application`, `Namespace` appear in order from left to right; after switching the layout to `Node` the fifth reads `Node / Pod`
+- **THEN** the seven column headers `NetApp node`, `NetApp aggregate`, `SVM`, `PVC`, `Pod`, `Application`, `Namespace` appear in order from left to right; after switching the layout to `Node` the fifth reads `Node / Pod`; after also switching the SVM display to `Group` the headers read `NetApp node`, `NetApp aggregate`, `SVM / PVC`, `Node / Pod`, `Application`, `Namespace`
 
 #### Scenario: An empty column has no header
 
@@ -584,13 +612,13 @@ The order after grouping MUST still be deterministic: groups are ordered by "the
 
 **Below** the chart there MUST be a separate numeric summary; these numbers MUST NOT be stuffed into node box cards:
 
-- **Node summary table**: one row per drawn card, including the derived `application` / `namespace` cards (the tier column names their column) and, under the `Node` layout, one row per wrapper (tier `node`, inflow being the sum of its pods' inflow, marked derived), with columns tier, `label`, total inflow and total outflow in the current mode, and the card's `status` shown as the same colored dot the border uses — the derived `application` / `namespace` rows show the missing-value placeholder in that column, since those cards carry no status (see "Nodes are presented as box cards"); `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Status and health are separate columns and MUST NOT be merged: `health` is one of the signals the backend folded into `status`, and a `netapp-node` can be `online` while its status is `critical`. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
+- **Node summary table**: one row per drawn card, including the derived `application` / `namespace` cards (the tier column names their column); under the `Node` layout, one row per wrapper (tier `node`, inflow being the sum of its pods' inflow, marked derived); and under the SVM display's `Group`, one row per SVM frame in place of the SVM card rows (tier `netapp-svm`, inflow being the sum of its PVCs' inflow, marked derived, status the missing-value placeholder). Its columns are tier, `label`, total inflow and total outflow in the current mode, and the card's `status` shown as the same colored dot the border uses — the derived `application` / `namespace` rows show the missing-value placeholder in that column, since those cards carry no status (see "Nodes are presented as box cards"); `pvc` / `netapp-aggr` additionally list usage, `netapp-aggr` / `netapp-node` additionally list health. Status and health are separate columns and MUST NOT be merged: `health` is one of the signals the backend folded into `status`, and a `netapp-node` can be `online` while its status is `critical`. Missing values MUST be presented with a missing-value placeholder, and MUST NOT be shown as `0`, `0 B` or `unknown`.
 - **Application subtotal table**: one row per application on the application column, with columns application, namespace, pod count and total flow in the current mode, ordered by total descending. When no drawn pod has an `application` ancestor, the whole table MUST NOT be drawn.
 - **Namespace subtotal table**: one row per namespace on the pod tier, with columns namespace, pod count and total flow in the current mode, ordered by total descending. When the pod tier has no pod carrying a namespace, the whole table MUST NOT be drawn.
 
 The summary MUST be **collapsible and MUST open collapsed**: the chart is what the view is for, and seven tiers make these tables tall enough to take half the column from it. Its header strip MUST stay drawn while collapsed, naming how many rows each table holds and, whenever the Top pods cut hid any pod, how many pods are shown out of how many the body carried (see "Top pods projection") — a summary that vanishes entirely is indistinguishable from an estate that has no numbers. The collapsed / expanded state is transient view state like the layout switch: it MUST NOT be written to the URL and MUST NOT be persisted, and it MUST return to collapsed after navigating away or a full refresh. Expanding or collapsing it changes the chart area's height and therefore MUST NOT move the zoom / pan viewport (see "Sizing and container resize").
 
-All tables MUST update in step with mode, layout, the Top pods cut, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), neither the tables nor the header strip MUST be drawn.
+All tables MUST update in step with mode, layout, the SVM display, the Top pods cut, estate / root selection and storage-graph refresh. When a table is too wide it MUST scroll horizontally inside its own container, and MUST NOT give the page a horizontal scrollbar. While an empty state is shown (see "Empty states"), neither the tables nor the header strip MUST be drawn.
 
 #### Scenario: The summary opens collapsed
 
@@ -627,11 +655,16 @@ All tables MUST update in step with mode, layout, the Top pods cut, estate / roo
 - **WHEN** the synthetic 1000-pod body is drawn with Top pods at `10`
 - **THEN** the collapsed header strip states `10 of 1000 pods` beside the row counts; after Top pods is raised to `1000` that statement disappears
 
+#### Scenario: A frame replaces its SVM's row
+
+- **WHEN** the fixture is drawn, the summary is expanded, and the SVM display is switched to `Group`
+- **THEN** the `svm_shop` row (tier `netapp-svm`) shows as inflow the sum of the inflow of `data-mongo-0`, `data-mongo-1` and `data-scratch`, marked derived, with the missing-value placeholder in the status column, and the PVC rows keep their figures
+
 ### Requirement: Labels and tooltips for nodes and links
 
 Every node MUST show its `label`. On hovering a node the tooltip MUST show:
 
-- The node kind and `label`; `pod` / `pvc` additionally show `namespace`; `netapp-aggr` / `netapp-svm` / `netapp-node` additionally show `ontap_cluster`.
+- The node kind and `label`; `pod` / `pvc` additionally show `namespace`; `pvc` additionally shows its SVM and, when it has a claim aggregate, that aggregate's `label`; `netapp-aggr` / `netapp-svm` / `netapp-node` additionally show `ontap_cluster`.
 - Total inflow and total outflow in bytes/sec for the current mode (in Both mode read / write listed separately).
 - `pvc` / `netapp-aggr`: when `usage` is present, show `used_bytes` / `capacity_bytes`; when `usage` or either field is missing, omit the item, and MUST NOT fill in `0`.
 - Any node the backend sent a `status` for: show it as-is, next to `health` rather than in place of it — `health` is one of the signals folded into `status`, and the two answer different questions. On a wrapper the status item MUST say it is the worst of the node and its members, the same way its flow items say they are derived from them. The derived `application` / `namespace` cards show **no** status item (see "Nodes are presented as box cards").
@@ -641,8 +674,9 @@ Every node MUST show its `label`. On hovering a node the tooltip MUST show:
 - A no-flow root node: MUST state explicitly "this node is a selected root with no flow in this time range".
 - `application` / `namespace`: the kind and `label`, the namespace (for an application), the member pod count, and the total inflow in the current mode marked **derived from member pods**; no status, usage, health, hardware or perf item (the body carries none for a group).
 - A wrapper under the `Node` layout (hovering its title row): kind `node`, `label`, member pod count, and the total inflow of its pods in the current mode marked derived; when the node is a no-flow root, the root statement above.
+- A frame under the SVM display's `Group` (hovering its title row): kind `netapp-svm`, `label`, `ontap_cluster`, member PVC count, and the total inflow of its PVCs in the current mode marked derived; no status item; when the SVM is a no-flow root, the root statement above.
 
-On hovering a link the tooltip MUST show the source `label`, target `label`, tier, direction (read / write) and weight value. A derived link (`pod → application`, `pod → namespace`, `application → namespace`) MUST show source, target, direction and weight, name its column pair in place of a backend tier, and mark the value as derived from member pods; it MUST NOT show a ceiling, latency or attribution item. An `svm-pvc` link additionally MUST show `max_bytes_per_sec` / `max_iops` informationally when present (marked as QoS ceiling); when missing they are omitted, and MUST NOT be shown as `0` or "unlimited"; when the measurement exceeds the ceiling the app MUST NOT color, warn or change the link's style. Links on other tiers MUST NOT show ceiling or latency fields (the backend does not provide them there). A link whose `labels.attribution` is `"split"` MUST be marked "split estimate".
+On hovering a link the tooltip MUST show the source `label`, target `label`, tier, direction (read / write) and weight value. A derived link (`pod → application`, `pod → namespace`, `application → namespace`) MUST show source, target, direction and weight, name its column pair in place of a backend tier, and mark the value as derived from member pods; it MUST NOT show a ceiling, latency or attribution item. An `svm-pvc` link additionally MUST show `max_bytes_per_sec` / `max_iops` informationally when present (marked as QoS ceiling); when missing they are omitted, and MUST NOT be shown as `0` or "unlimited"; when the measurement exceeds the ceiling the app MUST NOT color, warn or change the link's style. Under `Group` an aggregate → PVC ribbon is an `svm-pvc` link: its tooltip names the aggregate as source and the PVC as target, gives tier `svm-pvc` with the SVM the claim belongs to, and shows that edge's ceiling items as above. Links on other tiers MUST NOT show ceiling or latency fields (the backend does not provide them there). A link whose `labels.attribution` is `"split"` MUST be marked "split estimate".
 
 #### Scenario: Hovering an aggregate node
 
@@ -663,6 +697,11 @@ On hovering a link the tooltip MUST show the source `label`, target `label`, tie
 
 - **WHEN** the user hovers `mongodb` and then the read link of `mongodb → prod` in Both mode, where a member pod carries `status: "warning"`
 - **THEN** the card tooltip shows `application` / `mongodb` / namespace `prod` / `2 pods` and read / write inflow marked derived from member pods, with no status, usage or health item; the link tooltip shows `mongodb` → `prod`, read, the summed value marked derived, and no ceiling, latency or split item
+
+#### Scenario: Hovering a PVC names its SVM and aggregate
+
+- **WHEN** the user hovers `data-mongo-1`, then the FlexGroup claim `data-scratch`
+- **THEN** the first tooltip shows `pvc` / `data-mongo-1` / namespace `prod` / SVM `svm_shop` / aggregate `aggr2`; the second shows SVM `svm_shop` and no aggregate item
 
 ### Requirement: bytes/sec value formatting
 
@@ -694,12 +733,36 @@ This ladder MUST **share one implementation** with the Graph view's `usage` / th
 
 ### Requirement: Hover highlights the path
 
-On hovering a node, the view MUST highlight all links on every path passing through that node — that is, the union of all links reachable by walking back along inbound edges (upstream, toward the storage side) and all links reachable by walking along outbound edges (downstream, toward the workload side, through the derived links) — and fade the remaining links and nodes; in Both mode links of both the read and write directions are included. A link not on any path passing through that node (for example the outbound edges of other aggregates under the same controller) MUST NOT be highlighted. Hovering a wrapper's title row under the `Node` layout MUST highlight the union of its member pods' paths. After the mouse leaves, everything MUST revert to normal display. Hover highlighting MUST only change styles and MUST NOT trigger a re-layout.
+On hovering a node, the view MUST highlight all links on every path passing through that node — that is, the union of all links reachable by walking back along inbound edges (upstream, toward the storage side) and all links reachable by walking along outbound edges (downstream, toward the workload side, through the derived links) — and fade the remaining links and nodes; in Both mode links of both the read and write directions are included. A link not on any path passing through that node (for example the outbound edges of other aggregates under the same controller) MUST NOT be highlighted.
+
+When the body reports claim aggregates (see "Flow chain and tier structure"), a claim's path runs through its claim aggregate only. Walking up from a PVC, or from a pod downstream of it, crosses the PVC's SVM only over the `aggr-svm` link from its claim aggregate, and a PVC without a claim aggregate — a FlexGroup claim — stops at its SVM; walking down from an aggregate crosses an SVM only toward the PVCs whose claim aggregate it is. Hovering an SVM card lights every path through it. A body that reports no claim aggregates is walked over every link, which is all such a body can say. Under the SVM display's `Group` the aggregate → PVC ribbons are direct, and hovering a frame's title row MUST highlight the union of its member PVCs' paths.
+
+Hovering a wrapper's title row under the `Node` layout MUST highlight the union of its member pods' paths. After the mouse leaves, everything MUST revert to normal display. Hover highlighting MUST only change styles and MUST NOT trigger a re-layout.
 
 #### Scenario: Hovering a pvc highlights upstream and downstream
 
-- **WHEN** the user hovers `data-mongo-0` in Both mode
-- **THEN** the read and write links of `ontap-prod-01→aggr1`, `aggr1→svm_shop`, `svm_shop→data-mongo-0`, `data-mongo-0→mongo-0`, `mongo-0→mongodb`, `mongodb→prod` are all highlighted; the path on the `aggr2` side and `mongo-1→mongodb` are faded
+- **WHEN** the user hovers `data-mongo-0` in Both mode, where `svm_shop` is fed by `aggr1` and `aggr2` and `data-mongo-0`'s claim aggregate is `aggr1`
+- **THEN** the read and write links of `ontap-prod-01→aggr1`, `aggr1→svm_shop`, `svm_shop→data-mongo-0`, `data-mongo-0→mongo-0`, `mongo-0→mongodb`, `mongodb→prod` are all highlighted; `aggr2→svm_shop` and the rest of the `aggr2` side, `svm_shop→data-mongo-1` and `mongo-1→mongodb` are faded
+
+#### Scenario: Hovering an aggregate lights only its own claims
+
+- **WHEN** the user hovers `aggr2`, the claim aggregate of `data-mongo-1` and of no other PVC of `svm_shop`
+- **THEN** `ontap-prod-02→aggr2`, `aggr2→svm_shop`, `svm_shop→data-mongo-1`, `data-mongo-1→mongo-1`, `mongo-1→mongodb` and `mongodb→prod` are highlighted, while `svm_shop→data-mongo-0` and `svm_shop→data-scratch` are faded
+
+#### Scenario: A FlexGroup claim's path starts at its SVM
+
+- **WHEN** the user hovers the FlexGroup claim `data-scratch`, which has no claim aggregate
+- **THEN** `svm_shop→data-scratch` and its downstream links are highlighted, and no `aggr-svm` or `node-aggr` link is
+
+#### Scenario: Without claim aggregates every link is walked
+
+- **WHEN** the body reports no claim aggregates and the user hovers `data-mongo-0`
+- **THEN** both `aggr1→svm_shop` and `aggr2→svm_shop` are highlighted, with the `node-aggr` links above them
+
+#### Scenario: Hovering a frame highlights its claims' paths
+
+- **WHEN** under `Group` the user hovers the title row of the `svm_shop` frame
+- **THEN** `aggr1→data-mongo-0`, `aggr2→data-mongo-1`, the `node-aggr` links above them and every downstream link of the three PVCs are highlighted, and no layout recomputation occurs
 
 #### Scenario: Hovering a wrapper highlights its pods' paths
 
@@ -789,6 +852,8 @@ A container size change MUST NOT trigger a re-layout: the intrinsic coordinates 
 
 **All** nodes (including the orphaned cards of no-flow roots and, under the `Node` layout, every wrapper) MUST fall within the intrinsic coordinate frame computed by the layout: no-flow nodes hang below the flow chart of the same tier, and the layout MUST count them into the intrinsic height, otherwise "fit to window" cannot fit them — it scales by that intrinsic size, and a node outside the frame is indistinguishable from "the backend did not return that node".
 
+The SVG host (the `svg` without `viewBox`, the transform group and the column headers) is the shared `SankeyCanvas`, and the container measurement and the one-time opening fit are the shared `useContainerSize` and `useOpeningViewport` of `sankey-canvas`.
+
 #### Scenario: Window resize
 
 - **WHEN** the user resizes the window width from 1400px to 900px
@@ -808,6 +873,8 @@ The chart area MUST support in-chart zoom and pan independent of browser page zo
 - The zoom factor MUST have upper and lower bounds; on reaching a bound it MUST stop, and MUST NOT bounce back or flip.
 
 The initial viewport MUST be "fit to window but not enlarged beyond 1:1": when the chart is larger than the view area, shrink until the whole chart is visible; when smaller, keep the original size and centre it. Mode switches, layout switches, estate / root selection changes, theme switches, container resize and storage-graph refresh MUST preserve the current viewport. The viewport MUST NOT be written to the URL (the query carries only estate / roots / narrowing / mode and the time range), and MUST NOT be persisted; after the page remounts it MUST return to the initial viewport.
+
+The zoom / pan implementation (`useZoomPan`, `openingViewport`, `fitViewport`) is the shared one in `sankey-canvas`; the network Sankey uses the same hook, and this view's behaviour is unchanged by the move.
 
 #### Scenario: Zoom anchored at the pointer
 
@@ -830,6 +897,8 @@ While the chart is drawn, the chart area MUST show a row of zoom controls in its
 
 The chart-area container MUST be focusable (`tabindex`) and have an accessible name. The following keys MUST act only while **the chart-area container or one of its descendants** has focus: `+` / `-` zoom one step, `0` fit to window, `1` return to 1:1, `F` enter focus mode, `Esc` leave focus mode. These listeners MUST be registered on the chart-area container, MUST NOT be registered on `document` or `window` (see "Shell registers no global keyboard shortcuts" in `app-shell`), and MUST NOT intercept keys headed for the mode selector, the estate / root selectors or any input component.
 
+The control bar (`SankeyControlBar`), the keyboard handler (`useSankeyKeyboard`), the tooltip positioning (`useSankeyTooltip` / `SankeyTooltip`) and the status legend (`StatusLegend`) are the shared ones in `sankey-canvas`, used by both Sankey views; this view MUST NOT carry a second copy of any of them.
+
 #### Scenario: Empty state shows no control bar
 
 - **WHEN** the Sankey shows an empty state because the graph has no storage measurement
@@ -849,6 +918,11 @@ The chart-area container MUST be focusable (`tabindex`) and have an accessible n
 
 - **WHEN** focus is on the theme toggle in the nav bar and the user presses `0`
 - **THEN** the Sankey's viewport is unchanged, and the key was not intercepted by the Sankey
+
+#### Scenario: One keyboard handler serves both views
+
+- **WHEN** the repository is searched for the chart keyboard handler
+- **THEN** it is defined once, in `sankey-canvas`, and `SankeyView` and the network `TraceView` both import it
 
 ### Requirement: Focus mode
 
@@ -935,3 +1009,62 @@ The following bounds MUST hold on developer-machine / CI-grade hardware as used 
 
 - **WHEN** zoom and pan are performed 100 times in succession on the synthetic graph above
 - **THEN** the layout function is called 0 times, each update completes within one animation frame, and the nodes' intrinsic coordinates stay unchanged throughout
+
+### Requirement: SVM display switch: column and group
+
+The Sankey control bar SHALL provide a segmented control labelled `SVM`, beside `Layout`, with two segments: `Column` (default) and `Group`. It selects how SVMs are presented and nothing else: switching MUST NOT issue a request, and MUST NOT change the scope, the mode, the Top pods cut or any weight.
+
+- **`Column`**: SVMs are cards on their own column, as "Flow chain and tier structure" describes.
+- **`Group`**: the `netapp-svm` column is not drawn. Each SVM holding a drawn PVC becomes a **frame in the PVC column** around its PVCs. A PVC belongs to exactly one SVM, the source of its `svm-pvc` edge, so the containment is exact; an SVM could not wrap aggregates instead, which it shares with other SVMs. A frame has a title row carrying the SVM's `label` and a subtitle carrying its member PVC count; its PVCs are stacked beneath the title in the PVC column's own order ("Sorting within a tier"). Frames are ordered top to bottom by SVM `label`, lexicographically ascending (`localeCompare`) — an SVM is an inventory item the operator looks up by name. Ribbons attach to the PVC cards, never to a frame. A frame's border is neutral, since the backend judges no status for an SVM, and its title row, like an SVM card, is not locatable: `/v1/graph` has no SVM node. An SVM selected as a root whose PVCs are all undrawn is still drawn, as an empty frame marked no-flow.
+  - Each `svm-pvc` edge whose PVC has a **claim aggregate** (see "Flow chain and tier structure") is drawn from that aggregate straight to the PVC, one ribbon per direction, carrying the edge's own weight unchanged. `aggr-svm` edges draw no ribbon. A PVC without a claim aggregate — a FlexGroup claim — is drawn in its frame with no inbound ribbon; the view MUST NOT guess its aggregate from the SVM's inbound hops.
+- **Unavailable without claim aggregates.** When the body has PVCs with an inbound `svm-pvc` edge but **reports no claim aggregates**, the `Group` segment MUST be presented disabled, with text saying that the backend reports no claim aggregates, and the view draws as under `Column` — frames with no inbound flow would read as storage that carries nothing.
+
+The switch is **transient view state**, like `Layout`: it MUST NOT be written to the URL, MUST NOT be persisted, and MUST return to `Column` after the page remounts or a full refresh. It is independent of `Layout`, and the two combine: frames wrap PVCs while wrappers wrap pods. Switching MUST preserve the zoom / pan viewport, the mode, the estate / root / narrowing selections and — when the hovered card still exists — the hover highlight, and MUST complete within the redraw bound of "Performance bounds".
+
+#### Scenario: Group draws each aggregate straight to its claims
+
+- **WHEN**, on the fixture, `svm_shop` holds `data-mongo-0` on `aggr1` and `data-mongo-1` on `aggr2`, and the user switches the SVM display to `Group`
+- **THEN** no SVM column and no `SVM` header is drawn; the PVC column shows a frame `svm_shop` holding `data-mongo-0`, `data-mongo-1` and `data-scratch`; the ribbons `aggr1 → data-mongo-0` and `aggr2 → data-mongo-1` carry the weights of the `svm_shop → data-mongo-0` and `svm_shop → data-mongo-1` edges; no `aggr → svm` ribbon is drawn; and the storage-graph request count is unchanged
+
+#### Scenario: A FlexGroup claim sits in its frame with no aggregate ribbon
+
+- **WHEN** under `Group` the fixture's FlexGroup claim `data-scratch`, whose PVC carries no `labels.aggr`, is drawn
+- **THEN** it is inside the `svm_shop` frame with no inbound ribbon, its downstream ribbons are drawn as usual, and no aggregate is synthesized for it
+
+#### Scenario: Group is unavailable when no claim aggregate is reported
+
+- **WHEN** the body comes from a backend whose PVCs carry no `labels.aggr`
+- **THEN** the `Group` segment is disabled with text saying the backend reports no claim aggregates, and the chart draws as under `Column`
+
+#### Scenario: Frames are ordered by name
+
+- **WHEN** under `Group` the body holds SVMs `svm_b` (claims totalling 9 MB/s) and `svm_a` (claims totalling 1 MB/s)
+- **THEN** the frame `svm_a` is above the frame `svm_b`
+
+#### Scenario: The switch is transient and independent of the layout
+
+- **WHEN** the user switches the SVM display to `Group` and the layout to `Node`, then refreshes the page
+- **THEN** before the refresh PVCs are framed by SVM and pods wrapped by Kubernetes node; after it the two controls read `Column` and `Flat`; the address bar never carried either; and neither switch issued a request
+
+### Requirement: Card search
+
+The Storage flow Sankey SHALL show the card search of `sankey-canvas` "Card search overlay". The searchable records are exactly the cards the current drawing holds: every card in the layout (including derived `application` / `namespace` cards) and every wrapper it draws — a Kubernetes node wrapper under the `Node` layout, an SVM frame under the `Group` SVM display. A pod removed by the Top pods cut, or a wrapper the current layout does not draw, MUST NOT be a hit.
+
+- A card's fields are its `label`, `kind`, `namespace` and NetApp cluster (`ontap_cluster`); a wrapper's are its `label` and `kind` (`node` / `netapp-svm`), plus the NetApp cluster for an SVM frame. A PVC's `labels.svm` text is not a search field. A result's context line shows the namespace and NetApp cluster when present.
+- A hit's lit path is its "Hover highlights the path" set, claim-aware as described there; a wrapper hit lights the union of its member pods' paths and an SVM frame hit the union of its member PVCs' paths.
+- Matching and lighting MUST stay within one interaction: on the "Performance bounds" synthetic body with Top pods at `1000`, a query hitting every pod MUST match and compute the lit set within **100 ms**.
+
+#### Scenario: Searching an aggregate lights its claims only
+
+- **WHEN** in Both mode the user types `aggr1`
+- **THEN** `ontap-prod-01`, `aggr1`, `data-mongo-0`, `mongo-0`, `mongodb` and `prod` are lit, and `aggr2` and `mongo-1` are faded
+
+#### Scenario: A node wrapper is a hit under the Node layout
+
+- **WHEN** the layout is `Node` and the user types `worker-0`
+- **THEN** `mongo-0` and `orphan-0` are lit and `mongo-1` is faded
+
+#### Scenario: A refresh keeps the query
+
+- **WHEN** `aggr` is typed and a refresh drops `aggr1`
+- **THEN** the search box still reads `aggr`, and `aggr2` with its claim path is lit

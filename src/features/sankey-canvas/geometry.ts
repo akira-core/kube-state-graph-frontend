@@ -24,6 +24,11 @@ export const WRAPPER_HEADER_H = 40;
 /** Baseline step of one extra text line inside a card body (below the subtitle). */
 export const CARD_LINE_H = 13;
 
+/** Height of a card's header: title, subtitle and one CARD_LINE_H step per attribute line. */
+export function cardHeaderH(lines: number): number {
+  return HEADER_H + CARD_LINE_H * lines;
+}
+
 /** An axis-aligned box in content coordinates — a card's or a wrapper's frame. */
 export interface Rect {
   x: number;
@@ -94,4 +99,18 @@ export function ribbonPath(x1: number, y1: number, x2: number, y2: number, thick
 export function thicknessScale(maxValue: number): (value: number) => number {
   const scale = maxValue > 0 ? MAX_THICKNESS / maxValue : 0;
   return (value: number): number => Math.max(MIN_THICKNESS, value * scale);
+}
+
+/**
+ * The direction mark of an amount ribbon: an open chevron just inside the ribbon's target
+ * end (`x2`, `y2`), pointing the way the flow goes (`dir` +1 = rightward). Stroked, not
+ * filled, so it reads on the gradient's end colour; sized to the ribbon but never below a
+ * legible 3 px.
+ */
+export function endChevronPath(x2: number, y2: number, thickness: number, dir: 1 | -1): string {
+  const s = Math.max(3, Math.min(7, thickness / 2 - 1));
+  const n = (v: number): string => String(v);
+  const tip = x2 - dir * 2;
+  const tail = x2 - dir * (2 + s * 2);
+  return `M${n(tail)},${n(y2 - s)} L${n(tip)},${n(y2)} L${n(tail)},${n(y2 + s)}`;
 }

@@ -17,8 +17,10 @@ import {
   rootValueOptions,
   SankeyScopeBar,
   SankeyView,
+  SankeyViewControls,
   serializeSankeyScope,
   useRootCandidates,
+  useSankeyProjection,
   useSankeyQuery,
   type SankeyMode,
   type SankeyPodLayout,
@@ -209,6 +211,12 @@ export function SankeyPage(): JSX.Element {
     onDemo: setDemoModeValue,
   });
 
+  // The roots the drawn payload was requested with — the APPLIED ones. The draft's roots
+  // would re-gate the Top pods cut and root materialisation before Query.
+  const drawnRoots = config.demoMode ? controller.query.roots : applied.query.roots;
+  const projection = useSankeyProjection({ elements: storage.state.elements, mode, topPods, roots: drawnRoots });
+  const effectiveSvmDisplay: SankeySvmDisplay = projection.svmAvailable ? svmDisplay : 'column';
+
   return (
     <>
       {!focusMode && (
@@ -224,11 +232,23 @@ export function SankeyPage(): JSX.Element {
           onTopPods={onTopPods}
           hideQuery={config.demoMode}
           onRootKindChange={setRootKind}
+          trailing={
+            <SankeyViewControls
+              mode={mode}
+              onModeChange={onModeChange}
+              podLayout={podLayout}
+              onPodLayoutChange={setPodLayout}
+              svmDisplay={effectiveSvmDisplay}
+              onSvmDisplayChange={setSvmDisplay}
+              svmAvailable={projection.svmAvailable}
+              podCut={projection.podCut}
+            />
+          }
         />
       )}
       <main className="relative min-h-0 flex-1">
         <SankeyView
-          elements={storage.state.elements}
+          elements={projection.elements}
           status={storage.state.status}
           error={storage.state.error}
           hasPayload={storage.state.hasPayload}
@@ -237,19 +257,13 @@ export function SankeyPage(): JSX.Element {
           focusMode={focusMode}
           onFocusModeChange={setFocusMode}
           mode={mode}
-          onModeChange={onModeChange}
           endpointConfigured={storageConfigured}
           azEnvReady={azEnvReady}
           hasRoot={hasRoot}
-          topPods={topPods}
-          // The roots the drawn payload was requested with — the APPLIED ones. The draft's
-          // roots would re-gate the Top pods cut and root materialisation before Query.
-          roots={config.demoMode ? controller.query.roots : applied.query.roots}
+          roots={drawnRoots}
           onLocateNode={onLocateNode}
           podLayout={podLayout}
-          onPodLayoutChange={setPodLayout}
-          svmDisplay={svmDisplay}
-          onSvmDisplayChange={setSvmDisplay}
+          svmDisplay={effectiveSvmDisplay}
         />
       </main>
     </>

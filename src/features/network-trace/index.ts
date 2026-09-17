@@ -9,7 +9,10 @@ export {
   serializeTraceScope,
 } from './traceUrlScope';
 export type { TraceDraft, TraceUrlScope } from './traceUrlScope';
-export { TRACE_UNCONFIGURED_MESSAGE, TraceView } from './TraceView';
+export { TraceView } from './TraceView';
 export { TraceScopeBar } from './TraceScopeBar';
+export { TraceViewControls } from './TraceViewControls';
+export { useTraceModel } from './useTraceModel';
 export { useHostnameCandidates } from './useHostnameCandidates';
+export type { TraceNodeOrder } from './layout/layoutTrace';
 export type { TraceDirection, TraceGrouping, TraceModel } from './model';

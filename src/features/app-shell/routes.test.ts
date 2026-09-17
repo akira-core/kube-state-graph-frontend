@@ -1,29 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
-import { categoryHome, categoryOf, documentTitle, HOME_PATH, isKnownPath, routeFor, viewsOf } from './routes';
+import { ALIASES, documentTitle, HOME_PATH, isKnownPath, routeFor, ROUTES } from './routes';
 
 describe('routes', () => {
-  it('titles known routes and falls back to the bare app name', () => {
+  it('titles the three pages and falls back to the bare app name', () => {
     expect(documentTitle('/graph')).toBe('Kube State Graph — Graph');
+    expect(documentTitle('/sankey')).toBe('Kube State Graph — Sankey');
     expect(documentTitle('/network/sankey')).toBe('Kube State Graph — Network Sankey');
+    expect(documentTitle('/network/graph')).toBe('Kube State Graph');
     expect(documentTitle('/nope')).toBe('Kube State Graph');
   });
 
-  it('knows the four routes and the two aliases, nothing else', () => {
-    for (const p of ['/graph', '/sankey', '/network/graph', '/network/sankey', '/', '/network']) {
+  it('knows the three routes and the two aliases, nothing else', () => {
+    expect(ROUTES.map((r) => r.path)).toEqual(['/graph', '/sankey', '/network/sankey']);
+    for (const p of ['/graph', '/sankey', '/network/sankey', '/', '/network']) {
       expect(isKnownPath(p)).toBe(true);
     }
-    expect(isKnownPath('/network/bogus')).toBe(false);
-    expect(routeFor('/network/bogus')).toBeUndefined();
+    for (const p of ['/network/graph', '/network/bogus', '/networking', '/foo/bar']) {
+      expect(isKnownPath(p)).toBe(false);
+    }
+    expect(routeFor('/network/graph')).toBeUndefined();
   });
 
-  it('derives the nav from the table', () => {
-    expect(categoryOf('/network')).toBe('network');
-    expect(categoryOf('/network/sankey')).toBe('network');
-    expect(categoryOf('/networking')).toBe('storage');
-    expect(categoryHome('network')).toBe('/network/graph');
+  it('redirects each alias to a page and names the kind of each page', () => {
+    expect(ALIASES).toEqual({ '/': '/graph', '/network': '/network/sankey' });
     expect(HOME_PATH).toBe('/graph');
-    expect(viewsOf('storage').map((r) => r.path)).toEqual(['/graph', '/sankey']);
-    expect(viewsOf('network').every((r) => r.keepSearch)).toBe(true);
+    for (const target of Object.values(ALIASES)) {
+      expect(routeFor(target)).toBeDefined();
+    }
+    expect(ROUTES.map((r) => r.kind)).toEqual(['graph', 'sankey', 'sankey']);
   });
 });

@@ -85,52 +85,49 @@ describe('NavBar', () => {
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
   });
 
-  describe('category and view groups', () => {
-    function hrefsOf(group: HTMLElement): Record<string, string | null> {
-      return Object.fromEntries(
-        within(group)
-          .getAllByRole('link')
-          .map((link) => [link.textContent ?? '', link.getAttribute('href')])
-      );
-    }
+  describe('standalone pages', () => {
+    it('The nav bar links nowhere', () => {
+      for (const path of ['/graph', '/sankey', '/network/sankey']) {
+        const { unmount } = render(
+          <MemoryRouter initialEntries={[path]}>
+            <ThemeProvider>
+              <NavBar
+                demoMode
+                lastLoadedAt={null}
+                refreshing={false}
+                error={undefined}
+                refreshIntervalSeconds={0}
+                onReload={vi.fn()}
+                viewRange={{ kind: 'relative', window: '24h' }}
+                onRelative={vi.fn()}
+                onAbsolute={vi.fn()}
+              />
+            </ThemeProvider>
+          </MemoryRouter>
+        );
+        const nav = screen.getByRole('navigation', { name: 'Application' });
+        expect(within(nav).queryAllByRole('link')).toHaveLength(0);
+        expect(within(nav).getByText('Kube State Graph')).toBeInTheDocument();
+        expect(within(nav).getByRole('combobox', { name: 'View time range' })).toBeInTheDocument();
+        expect(within(nav).getByTestId('nav-status-readout')).toBeInTheDocument();
+        expect(within(nav).getByRole('button', { name: 'Reload data' })).toBeInTheDocument();
+        expect(within(nav).getByRole('combobox', { name: 'Theme' })).toBeInTheDocument();
+        expect(within(nav).getByTestId('demo-badge')).toBeInTheDocument();
+        unmount();
+      }
+    });
 
-    it('offers Storage and Network with the current one marked, on a storage path', () => {
+    it("The current view's link is presented as active", () => {
       renderNav({}, '/sankey');
-      const category = screen.getByRole('group', { name: 'Category' });
-      expect(category).toBe(screen.getByTestId('nav-category'));
-      expect(hrefsOf(category)).toEqual({ Storage: '/graph', Network: '/network/graph' });
-      expect(within(category).getByRole('link', { name: 'Storage' })).toHaveAttribute('aria-current', 'true');
-      expect(within(category).getByRole('link', { name: 'Network' })).not.toHaveAttribute('aria-current');
-    });
-
-    it('marks Network current on any /network path and links the category to its Graph without a query', () => {
-      renderNav({}, '/network/sankey?hostname=sw-tor-1&from=now-1h&to=now');
-      const category = screen.getByTestId('nav-category');
-      expect(within(category).getByRole('link', { name: 'Network' })).toHaveAttribute('aria-current', 'true');
-      expect(within(category).getByRole('link', { name: 'Storage' })).not.toHaveAttribute('aria-current');
-      expect(hrefsOf(category)).toEqual({ Storage: '/graph', Network: '/network/graph' });
-    });
-
-    it('holds exactly one Graph / Sankey pair carrying the query inside the Network category', () => {
-      renderNav({}, '/network/sankey?hostname=sw-tor-1&from=now-1h&to=now');
-      const view = screen.getByRole('group', { name: 'View' });
-      expect(within(view).getAllByRole('link')).toHaveLength(2);
-      expect(screen.getAllByRole('link', { name: 'Graph' })).toHaveLength(1);
-      expect(screen.getAllByRole('link', { name: 'Sankey' })).toHaveLength(1);
-      expect(hrefsOf(view)).toEqual({
-        Graph: '/network/graph?hostname=sw-tor-1&from=now-1h&to=now',
-        Sankey: '/network/sankey?hostname=sw-tor-1&from=now-1h&to=now',
-      });
-      expect(within(view).getByRole('link', { name: 'Sankey' })).toHaveAttribute('aria-current', 'page');
-      expect(within(view).getByRole('link', { name: 'Graph' })).not.toHaveAttribute('aria-current');
-    });
-
-    it('links the storage views without the query', () => {
-      renderNav({}, '/sankey?az=zone-a&env=prod');
-      const view = screen.getByTestId('nav-view');
-      expect(within(view).getAllByRole('link')).toHaveLength(2);
-      expect(hrefsOf(view)).toEqual({ Graph: '/graph', Sankey: '/sankey' });
-      expect(within(view).getByRole('link', { name: 'Sankey' })).toHaveAttribute('aria-current', 'page');
+      const nav = screen.getByRole('navigation', { name: 'Application' });
+      for (const name of ['Graph', 'Sankey', 'Storage', 'Network']) {
+        expect(within(nav).queryByRole('link', { name })).not.toBeInTheDocument();
+      }
+      expect(nav.querySelector('[aria-current]')).toBeNull();
+      expect(screen.queryByRole('group', { name: 'Category' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'View' })).not.toBeInTheDocument();
+      expect(screen.queryByTestId('nav-category')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('nav-view')).not.toBeInTheDocument();
     });
   });
 

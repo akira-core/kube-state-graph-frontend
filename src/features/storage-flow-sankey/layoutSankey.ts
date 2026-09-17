@@ -1,13 +1,14 @@
 import type { NodeStatus } from '../../shared/constants/types';
 import { countWord } from '../../shared/format/countWord';
-import { formatBytes } from '../../shared/format/measurements';
+import { formatUsage } from '../../shared/format/measurements';
 import {
   BODY_MIN,
   BODY_PAD_BOTTOM,
   CARD_W,
+  cardHeaderH,
   clamp,
   COL_GAP,
-  HEADER_H,
+  endChevronPath,
   LABEL_MIN_THICKNESS,
   LEAF_W,
   locatableKind,
@@ -79,6 +80,8 @@ export interface LayoutNode {
   /** Border colour, from the backend's folded verdict. Absent = neutral border. */
   status?: NodeStatus;
   subtitle: string;
+  /** One monospace attribute line each, under the subtitle (see `cardText`). */
+  extraLines: string[];
   dashed: boolean;
   isLeaf: boolean;
   /**
@@ -121,6 +124,8 @@ export interface LayoutLink {
   value: number;
   thickness: number;
   path: string;
+  /** The direction chevron inside the target end (see `sankey-canvas` `endChevronPath`). */
+  chevron: string;
   labelX: number;
   labelY: number;
   showLabel: boolean;
@@ -215,37 +220,40 @@ function orderPods(podNodes: SankeyNode[], flow: Map<string, number>): SankeyNod
   return orderPodTier(podNodes, flow, []).nodes;
 }
 
-function subtitleFor(node: SankeyNode, flow: Map<string, number>): string {
-  if (node.noFlow === true) {
-    return `${node.kind} · no flow`;
-  }
-  if (node.kind === 'application') {
-    const ns = node.namespace !== undefined ? ` · ns/${node.namespace}` : '';
-    const members = node.memberPodCount !== undefined ? ` · ${countWord(node.memberPodCount, 'pod')}` : '';
-    return `${node.kind}${ns}${members}`;
-  }
-  if (node.kind === 'pod' || node.kind === 'pvc') {
-    if (node.namespace !== undefined) {
-      return `${node.kind} · ns/${node.namespace}`;
-    }
+export interface SankeyCardText {
+  subtitle: string;
+  extraLines: string[];
+}
+
+const NETAPP_KINDS: ReadonlySet<SankeyKind> = new Set(['netapp-node', 'netapp-aggr', 'netapp-svm']);
+
+/**
+ * A card's text, shaped as a trace card's is: the kind alone on the subtitle (with the
+ * ONTAP cluster for the NetApp kinds, and `no flow` for a no-flow root), then one attribute
+ * per line. Flow figures, status, health and perf are the tooltip's, never the card's.
+ */
+export function cardText(node: SankeyNode, flow: ReadonlyMap<string, number>): SankeyCardText {
+  const cluster = NETAPP_KINDS.has(node.kind) && node.ontapCluster !== undefined ? ` · ${node.ontapCluster}` : '';
+  const noFlow = node.noFlow === true ? ' · no flow' : '';
+  const lines: string[] = [];
+  if ((node.kind === 'pod' || node.kind === 'pvc' || node.kind === 'application') && node.namespace !== undefined) {
+    lines.push(`ns/${node.namespace}`);
   }
   if (node.kind === 'pvc' || node.kind === 'netapp-aggr') {
     const used = node.usage?.usedBytes;
     const capacity = node.usage?.capacityBytes;
+    // Both halves or no line: a missing half is never filled in with 0.
     if (used !== undefined && capacity !== undefined) {
-      return `${node.kind} · ${formatBytes(used)} / ${formatBytes(capacity)}`;
+      lines.push(`usage ${formatUsage(used, capacity) ?? ''}`);
     }
   }
-  if (node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm') {
-    if (node.ontapCluster !== undefined) {
-      return `${node.kind} · ${node.ontapCluster}`;
-    }
+  if ((node.kind === 'application' || node.kind === LEAF_KIND) && node.memberPodCount !== undefined) {
+    lines.push(countWord(node.memberPodCount, 'pod'));
   }
   if (node.kind === LEAF_KIND) {
-    const members = node.memberPodCount !== undefined ? `${countWord(node.memberPodCount, 'pod')} · ` : '';
-    return `${node.kind} · ${members}${formatBytesPerSec(flow.get(node.id) ?? 0)}`;
+    lines.push(`total ${formatBytesPerSec(flow.get(node.id) ?? 0)}`);
   }
-  return node.kind;
+  return { subtitle: `${node.kind}${cluster}${noFlow}`, extraLines: lines };
 }
 
 function sortLinks(
@@ -285,19 +293,22 @@ function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: P
         thickness: ctx.thickness(l.value),
       }));
 
+  const text = cardText(node, ctx.flow);
+  // The slot stacks start below the attribute lines, as a trace hop's do below its header.
+  const headerH = cardHeaderH(text.extraLines.length);
   const contentH = Math.max(stackHeight(incoming), stackHeight(outgoing), BODY_MIN);
-  const height = HEADER_H + contentH + BODY_PAD_BOTTOM;
-  const leftOffsets = placeStack(incoming, HEADER_H, contentH);
-  const rightOffsets = placeStack(outgoing, HEADER_H, contentH);
+  const height = headerH + contentH + BODY_PAD_BOTTOM;
+  const leftOffsets = placeStack(incoming, headerH, contentH);
+  const rightOffsets = placeStack(outgoing, headerH, contentH);
   const leftSlots: LayoutSlot[] = incoming.map((slot, i) => ({
     linkKey: slot.linkKey,
     thickness: slot.thickness,
-    cy: y + (leftOffsets[i] ?? HEADER_H),
+    cy: y + (leftOffsets[i] ?? headerH),
   }));
   const rightSlots: LayoutSlot[] = outgoing.map((slot, i) => ({
     linkKey: slot.linkKey,
     thickness: slot.thickness,
-    cy: y + (rightOffsets[i] ?? HEADER_H),
+    cy: y + (rightOffsets[i] ?? headerH),
   }));
   for (const s of leftSlots) {
     ctx.leftSlotCy.set(s.linkKey, s.cy);
@@ -319,7 +330,8 @@ function placeCard(node: SankeyNode, x: number, y: number, width: number, ctx: P
     id: node.id,
     label: node.label,
     kind: node.kind,
-    subtitle: subtitleFor(node, ctx.flow),
+    subtitle: text.subtitle,
+    extraLines: text.extraLines,
     dashed: node.kind === 'netapp-node' || node.kind === 'netapp-aggr' || node.kind === 'netapp-svm',
     locatable: locatableKind(node.kind),
     isLeaf,
@@ -586,6 +598,8 @@ export function layoutSankey(
       value: l.value,
       thickness: t,
       path: ribbonPath(x1, y1, x2, y2, t),
+      // Every storage ribbon runs rightward, storage -> workload.
+      chevron: endChevronPath(x2, y2, t, 1),
       labelX: (x1 + x2) / 2,
       labelY: (y1 + y2) / 2,
       showLabel: t >= LABEL_MIN_THICKNESS,

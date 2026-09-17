@@ -50,12 +50,15 @@ async function stubConfig(
 // answers the same body whatever was asked, so the drawing tests ask for `destination`.
 const DRAWABLE_SCOPE = `hostname=${HOSTNAME}&track_dir=destination`;
 
-test('network sankey mount issues 0 requests until Query; views and Min Δ share the one payload', async ({ page }) => {
+test('network sankey mount issues 0 requests until Query; Min Δ redraws the one payload', async ({ page }) => {
   const urls = await stubConfig(page);
   await page.goto(`/network/sankey?${DRAWABLE_SCOPE}&from=now-1h&to=now`);
   await expect(page.getByTestId('trace-empty-awaiting')).toBeVisible({ timeout: 30_000 });
   expect(urls.trace).toHaveLength(0);
-  expect(page.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  await expect(page).toHaveTitle('Kube State Graph — Network Sankey');
+  // The shell links nowhere: the page is reached by its URL alone.
+  await expect(page.getByRole('navigation', { name: 'Application' }).getByRole('link')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Query' }).click();
   await expect(page.getByTestId('sankey-svg')).toBeVisible({ timeout: 30_000 });
@@ -71,46 +74,56 @@ test('network sankey mount issues 0 requests until Query; views and Min Δ share
   await expect(page).toHaveURL(new RegExp(`hostname=${HOSTNAME}`));
   await expect(page).toHaveURL(/track_dir=destination/);
 
-  // The Graph view of the same category draws the held payload: no request of its own.
-  await page.getByTestId('nav-view').getByRole('link', { name: 'Graph' }).click();
-  await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
-  expect(urls.trace).toHaveLength(1);
-  await expect(page).toHaveURL(/\/network\/graph\?/);
-  await expect(page).toHaveURL(/hostname=/);
-
-  await page.getByTestId('nav-view').getByRole('link', { name: 'Sankey' }).click();
-  await expect(page.getByTestId('sankey-svg')).toBeVisible();
-  expect(urls.trace).toHaveLength(1);
+  // The view controls and the legend sit in the scope bar, after Query; no row above the chart.
+  const bar = page.getByTestId('trace-controls');
+  for (const testId of ['trace-grouping', 'trace-order', 'trace-min-bps', 'trace-legend', 'trace-warnings-pill']) {
+    await expect(bar.getByTestId(testId)).toBeVisible();
+  }
+  await expect(page.getByTestId('trace-view').getByTestId('trace-legend')).toHaveCount(0);
+  await expect(page.getByTestId('trace-summary')).toHaveCount(0);
 
   // Min Δ is a display value: it redraws, writes the URL, and sends nothing.
-  await page.getByTestId('trace-min-bps').fill('5000000000');
-  await expect(page.getByTestId('trace-filtered-pill')).toBeVisible();
+  await bar.getByTestId('trace-min-bps').fill('5000000000');
+  await expect(bar.getByTestId('trace-filtered-pill')).toBeVisible();
   await expect(page).toHaveURL(/min_bps=5000000000/);
+  await expect(bar.getByTestId('trace-warnings-pill')).toHaveAttribute('title', /Display threshold > 5 Gbps/);
   expect(urls.trace).toHaveLength(1);
-  await page.getByTestId('trace-min-bps-clear').click();
-  await expect(page.getByTestId('trace-filtered-pill')).toHaveCount(0);
+  await bar.getByTestId('trace-min-bps-clear').click();
+  await expect(bar.getByTestId('trace-filtered-pill')).toHaveCount(0);
   await expect(page).not.toHaveURL(/min_bps=/);
+  expect(urls.trace).toHaveLength(1);
+
+  // No card navigates: a click leaves the page, the history and the request count alone.
+  const href = page.url();
+  const length = await page.evaluate(() => window.history.length);
+  const core = page.getByTestId('trace-node-Core 1');
+  await expect(core).toHaveAttribute('data-locatable', 'false');
+  // Dispatched, not a pointer click: where the fitted chart puts the card is not the point.
+  await core.dispatchEvent('click');
+  await expect(page).toHaveURL(href);
+  expect(await page.evaluate(() => window.history.length)).toBe(length);
   expect(urls.trace).toHaveLength(1);
 });
 
-test('without endpoints.trace both Network views say so, before and after Query, and send nothing', async ({
+test('without endpoints.trace the Network Sankey says so, before and after Query, and sends nothing', async ({
   page,
 }) => {
   const urls = await stubConfig(page, { traceConfigured: false });
-  await page.goto(`/network/graph?hostname=${HOSTNAME}&from=now-1h&to=now`);
-  const graphState = page.getByTestId('graph-unconfigured');
-  await expect(graphState).toContainText('Trace endpoint is not configured', { timeout: 30_000 });
-  await expect(page.getByTestId('graph-awaiting-query')).toHaveCount(0);
+  await page.goto(`/network/sankey?hostname=${HOSTNAME}&from=now-1h&to=now`);
+  const state = page.getByTestId('trace-empty-unconfigured');
+  await expect(state).toHaveText('Trace endpoint is not configured. The Storage pages are unaffected.', {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId('trace-empty-awaiting')).toHaveCount(0);
 
   // A hostname makes the draft valid, so Query is offered. Pressing it has nowhere to send
-  // to: the Graph view keeps naming the cause instead of claiming nothing was requested.
+  // to: the page keeps naming the cause instead of claiming nothing was requested.
   await page.getByRole('button', { name: 'Query' }).click();
-  await expect(graphState).toBeVisible();
-  await expect(page.getByTestId('graph-awaiting-query')).toHaveCount(0);
+  await expect(state).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reload data' })).toBeDisabled();
-
-  await page.getByTestId('nav-view').getByRole('link', { name: 'Sankey' }).click();
-  await expect(page.getByTestId('trace-empty-unconfigured')).toContainText('Trace endpoint is not configured');
+  // The scope bar, view controls included, stays operable.
+  await page.getByTestId('trace-grouping').getByText('Cluster').click();
+  await expect(page.getByRole('radio', { name: 'Cluster' })).toBeChecked();
   expect(urls.trace).toHaveLength(0);
 });
 
@@ -165,29 +178,41 @@ test('an invalid URL value disables Query with its reason and sends nothing', as
   expect(urls.trace).toHaveLength(0);
 });
 
-test('/network redirects to /network/graph keeping the query', async ({ page }) => {
-  await stubConfig(page);
+test('/network redirects to /network/sankey keeping the query', async ({ page }) => {
+  const urls = await stubConfig(page);
   await page.goto(`/network?hostname=${HOSTNAME}`);
-  await expect(page).toHaveURL(/\/network\/graph\?/);
+  await expect(page).toHaveURL(/\/network\/sankey\?/);
   await expect(page).toHaveURL(new RegExp(`hostname=${HOSTNAME}`));
   await expect(page.getByTestId('trace-controls')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('trace-empty-awaiting')).toBeVisible();
+  expect(urls.trace).toHaveLength(0);
 });
 
-test('demo mode draws the trace fixture on both Network views without a Query control', async ({ page }) => {
+test('/network/graph is the not-found page and sends no trace request', async ({ page }) => {
+  const urls = await stubConfig(page);
+  await page.goto(`/network/graph?hostname=${HOSTNAME}&from=now-1h&to=now`);
+  await expect(page.getByText('Page not found')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('navigation', { name: 'Application' })).toBeVisible();
+  await expect(page.getByTestId('trace-controls')).toHaveCount(0);
+  await expect(page.getByTestId('graph-canvas')).toHaveCount(0);
+  await expect(page).toHaveTitle('Kube State Graph');
+  await page.waitForTimeout(500);
+  expect(urls.trace).toHaveLength(0);
+});
+
+test('demo mode draws the trace fixture on the Network Sankey without a Query control', async ({ page }) => {
   const urls = await stubConfig(page, { demoMode: true });
   await page.goto('/network/sankey');
   await expect(page.getByTestId('sankey-svg')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Query' })).toHaveCount(0);
-  await expect(page.getByTestId('trace-legend-back')).toBeVisible();
-  await expect(page.getByTestId('trace-legend-own')).toBeVisible();
-  await expect(page.getByTestId('trace-legend-lateral')).toBeVisible();
+  const bar = page.getByTestId('trace-controls');
+  await expect(bar.getByTestId('trace-legend-back')).toBeVisible();
+  await expect(bar.getByTestId('trace-legend-own')).toBeVisible();
+  await expect(bar.getByTestId('trace-legend-lateral')).toBeVisible();
   // The merged sankey-panel samples: the dci-uturn start, and the stitched k8s / client ToRs.
   await expect(page.getByTestId('trace-node-Core 1')).toBeVisible();
   await expect(page.getByTestId('trace-node-ToR k8s (k8s)')).toBeVisible();
   await expect(page.getByTestId('trace-node-kafka-2')).toBeVisible();
   await expect(page.getByTestId('trace-node-網管部 王小明')).toBeVisible();
-
-  await page.getByTestId('nav-view').getByRole('link', { name: 'Graph' }).click();
-  await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
   expect(urls.trace).toHaveLength(0);
 });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { startTransition } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,19 +10,15 @@ import { ThemeProvider } from '../theme';
 import { AppShell } from './AppShell';
 
 vi.mock('../graph-view', () => ({
-  GraphView: (props: { locateNodeId?: string | null; onLocateConsumed?: () => void; unconfiguredMessage?: string }) => (
-    <div
-      data-testid="graph-view"
-      data-locate={props.locateNodeId ?? ''}
-      data-unconfigured={props.unconfiguredMessage ?? ''}
-    >
+  GraphView: (props: { locateNodeId?: string | null; onLocateConsumed?: () => void }) => (
+    <div data-testid="graph-view" data-locate={props.locateNodeId ?? ''}>
       <button onClick={() => props.onLocateConsumed?.()}>consume-locate</button>
     </div>
   ),
 }));
 
-// Only the chart is stubbed. The scope bar stays real, because the shell tests
-// below assert on what actually reaches the storage-graph URL.
+// Only the chart is stubbed. The scope bar — with its view controls — stays real, because
+// the shell tests below assert on what actually reaches the storage-graph URL.
 vi.mock('../storage-flow-sankey', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../storage-flow-sankey')>();
   return {
@@ -31,12 +27,11 @@ vi.mock('../storage-flow-sankey', async (importOriginal) => {
       focusMode: boolean;
       onFocusModeChange: (next: boolean) => void;
       onLocateNode: (id: string) => void;
-      onPodLayoutChange?: (next: 'flat' | 'node') => void;
+      podLayout: string;
     }) => (
-      <div data-testid="sankey-view" data-focus-mode={props.focusMode}>
+      <div data-testid="sankey-view" data-focus-mode={props.focusMode} data-pod-layout={props.podLayout}>
         <button onClick={() => props.onFocusModeChange(!props.focusMode)}>toggle-sankey-focus</button>
         <button onClick={() => props.onLocateNode('netapp/ontap-prod/aggr/aggr1')}>locate-aggr1</button>
-        <button onClick={() => props.onPodLayoutChange?.('node')}>layout-node</button>
       </div>
     ),
   };
@@ -104,6 +99,21 @@ function renderAt(path: string, config: RuntimeConfig = DEMO): ReturnType<typeof
   return mount(config);
 }
 
+/**
+ * Enter another page by its URL inside the running app — the way Back / Forward and a
+ * typed link do. The shell links nowhere, so a test cannot click its way between pages.
+ */
+function goTo(path: string): void {
+  act(() => {
+    window.history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+}
+
+function navLinks(): HTMLElement[] {
+  return within(screen.getByRole('navigation', { name: 'Application' })).queryAllByRole('link');
+}
+
 describe('AppShell routing', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/');
@@ -131,7 +141,26 @@ describe('AppShell routing', () => {
   it('renders Sankey at /sankey', () => {
     renderAt('/sankey');
     expect(screen.getByTestId('sankey-view')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Sankey' })).toHaveAttribute('aria-current', 'page');
+    expect(document.title).toBe('Kube State Graph — Sankey');
+  });
+
+  it('The nav bar links nowhere', () => {
+    for (const path of ['/graph', '/sankey', '/network/sankey']) {
+      const { unmount } = renderAt(path, DEMO);
+      expect(navLinks()).toHaveLength(0);
+      expect(screen.queryByTestId('nav-category')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('nav-view')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reload data' })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('Tab titles name the page', () => {
+    const { unmount } = renderAt('/graph');
+    expect(document.title).toBe('Kube State Graph — Graph');
+    unmount();
+    renderAt('/sankey');
+    expect(document.title).toBe('Kube State Graph — Sankey');
   });
 
   it('shows not-found for unknown paths and keeps the nav', async () => {
@@ -217,24 +246,28 @@ describe('AppShell routing', () => {
     expect(screen.queryByTestId('demo-badge')).not.toBeInTheDocument();
   });
 
-  it('hides the top nav while Sankey is in focus mode, and restores it on exit', async () => {
+  it('hides the top nav and the scope bar with its view controls while Sankey is in focus mode', async () => {
     const user = userEvent.setup();
     renderAt('/sankey', DEMO);
     expect(screen.getByRole('navigation')).toBeInTheDocument();
+    expect(screen.getByTestId('sankey-view-controls')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'toggle-sankey-focus' }));
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-controls')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Sankey mode' })).not.toBeInTheDocument();
     expect(screen.getByTestId('sankey-view')).toHaveAttribute('data-focus-mode', 'true');
 
     await user.click(screen.getByRole('button', { name: 'toggle-sankey-focus' }));
     expect(screen.getByRole('navigation')).toBeInTheDocument();
+    expect(screen.getByTestId('sankey-view-controls')).toBeInTheDocument();
   });
 
   it('drops focus mode when the user navigates away from Sankey by other means (browser back)', async () => {
     const user = userEvent.setup();
     renderAt('/graph', DEMO);
-    await user.click(screen.getByRole('link', { name: 'Sankey' }));
-    await waitFor(() => expect(window.location.pathname).toBe('/sankey'));
+    goTo('/sankey');
+    await waitFor(() => expect(screen.getByTestId('sankey-view')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'toggle-sankey-focus' }));
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -275,7 +308,7 @@ describe('AppShell routing', () => {
     await waitFor(() => {
       expect(screen.getByTestId('filter-bar')).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    goTo('/sankey');
     await waitFor(() => {
       expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
     });
@@ -452,7 +485,7 @@ describe('AppShell two data sources', () => {
       expect(graphCalls(fetchMock)).toBe(1);
     });
     expect(screen.queryByTestId('sankey-view')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    goTo('/sankey');
     await waitFor(() => {
       expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
     });
@@ -466,7 +499,9 @@ describe('AppShell two data sources', () => {
       expect(storageCalls(fetchMock)).toBeGreaterThanOrEqual(1);
     });
     const graphsBeforeReturn = graphCalls(fetchMock);
-    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
+    act(() => {
+      window.history.back();
+    });
     await waitFor(() => {
       expect(screen.getByTestId('graph-view')).toBeInTheDocument();
     });
@@ -485,7 +520,7 @@ describe('AppShell two data sources', () => {
     await waitFor(() => {
       expect(graphCalls(fetchMock)).toBe(1);
     });
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    goTo('/sankey');
     await chooseSankey('sankey-az', 'zone-a');
     await chooseSankey('sankey-env', 'prod');
     await addTypedRoot('aggr1');
@@ -511,7 +546,7 @@ describe('AppShell two data sources', () => {
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
   });
 
-  it('does not refetch storage-graph when switching the Sankey layout', async () => {
+  it('does not refetch storage-graph when switching the Sankey layout in the scope bar', async () => {
     const fetchMock = stubFetch();
     renderAt('/sankey?az=zone-a&env=prod&aggr=aggr1', live);
     await waitFor(() => {
@@ -522,8 +557,83 @@ describe('AppShell two data sources', () => {
       expect(storageCalls(fetchMock)).toBeGreaterThanOrEqual(1);
     });
     const before = storageCalls(fetchMock);
-    fireEvent.click(screen.getByRole('button', { name: 'layout-node' }));
+    const search = window.location.search;
+    fireEvent.click(screen.getByRole('radio', { name: 'Node' }));
+    expect(screen.getByTestId('sankey-view')).toHaveAttribute('data-pod-layout', 'node');
     expect(storageCalls(fetchMock)).toBe(before);
+    expect(window.location.search).toBe(search);
+  });
+
+  it('keeps the view controls operable before any Query, writing mode to the URL with no request', async () => {
+    const fetchMock = stubFetch();
+    const length = window.history.length;
+    renderAt('/sankey?az=zone-a&env=prod&aggr=aggr1', live);
+    const controls = screen.getByTestId('sankey-view-controls');
+    const query = screen.getByRole('button', { name: 'Query' });
+    expect(query.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('sankey-controls')).toContainElement(controls);
+    fireEvent.click(screen.getByRole('radio', { name: 'Write' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Node' }));
+    await waitFor(() => {
+      expect(window.location.search).toContain('mode=write');
+    });
+    expect(storageCalls(fetchMock)).toBe(0);
+    expect(window.history.length).toBe(length + 1);
+  });
+
+  it('edits the live draft: refuses a malformed pod root, flags a malformed one from the URL, removes a pill', async () => {
+    const fetchMock = stubFetch();
+    renderAt('/sankey?az=zone-a&env=prod&aggr=aggr1&pod=not-a-pod', live);
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-pod-error')).toHaveTextContent('<namespace>/<pod>');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /aggr:aggr1/ }));
+    expect(screen.queryByRole('button', { name: /aggr:aggr1/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-root-required')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Pod' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Root value' }), { target: { value: 'orphan' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "orphan"' }));
+    expect(screen.getByTestId('sankey-pod-error')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /pod:orphan/ })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Root value' }), {
+      target: { value: 'shop/orders-0' },
+    });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "shop/orders-0"' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /pod:shop\/orders-0/ })).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('sankey-pod-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-top-pods')).toBeDisabled();
+    expect(storageCalls(fetchMock)).toBe(0);
+  });
+
+  it('Control bar follows the view switch', async () => {
+    stubFetch();
+    renderAt('/sankey?az=zone-a&env=prod&aggr=aggr1', live);
+    fireEvent.click(screen.getByRole('radio', { name: 'Node' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Group' }));
+    fireEvent.click(screen.getByRole('button', { name: 'locate-aggr1' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('filter-bar')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('sankey-controls')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-view-controls')).not.toBeInTheDocument();
+    act(() => {
+      window.history.back();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('filter-bar')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AZ' })).toHaveTextContent('zone-a');
+    expect(screen.getByRole('radio', { name: 'Both' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Flat' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Column' })).toBeChecked();
+    expect(screen.getByTestId('query-button')).toBeEnabled();
   });
 
   it('does not fetch storage-graph on a time-range change before Sankey is visited', async () => {
@@ -554,7 +664,7 @@ describe('AppShell two data sources', () => {
       expect(graphCalls(fetchMock)).toBeGreaterThan(graphsBeforeTime);
     });
     expect(storageCalls(fetchMock)).toBe(0);
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    goTo('/sankey');
     await chooseSankey('sankey-az', 'zone-a');
     await chooseSankey('sankey-env', 'prod');
     await addTypedRoot('aggr1');
@@ -591,7 +701,7 @@ describe('AppShell two data sources', () => {
     await waitFor(() => {
       expect(screen.getByTestId('graph-view')).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    goTo('/sankey');
     await waitFor(() => {
       expect(screen.getByTestId('sankey-controls')).toBeInTheDocument();
     });
@@ -603,8 +713,12 @@ describe('AppShell two data sources', () => {
     await waitFor(() => {
       expect(storageCalls(fetchMock)).toBe(1);
     });
-    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
-    expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    act(() => {
+      window.history.back();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -766,10 +880,10 @@ describe('AppShell two data sources', () => {
   });
 });
 
-// The Network category renders the REAL TraceView: what the shell tests assert on — the
-// request actually issued, the retained payload across a view switch, the fixture in
-// demo mode — is exactly what a stub would fake.
-describe('AppShell network category', () => {
+// The Network page renders the REAL TraceView and its view controls: what the shell tests
+// assert on — the request actually issued, the draft kept across a view switch, the
+// fixture in demo mode — is exactly what a stub would fake.
+describe('AppShell network page', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/');
   });
@@ -800,17 +914,47 @@ describe('AppShell network category', () => {
       .filter((u) => u.includes('/demo/trace.json'));
   }
 
-  it('replaces /network with /network/graph keeping the query', async () => {
-    stubTraceFetch();
-    renderAt('/network?hostname=sw%2Fdist-a&from=now-1h&to=now', liveNetwork);
+  it('`/network` redirects and keeps the query', async () => {
+    const fetchMock = stubTraceFetch();
+    window.history.pushState({}, '', '/network?hostname=sw-tor-1&from=now-1h&to=now');
+    const length = window.history.length;
+    mount(liveNetwork);
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/network/graph');
+      expect(window.location.pathname).toBe('/network/sankey');
     });
-    expect(window.location.search).toContain('hostname=sw%2Fdist-a');
-    expect(window.location.search).toContain('from=now-1h');
-    expect(screen.getByTestId('graph-view')).toBeInTheDocument();
-    expect(screen.getByTestId('trace-controls')).toBeInTheDocument();
-    expect(document.title).toBe('Kube State Graph — Network Graph');
+    expect(window.location.search).toBe('?hostname=sw-tor-1&from=now-1h&to=now');
+    expect(window.history.length).toBe(length);
+    expect(screen.getByTestId('trace-hostname')).toHaveTextContent('sw-tor-1');
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
+    expect(document.title).toBe('Kube State Graph — Network Sankey');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('Unknown Network view shows the not-found page', async () => {
+    const fetchMock = stubTraceFetch();
+    for (const path of ['/network/graph?hostname=sw-tor-1&from=now-1h&to=now', '/network/foo']) {
+      const { unmount } = renderAt(path, liveNetwork);
+      expect(screen.getByText('Page not found')).toBeInTheDocument();
+      expect(screen.getByRole('navigation', { name: 'Application' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+      expect(screen.queryByTestId('trace-controls')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('graph-view')).not.toBeInTheDocument();
+      expect(document.title).toBe('Kube State Graph');
+      await act(async () => {
+        await Promise.resolve();
+      });
+      unmount();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('Tab titles name the Network views', () => {
+    stubTraceFetch();
+    const { unmount } = renderAt('/network/sankey', liveNetwork);
+    expect(document.title).toBe('Kube State Graph — Network Sankey');
+    unmount();
+    renderAt('/network/graph', liveNetwork);
+    expect(document.title).toBe('Kube State Graph');
   });
 
   it('issues 0 requests on mount and exactly one, with the seven parameters, on Query', async () => {
@@ -844,92 +988,176 @@ describe('AppShell network category', () => {
     expect(window.location.search).not.toContain('max_hops');
   });
 
-  it('switching view issues no request and keeps the drawn body', async () => {
-    const fetchMock = stubTraceFetch();
-    renderAt('/network/graph?hostname=sw%2Fdist-a&track_dir=destination&from=now-1h&to=now', liveNetwork);
-    expect(screen.getByTestId('graph-view')).toBeInTheDocument();
-    pressQuery();
-    await waitFor(() => {
-      expect(traceCalls(fetchMock)).toHaveLength(1);
-    });
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/network/sankey');
-    });
-    expect(window.location.search).toContain('hostname=sw%2Fdist-a');
-    expect(window.location.search).toContain('track_dir=destination');
-    await waitFor(() => {
-      expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
-    });
-    expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
-    expect(screen.queryByTestId('graph-view')).not.toBeInTheDocument();
-    expect(traceCalls(fetchMock)).toHaveLength(1);
-
-    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
-    await waitFor(() => {
-      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
-    });
-    expect(traceCalls(fetchMock)).toHaveLength(1);
-  });
-
-  it('renders Page not found for an unknown network view, with Reload disabled', async () => {
-    const fetchMock = stubTraceFetch();
-    renderAt('/network/foo?hostname=sw%2Fdist-a', liveNetwork);
-    expect(screen.getByText('Page not found')).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Application' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
-    expect(screen.queryByTestId('trace-controls')).not.toBeInTheDocument();
-    // The guard runs before any page hook: the 404 neither seeds `from` / `to` into its URL
-    // nor primes a loader.
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(window.location.search).toBe('?hostname=sw%2Fdist-a');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('locates from the trace Sankey into the Network Graph, keeping the scope and the drawn body', async () => {
+  it('Reloading on either Network view refetches the trace', async () => {
     const fetchMock = stubTraceFetch();
     renderAt('/network/sankey?hostname=sw%2Fdist-a&track_dir=destination&from=now-1h&to=now', liveNetwork);
     pressQuery();
     await waitFor(() => {
       expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
     });
-    const search = window.location.search;
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reload data' })).toBeEnabled();
+    });
+    const [first] = traceCalls(fetchMock);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload data' }));
+    await waitFor(() => {
+      expect(traceCalls(fetchMock)).toHaveLength(2);
+    });
+    const second = traceCalls(fetchMock)[1] ?? '';
+    for (const param of ['hostname=sw%2Fdist-a', 'max_hops=7', 'top_n=3', 'threshold=10', 'track_dir=destination']) {
+      expect(second).toContain(param);
+    }
+    expect(second).toMatch(/[?&]from_ts=\d{13}(&|$)/);
+    expect(first).toBeDefined();
+    // Only the trace source is reloaded.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(screen.getByTestId('nav-status-readout').textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+    });
+    expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByTestId('trace-node-Core 1'));
+  it('Switching categories resets', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/graph', liveNetwork);
+    expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    goTo('/network/sankey?hostname=sw-tor-1&track_dir=destination&from=now-1h&to=now');
+    pressQuery();
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/network/graph');
+      expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', 'dci-uturn/core-1');
-    });
-    // Unlike the Storage locate, the Network views share one loader: the query string rides
-    // along unchanged (no re-seeded `from` / `to`), the target is navigation state only,
-    // and nothing is refetched.
-    expect(window.location.search).toBe(search);
-    expect(window.location.search).not.toContain('locate');
     expect(traceCalls(fetchMock)).toHaveLength(1);
-    expect(screen.queryByTestId('sankey-svg')).not.toBeInTheDocument();
 
-    // Locate is a one-off: consumed once, and gone from the state behind the entry.
-    fireEvent.click(screen.getByRole('button', { name: 'consume-locate' }));
-    await waitFor(() => {
-      expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+    act(() => {
+      window.history.back();
     });
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
-    await waitFor(() => {
-      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
-    });
-    expect(traceCalls(fetchMock)).toHaveLength(1);
-    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
     await waitFor(() => {
       expect(screen.getByTestId('graph-view')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-locate', '');
+    expect(screen.queryByTestId('trace-controls')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nav-status-readout')).toHaveTextContent('awaiting Query');
+
+    act(() => {
+      window.history.forward();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-controls')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('trace-hostname')).toHaveTextContent('sw-tor-1');
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
+    expect(screen.queryByTestId('sankey-svg')).not.toBeInTheDocument();
+    expect(traceCalls(fetchMock)).toHaveLength(1);
   });
 
-  it('draws the fixture on mount in demo mode, with no Query button', async () => {
+  it('Leaving the Network category aborts its request', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/graph', liveNetwork);
+    goTo('/network/sankey?hostname=sw-tor-1&from=now-1h&to=now');
+    pressQuery();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    expect(signal?.aborted).toBe(false);
+    act(() => {
+      window.history.back();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nav-status-readout')).toHaveTextContent('awaiting Query');
+  });
+
+  it('Empty body is an answer, not a blank', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ elements: { nodes: [], edges: [] } })))
+    );
+    renderAt('/network/sankey?hostname=sw-tor-1&from=now-1h&to=now', liveNetwork);
+    pressQuery();
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-empty-response')).toHaveTextContent('No traffic was recorded');
+    });
+    expect(screen.queryByTestId('trace-empty-model-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nav-status-readout').textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+    expect(screen.getByTestId('nav-status-readout')).not.toHaveTextContent('error');
+  });
+
+  it('The switches sit in the scope bar', () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw-tor-1&from=now-1h&to=now', liveNetwork);
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
+    const bar = screen.getByTestId('trace-controls');
+    const query = screen.getByRole('button', { name: 'Query' });
+    for (const testId of ['trace-grouping', 'trace-order', 'trace-min-bps']) {
+      const control = screen.getByTestId(testId);
+      expect(bar).toContainElement(control);
+      expect(query.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    fireEvent.click(screen.getByRole('radio', { name: 'Cluster' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Barycenter' }));
+    expect(screen.getByRole('radio', { name: 'Cluster' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Barycenter' })).toBeChecked();
+    expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('The trace scope bar stays across the Network views', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw-core-9&track_dir=destination&from=now-1h&to=now', liveNetwork);
+    pressQuery();
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('trace-hostname'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search Hostname' }), { target: { value: 'sw-tor-1' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Use "sw-tor-1"' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('query-pending')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('radio', { name: 'Cluster' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Barycenter' }));
+    expect(screen.getByTestId('trace-hostname')).toHaveTextContent('sw-tor-1');
+    expect(screen.getByTestId('query-pending')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-cluster-east')).toBeInTheDocument();
+    expect(window.location.search).toContain('hostname=sw-core-9');
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it('Clicking a hop card does nothing', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw-tor-1&track_dir=destination&from=now-1h&to=now', liveNetwork);
+    pressQuery();
+    await waitFor(() => {
+      expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
+    });
+    const href = window.location.href;
+    const length = window.history.length;
+    const card = screen.getByTestId('trace-node-Core 1');
+    expect(card).toHaveAttribute('data-locatable', 'false');
+    expect(card).not.toHaveClass('cursor-pointer');
+    fireEvent.click(card);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(window.location.href).toBe(href);
+    expect(window.history.length).toBe(length);
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+    expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
+  });
+
+  it('draws the fixture on mount in demo mode, with no Query button and the legend in the scope bar', async () => {
     const fetchMock = vi.fn(() => Promise.reject(new Error('demo mode must not fetch')));
     vi.stubGlobal('fetch', fetchMock);
     renderAt('/network/sankey', DEMO);
@@ -937,13 +1165,39 @@ describe('AppShell network category', () => {
       expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
     });
     expect(screen.getByTestId('trace-node-Core 1')).toBeInTheDocument();
-    expect(screen.getByTestId('trace-legend-back')).toBeInTheDocument();
+    expect(screen.getByTestId('trace-controls')).toContainElement(screen.getByTestId('trace-legend-back'));
+    expect(screen.getByTestId('trace-warnings-pill')).toHaveTextContent('3 warnings');
+    expect(screen.queryByTestId('trace-warnings')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Query' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('trace-controls')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Reload data' })).toBeEnabled();
     });
+  });
+
+  it('Focus mode on the Network Sankey', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('demo mode must not fetch')))
+    );
+    renderAt('/network/sankey', DEMO);
+    const host = await screen.findByTestId('sankey-chart-host');
+    fireEvent.keyDown(host, { key: '1' });
+    fireEvent.keyDown(host, { key: '+' });
+    const readout = screen.getByTestId('sankey-zoom-controls').textContent;
+    fireEvent.keyDown(host, { key: 'f' });
+    await waitFor(() => {
+      expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('trace-controls')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trace-grouping')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trace-legend')).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.getByRole('navigation')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('trace-controls')).toContainElement(screen.getByTestId('trace-grouping'));
+    expect(screen.getByTestId('sankey-zoom-controls').textContent).toBe(readout);
   });
 
   it('shows an invalid URL value as a problem and disables Query', () => {
@@ -964,34 +1218,35 @@ describe('AppShell network category', () => {
     expect(screen.getByTestId('trace-empty-awaiting')).toBeInTheDocument();
   });
 
-  it('shows unconfigured and keeps Reload disabled when endpoints.trace is absent', () => {
-    stubTraceFetch();
-    renderAt('/network/sankey?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });
-    expect(screen.getByTestId('trace-empty-unconfigured')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
-  });
-
-  it('tells the Graph view the trace endpoint is absent, before and after Query', async () => {
+  it('Reload is unavailable on the Network page without a valid draft or endpoint', () => {
     const fetchMock = stubTraceFetch();
-    renderAt('/network/graph?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });
-    // The same words as the Sankey view's state: both views explain one page's missing source.
-    const message = screen.getByTestId('graph-view').getAttribute('data-unconfigured') ?? '';
-    expect(message).toContain('not configured');
-    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
-    expect(await screen.findByTestId('trace-empty-unconfigured')).toHaveTextContent(message);
-    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
-
-    // Query stays operable and commits, but there is nowhere to send it: the view must keep
-    // naming why, not fall back to "nothing has been requested yet".
-    pressQuery();
-    expect(await screen.findByTestId('graph-view')).toHaveAttribute('data-unconfigured', message);
+    const cases: Array<[string, RuntimeConfig]> = [
+      ['/network/sankey?from=now-1h&to=now', liveNetwork],
+      ['/network/sankey?hostname=sw-tor-1&max_hops=abc&from=now-1h&to=now', liveNetwork],
+      ['/network/sankey?hostname=sw-tor-1&from=now-1h&to=now', { ...DEMO, demoMode: false }],
+    ];
+    for (const [path, config] of cases) {
+      const { unmount } = renderAt(path, config);
+      const reload = screen.getByRole('button', { name: 'Reload data' });
+      expect(reload).toBeDisabled();
+      fireEvent.click(reload);
+      unmount();
+    }
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
   });
 
-  it('gives the Graph view no unconfigured message when a trace endpoint is set', () => {
-    stubTraceFetch();
-    renderAt('/network/graph?hostname=sw%2Fdist-a&from=now-1h&to=now', liveNetwork);
-    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-unconfigured', '');
+  it('shows unconfigured with the scope bar operable when endpoints.trace is absent', () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/sankey?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });
+    expect(screen.getByTestId('trace-empty-unconfigured')).toHaveTextContent(
+      'Trace endpoint is not configured. The Storage pages are unaffected.'
+    );
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('radio', { name: 'Cluster' }));
+    expect(screen.getByRole('radio', { name: 'Cluster' })).toBeChecked();
+    // Query stays operable and commits, but there is nowhere to send it.
+    pressQuery();
+    expect(screen.getByTestId('trace-empty-unconfigured')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -33,7 +33,6 @@ function renderChart(model: TraceModelOk): string {
       lit={null}
       onNodeEnter={noop}
       onNodeLeave={noop}
-      onNodeClick={noop}
       onBandEnter={noop}
       onBandLeave={noop}
       onResidualEnter={noop}
@@ -128,7 +127,7 @@ describe('TraceCards', () => {
     expect(checked).toBeGreaterThan(100);
   });
 
-  it('labels a hop card with data-kind, data-status and data-locatable', () => {
+  it('labels a hop card with data-kind and data-status, and offers no card as locatable', () => {
     const k8s = cases().find((c) => c.name === 'k8s');
     expect(k8s).toBeDefined();
     if (k8s === undefined) {
@@ -138,9 +137,13 @@ describe('TraceCards', () => {
     const cards = cardsOf(markup);
     const hop = cards.find((c) => c.getAttribute('data-testid') === 'trace-node-ToR k8s');
     expect(hop?.getAttribute('data-kind')).toBe('switch');
-    expect(hop?.getAttribute('data-locatable')).toBe('true');
-    const ns = cards.find((c) => c.getAttribute('data-kind') === 'ns');
-    expect(ns?.getAttribute('data-locatable')).toBe('false');
+    const pod = cards.find((c) => c.getAttribute('data-kind') === 'pod');
+    const leaf = cards.find((c) => c.getAttribute('data-kind') === 'ns');
+    for (const card of [hop, pod, leaf]) {
+      expect(card).toBeDefined();
+      expect(card?.getAttribute('data-locatable')).toBe('false');
+      expect(card?.getAttribute('class') ?? '').not.toContain('cursor-pointer');
+    }
     const doc = new DOMParser().parseFromString(markup, 'text/html');
     expect(doc.querySelectorAll('[data-testid="trace-residual-out"]').length).toBeGreaterThan(0);
   });
