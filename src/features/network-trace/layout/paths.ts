@@ -1,4 +1,4 @@
-import { ribbonPath } from '../../sankey-canvas';
+import { endChevronPath, ribbonPath } from '../../sankey-canvas';
 import type { TraceEdge } from '../model/types';
 
 import { LATERAL_CROWN_K } from './constants';
@@ -39,17 +39,9 @@ export function lateralArrow(g: EdgeGeom): string {
   return `M${n(g.x2 + 4 + size * 2)},${n(g.y2 - size)} L${n(g.x2 + 4)},${n(g.y2)} L${n(g.x2 + 4 + size * 2)},${n(g.y2 + size)} Z`;
 }
 
-/**
- * The direction mark of an amount ribbon: an open chevron just inside the ribbon's target
- * end, pointing the way the traffic goes (`dir` +1 = rightward). Stroked, not filled, so it
- * reads on the gradient's end colour; sized to the ribbon but never below a legible 3 px.
- */
+/** The shared direction chevron at this edge's target end (see `sankey-canvas`). */
 export function endChevron(g: EdgeGeom, dir: 1 | -1): string {
-  const s = Math.max(3, Math.min(7, g.t / 2 - 1));
-  const n = (v: number): string => String(v);
-  const tip = g.x2 - dir * 2;
-  const tail = g.x2 - dir * (2 + s * 2);
-  return `M${n(tail)},${n(g.y2 - s)} L${n(tip)},${n(g.y2)} L${n(tail)},${n(g.y2 + s)}`;
+  return endChevronPath(g.x2, g.y2, g.t, dir);
 }
 
 /** Which way a ribbon enters its target: a near backflow comes in from the right, every other ribbon from the left. */

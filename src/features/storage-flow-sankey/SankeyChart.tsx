@@ -1,8 +1,9 @@
-import type { JSX, KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import { Fragment, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 
 import type { ThemeTokens } from '../../shared/theme/tokens';
 import {
   haloStyle,
+  RibbonChevron,
   SankeyCanvas,
   SankeyCard,
   SankeyWrapperBox,
@@ -32,8 +33,8 @@ export interface SankeyChartProps {
 }
 
 /**
- * The storage-flow drawing: read / write ribbons between the cards the shared canvas
- * primitives draw. Everything about pan / zoom, the host, the column headers and the
+ * The storage-flow drawing: read / write ribbons, each ending in the shared direction
+ * chevron, between the cards the shared canvas primitives draw. Everything about pan / zoom, the host, the column headers and the
  * card look lives in `sankey-canvas`; only what a storage ribbon IS is decided here.
  */
 export function SankeyChart({
@@ -77,19 +78,21 @@ export function SankeyChart({
       {layout.links.map((l) => {
         const active = lit === null || lit.keys.has(l.key);
         return (
-          <path
-            key={l.key}
-            d={l.path}
-            fill={l.direction === 'read' ? 'url(#ksg-sankey-grad-read)' : 'url(#ksg-sankey-grad-write)'}
-            fillOpacity={l.value === 0 ? 0.4 : active ? 0.82 : 0.14}
-            stroke={l.direction === 'read' ? tokens.sankey.read : tokens.sankey.write}
-            strokeOpacity={0.3}
-            strokeWidth={1}
-            strokeDasharray={l.value === 0 ? '4 3' : undefined}
-            data-testid={`sankey-link-${l.direction}`}
-            onMouseEnter={(evt) => onLinkEnter(l, evt)}
-            onMouseLeave={onLinkLeave}
-          />
+          <Fragment key={l.key}>
+            <path
+              d={l.path}
+              fill={l.direction === 'read' ? 'url(#ksg-sankey-grad-read)' : 'url(#ksg-sankey-grad-write)'}
+              fillOpacity={l.value === 0 ? 0.4 : active ? 0.82 : 0.14}
+              stroke={l.direction === 'read' ? tokens.sankey.read : tokens.sankey.write}
+              strokeOpacity={0.3}
+              strokeWidth={1}
+              strokeDasharray={l.value === 0 ? '4 3' : undefined}
+              data-testid={`sankey-link-${l.direction}`}
+              onMouseEnter={(evt) => onLinkEnter(l, evt)}
+              onMouseLeave={onLinkLeave}
+            />
+            <RibbonChevron d={l.chevron} tokens={tokens} active={active} testId="sankey-link-chevron" />
+          </Fragment>
         );
       })}
 
@@ -138,6 +141,7 @@ export function SankeyChart({
           id={n.id}
           label={n.label}
           subtitle={n.subtitle}
+          extraLines={n.extraLines}
           kind={n.kind}
           x={n.x}
           y={n.y}

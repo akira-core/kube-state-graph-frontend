@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_STORAGE_GRAPH_ROOTS } from '../graph-data';
@@ -12,10 +12,14 @@ function Harness({
   az = ['local-a', 'zone-b'],
   env = ['demo', 'prod'],
   rootOptions,
+  trailing,
+  hideQuery = false,
 }: {
   az?: string[];
   env?: string[];
   rootOptions?: SankeyRootOptions;
+  trailing?: ReactNode;
+  hideQuery?: boolean;
 }): JSX.Element {
   const controller = useSankeyQuery({ az, env, cluster: ['prod'], namespace: ['prod'] });
   return (
@@ -23,6 +27,8 @@ function Harness({
       options={{ az, env, cluster: ['prod'], namespace: ['prod'] }}
       controller={controller}
       {...(rootOptions !== undefined ? { rootOptions } : {})}
+      {...(trailing !== undefined ? { trailing } : {})}
+      hideQuery={hideQuery}
     />
   );
 }
@@ -150,6 +156,20 @@ describe('SankeyScopeBar', () => {
       expect(row?.contains(screen.getByRole('button', { name }))).toBe(true);
     }
     expect(screen.queryByText('Root', { selector: 'span, label, h3' })).not.toBeInTheDocument();
+  });
+
+  it('renders the trailing view controls after Query, in the same row of sankey-controls', () => {
+    render(<Harness trailing={<span data-testid="slot-probe">view controls</span>} />);
+    const probe = screen.getByTestId('slot-probe');
+    const query = screen.getByRole('button', { name: 'Query' });
+    expect(query.closest('[data-testid="sankey-controls"] > div')?.contains(probe)).toBe(true);
+    expect(query.compareDocumentPosition(probe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps the trailing view controls inside sankey-controls when Query is hidden', () => {
+    render(<Harness hideQuery trailing={<span data-testid="slot-probe">view controls</span>} />);
+    expect(screen.queryByRole('button', { name: 'Query' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('sankey-controls')).toContainElement(screen.getByTestId('slot-probe'));
   });
 
   it('moves added roots off the control row so a growing pill list cannot reflow it', () => {

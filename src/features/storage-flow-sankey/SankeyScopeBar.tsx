@@ -1,5 +1,6 @@
-import { useState, type JSX } from 'react';
+import { useState, type JSX, type ReactNode } from 'react';
 
+import { TrailingControls } from '../../shared/ui/ControlField';
 import { FilterIcon } from '../../shared/ui/icons';
 import { QueryButton } from '../../shared/ui/QueryButton';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
@@ -21,6 +22,8 @@ export interface SankeyScopeBarProps {
   topPods?: number;
   onTopPods?: (value: number) => void;
   hideQuery?: boolean;
+  /** The page's view controls, after the Query action in the same row. */
+  trailing?: ReactNode;
   onRootKindChange?: (kind: SankeyRootKind) => void;
 }
 
@@ -88,6 +91,7 @@ export function SankeyScopeBar({
   topPods = DEFAULT_TOP_PODS,
   onTopPods,
   hideQuery = false,
+  trailing,
   onRootKindChange,
 }: Readonly<SankeyScopeBarProps>): JSX.Element {
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
@@ -234,6 +238,8 @@ export function SankeyScopeBar({
             onCancel={onCancel}
           />
         )}
+
+        {trailing !== undefined && <TrailingControls>{trailing}</TrailingControls>}
       </div>
 
       {(roots.length > 0 || controller.podError !== undefined || !hasRoot) && (

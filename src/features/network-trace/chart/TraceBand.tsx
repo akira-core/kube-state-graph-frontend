@@ -2,7 +2,7 @@ import type { JSX, MouseEvent } from 'react';
 
 import { formatDeltaBps } from '../../../shared/format/measurements';
 import type { ThemeTokens } from '../../../shared/theme/tokens';
-import { haloStyle, LABEL_MIN_THICKNESS } from '../../sankey-canvas';
+import { haloStyle, LABEL_MIN_THICKNESS, RibbonChevron } from '../../sankey-canvas';
 import { OWN_T } from '../layout/constants';
 import type { EdgeGeom } from '../layout/types';
 import type { TraceEdge } from '../model/types';
@@ -24,7 +24,7 @@ export interface TraceBandProps {
  * "small". A backflow across several columns and an ownership line are stroked paths —
  * a filled band cannot be dashed or run a loop of constant width. The kind and the path
  * come with the geometry: the layout built them once. Every amount ribbon ends in a
- * chevron (`Chevron`) saying which way the traffic goes.
+ * chevron (`RibbonChevron`) saying which way the traffic goes.
  */
 export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<TraceBandProps>): JSX.Element {
   const { kind } = g;
@@ -60,7 +60,9 @@ export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<T
           strokeLinejoin="round"
           strokeLinecap="butt"
         />
-        {g.chevron !== undefined && <Chevron d={g.chevron} tokens={tokens} active={active} />}
+        {g.chevron !== undefined && (
+          <RibbonChevron d={g.chevron} tokens={tokens} active={active} testId="trace-band-chevron" />
+        )}
       </>
     );
   }
@@ -91,28 +93,10 @@ export function TraceBand({ e, g, tokens, active, onEnter, onLeave }: Readonly<T
           className="pointer-events-none"
         />
       )}
-      {g.chevron !== undefined && <Chevron d={g.chevron} tokens={tokens} active={active} />}
+      {g.chevron !== undefined && (
+        <RibbonChevron d={g.chevron} tokens={tokens} active={active} testId="trace-band-chevron" />
+      )}
     </>
-  );
-}
-
-/**
- * The direction mark inside a ribbon's target end. Stroked in the text colour: the ribbon
- * there is its gradient's end colour, which a filled mark of the same family would vanish into.
- */
-function Chevron({ d, tokens, active }: Readonly<{ d: string; tokens: ThemeTokens; active: boolean }>): JSX.Element {
-  return (
-    <path
-      d={d}
-      fill="none"
-      stroke={tokens.fg.primary}
-      strokeOpacity={active ? 0.9 : 0.2}
-      strokeWidth={1.6}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="pointer-events-none"
-      data-testid="trace-band-chevron"
-    />
   );
 }
 

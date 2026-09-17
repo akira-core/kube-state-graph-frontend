@@ -1,5 +1,6 @@
 export { SankeyCanvas } from './SankeyCanvas';
 export type { ColumnHeader, HoverLit } from './SankeyCanvas';
+export { RibbonChevron } from './RibbonChevron';
 export { SankeyCard, SankeyWrapperBox } from './SankeyCard';
 export type { SlotLabel } from './SankeyCard';
 export { SankeyControlBar } from './SankeyControlBar';
@@ -19,9 +20,11 @@ export {
   BODY_MIN,
   BODY_PAD_BOTTOM,
   CARD_LINE_H,
+  cardHeaderH,
   CARD_W,
   clamp,
   COL_GAP,
+  endChevronPath,
   HEADER_H,
   LABEL_MIN_THICKNESS,
   LEAF_W,

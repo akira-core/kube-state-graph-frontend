@@ -1,6 +1,4 @@
-import { clsx } from 'clsx';
 import type { JSX } from 'react';
-import { Link, NavLink, useLocation } from 'react-router';
 
 import type { RelativeWindow, ViewTimeRange } from '../../shared/time/viewTimeRange';
 import { Badge } from '../../shared/ui/Badge';
@@ -10,7 +8,6 @@ import { Select } from '../../shared/ui/Select';
 import { StatusLamp, type LampState } from '../../shared/ui/StatusLamp';
 import { useRequiredThemeController, type ThemeChoice } from '../theme';
 
-import { CATEGORY_LABEL, categoryHome, categoryOf, VIEW_LABEL, viewsOf, type Category } from './routes';
 import type { PagePhase } from './ShellFrame';
 
 export interface NavBarProps {
@@ -57,23 +54,15 @@ function datetimeLocalToUnix(value: string): number | null {
   return Math.floor(ms / 1000);
 }
 
-/**
- * Two-level navigation: a category (what is being traced — the cluster's storage estate,
- * or a switch's traffic) and, inside it, a view of the same body (Graph or Sankey).
- * Switching category lands on its Graph with a fresh scope; whether switching view keeps
- * the query string is each route's own `keepSearch` (see `routes.ts`).
- */
-const CATEGORIES: ReadonlyArray<{ key: Category; to: string; label: string }> = (['storage', 'network'] as const).map(
-  (key) => ({ key, to: categoryHome(key), label: CATEGORY_LABEL[key] })
-);
-
-const SEGMENT_CLASS = 'flex h-6 items-center rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-100';
-const SEGMENT_ACTIVE = 'bg-selected text-primary shadow-sm';
-const SEGMENT_IDLE = 'text-secondary hover:text-primary';
-
 const DATETIME_INPUT_CLASS =
   'h-7 rounded-md border border-hairline-strong bg-raised px-1.5 font-mono text-[11px] text-primary transition-colors duration-100 hover:bg-raised-hover';
 
+/**
+ * The shell's one bar: the application name, the view time range, the freshness of the
+ * current page's data with its Reload, and the theme. It links nowhere — every page is
+ * standalone, reached by its URL — so the current page is named by the document title and
+ * by its own control bar below.
+ */
 export function NavBar({
   demoMode,
   phase,
@@ -88,8 +77,6 @@ export function NavBar({
   onAbsolute,
 }: Readonly<NavBarProps>): JSX.Element {
   const theme = useRequiredThemeController();
-  const location = useLocation();
-  const category = categoryOf(location.pathname);
   const resolvedPhase: PagePhase =
     phase ?? (refreshing ? 'loading' : error !== undefined ? 'error' : lastLoadedAt === null ? 'awaiting' : 'ready');
   const lamp: LampState =
@@ -112,46 +99,6 @@ export function NavBar({
         </span>
         <span className="text-[13px] font-semibold tracking-tight">Kube State Graph</span>
       </span>
-
-      <span className="h-5 w-px shrink-0 bg-[var(--ksg-ui-hairline)]" aria-hidden />
-
-      <div
-        className="inline-flex h-7 items-center gap-0.5 rounded-md border border-hairline bg-raised p-0.5"
-        role="group"
-        aria-label="Category"
-        data-testid="nav-category"
-      >
-        {CATEGORIES.map((item) => {
-          const active = item.key === category;
-          return (
-            <Link
-              key={item.key}
-              to={item.to}
-              className={clsx(SEGMENT_CLASS, active ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
-              {...(active ? { 'aria-current': 'true' as const } : {})}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
-
-      <div
-        className="inline-flex h-7 items-center gap-0.5 rounded-md border border-hairline bg-raised p-0.5"
-        role="group"
-        aria-label="View"
-        data-testid="nav-view"
-      >
-        {viewsOf(category).map((route) => (
-          <NavLink
-            key={route.path}
-            to={route.keepSearch ? { pathname: route.path, search: location.search } : route.path}
-            className={({ isActive }) => clsx(SEGMENT_CLASS, isActive ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
-          >
-            {VIEW_LABEL[route.view]}
-          </NavLink>
-        ))}
-      </div>
 
       <div className="ml-auto flex items-center gap-2">
         {demoMode && (

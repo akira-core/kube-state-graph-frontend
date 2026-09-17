@@ -1,22 +1,19 @@
 import type cytoscape from 'cytoscape';
-import { useCallback, useMemo, useState, type JSX, type MouseEvent } from 'react';
+import { useCallback, useMemo, type JSX, type MouseEvent } from 'react';
 
 import { countWord } from '../../shared/format/countWord';
 import { formatBytes, formatUsage } from '../../shared/format/measurements';
-import { eyebrowClass } from '../../shared/ui/Section';
-import { Segmented, type SegmentedOption } from '../../shared/ui/Segmented';
+import type { ThemeTokens } from '../../shared/theme/tokens';
 import { EMPTY_STORAGE_GRAPH_ROOTS, hasAnyRoot, type StorageGraphRoots } from '../graph-data';
 import {
   loadGateScreen,
   SankeyControlBar,
   SankeySearchOverlay,
   SankeyTooltip,
-  StatusLegend,
   useSankeyStage,
   nodeTooltipRows,
   rawReading,
   shellEmptyKind,
-  Swatch,
   type HoverLit,
   type LoadStatus,
   type ShellEmptyKind,
@@ -29,47 +26,17 @@ import {
   deriveSankey,
   formatBytesPerSec,
   isDerivedTier,
-  resolveClaimAggregates,
+  type SankeyDirection,
   type SankeyMode,
   type SankeyNode,
   type SankeySvmDisplay,
 } from './deriveSankey';
-import { layoutSankey, TIER_LABEL, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
+import { layoutSankey, type LayoutLink, type SankeyPodLayout } from './layoutSankey';
 import { SankeyChart } from './SankeyChart';
 import { sankeyCardRects, sankeyPathLit, sankeySearchRecords } from './sankeySearch';
-import {
-  SankeySummary,
-  type ApplicationSubtotalRow,
-  type NamespaceSubtotalRow,
-  type NodeSummaryRow,
-} from './SankeySummary';
-import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
-import { cutTopPods } from './topPods';
-
-const MODE_OPTIONS: ReadonlyArray<SegmentedOption<SankeyMode>> = [
-  { value: 'read', label: 'Read' },
-  { value: 'write', label: 'Write' },
-  { value: 'both', label: 'Both' },
-];
-
-const LAYOUT_OPTIONS: ReadonlyArray<SegmentedOption<SankeyPodLayout>> = [
-  { value: 'flat', label: 'Flat' },
-  { value: 'node', label: 'Node' },
-];
-
-const SVM_UNAVAILABLE_REASON = 'The backend reports no claim aggregates';
-
-const svmOptions = (available: boolean): ReadonlyArray<SegmentedOption<SankeySvmDisplay>> => [
-  { value: 'column', label: 'Column' },
-  {
-    value: 'group',
-    label: 'Group',
-    disabled: !available,
-    ...(available ? {} : { title: SVM_UNAVAILABLE_REASON }),
-  },
-];
 
 export interface SankeyViewProps {
+  /** The body after the page's Top pods cut (see `useSankeyProjection`). */
   elements: cytoscape.ElementDefinition[];
   status: LoadStatus;
   error: string | undefined;
@@ -77,8 +44,7 @@ export interface SankeyViewProps {
   demoMode: boolean;
   focusMode: boolean;
   onFocusModeChange: (next: boolean) => void;
-  mode?: SankeyMode;
-  onModeChange?: (mode: SankeyMode) => void;
+  mode: SankeyMode;
   /** `endpoints.storageGraph` is configured (or demo mode supplies a fixture). */
   endpointConfigured: boolean;
   /** Both halves of the required estate are chosen. */
@@ -86,7 +52,6 @@ export interface SankeyViewProps {
   /** At least one root is present in the current (draft or applied) scope. */
   hasRoot?: boolean;
   cancelled?: boolean;
-  topPods?: number;
   /**
    * The root selection the current payload was requested with. Only used to keep a
    * materialised root drawn when its whole path came back unmeasured — the wire carries
@@ -94,12 +59,10 @@ export interface SankeyViewProps {
    */
   roots?: StorageGraphRoots;
   onLocateNode: (id: string) => void;
-  /** Page-transient. Omitted = local default `flat`, reset on remount. */
-  podLayout?: SankeyPodLayout;
-  onPodLayoutChange?: (next: SankeyPodLayout) => void;
-  /** Page-transient. Omitted = local default `column`, reset on remount. */
-  svmDisplay?: SankeySvmDisplay;
-  onSvmDisplayChange?: (next: SankeySvmDisplay) => void;
+  /** Page-transient pod layout. */
+  podLayout: SankeyPodLayout;
+  /** Page-transient SVM display, already `column` when `Group` is unavailable. */
+  svmDisplay: SankeySvmDisplay;
 }
 
 type SankeyEmptyKind = ShellEmptyKind | 'mode' | 'response';
@@ -144,11 +107,30 @@ function emptyCopy(kind: SankeyEmptyKind, demoMode: boolean, mode: SankeyMode): 
   }
 }
 
+/** A tooltip row painted the colour of the ribbons it sums. */
+interface FlowLine {
+  text: string;
+  color: string;
+}
+
+function flowColor(direction: SankeyDirection, tokens: ThemeTokens): string {
+  return direction === 'read' ? tokens.sankey.read : tokens.sankey.write;
+}
+
+function flowLine(text: string, direction: SankeyDirection, tokens: ThemeTokens): FlowLine {
+  return { text, color: flowColor(direction, tokens) };
+}
+
+/** A derived row keeps its paint: it sums ribbons of the same colour. */
+function markDerived(lines: readonly FlowLine[], members: string): FlowLine[] {
+  return lines.map((line) => ({ ...line, text: `${line.text} (derived from member ${members})` }));
+}
+
 /** Node tooltip lines for a storage-graph node, in the shared row order (see `nodeTooltipRows`). */
 function nodeTooltip(
   node: SankeyNode | undefined,
   id: string,
-  flowLines: readonly string[],
+  flowLines: readonly FlowLine[],
   claimAggregateLabel: string | undefined
 ): TooltipLine[] {
   if (node === undefined) {
@@ -192,13 +174,13 @@ function nodeTooltip(
   });
 }
 
-function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): TooltipLine[] {
+function derivedCardTooltip(node: SankeyNode, flowLines: readonly FlowLine[]): TooltipLine[] {
   return nodeTooltipRows({
     head: `${node.kind} / ${node.label}`,
     ...(node.kind === 'application' && node.namespace !== undefined ? { namespace: node.namespace } : {}),
     identity: node.memberPodCount !== undefined ? [countWord(node.memberPodCount, 'pod')] : [],
     // Derived cards carry no status: they are synthesised columns.
-    flow: flowLines.map((line) => `${line} (derived from member pods)`),
+    flow: markDerived(flowLines, 'pods'),
     trailer: node.noFlow === true ? ['Selected root with no flow in this time range.'] : [],
   });
 }
@@ -208,14 +190,14 @@ function derivedCardTooltip(node: SankeyNode, flowLines: readonly string[]): Too
 function wrapperTooltip(
   label: string,
   podCount: number,
-  flowLines: readonly string[],
+  flowLines: readonly FlowLine[],
   status: string | undefined,
   noFlow: boolean
 ): TooltipLine[] {
   return nodeTooltipRows({
     head: `node / ${label}`,
     identity: [countWord(podCount, 'pod')],
-    flow: flowLines.map((line) => `${line} (derived from member pods)`),
+    flow: markDerived(flowLines, 'pods'),
     ...(status !== undefined ? { status: `${status} (worst of node and member pods)` } : {}),
     trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
   });
@@ -227,14 +209,14 @@ function frameTooltip(
   label: string,
   ontapCluster: string | undefined,
   pvcCount: number,
-  flowLines: readonly string[],
+  flowLines: readonly FlowLine[],
   noFlow: boolean
 ): TooltipLine[] {
   return nodeTooltipRows({
     head: `netapp-svm / ${label}`,
     ...(ontapCluster !== undefined ? { ontapCluster } : {}),
     identity: [countWord(pvcCount, 'PVC')],
-    flow: flowLines.map((line) => `${line} (derived from member PVCs)`),
+    flow: markDerived(flowLines, 'PVCs'),
     trailer: noFlow ? ['Selected root with no flow in this time range.'] : [],
   });
 }
@@ -247,80 +229,21 @@ export function SankeyView({
   demoMode,
   focusMode,
   onFocusModeChange,
-  mode: modeProp,
-  onModeChange,
+  mode,
   endpointConfigured,
   azEnvReady,
   hasRoot,
   cancelled = false,
-  topPods = DEFAULT_TOP_PODS,
   roots = EMPTY_STORAGE_GRAPH_ROOTS,
   onLocateNode,
-  podLayout: podLayoutProp,
-  onPodLayoutChange,
-  svmDisplay: svmDisplayProp,
-  onSvmDisplayChange,
+  podLayout,
+  svmDisplay,
 }: Readonly<SankeyViewProps>): JSX.Element {
   const tokens = useThemeTokens();
-  const [localMode, setLocalMode] = useState<SankeyMode>(modeProp ?? 'both');
-  const mode = modeProp ?? localMode;
-  const setMode = (next: SankeyMode): void => {
-    if (modeProp === undefined) {
-      setLocalMode(next);
-    }
-    onModeChange?.(next);
-  };
-  const [localPodLayout, setLocalPodLayout] = useState<SankeyPodLayout>(podLayoutProp ?? 'flat');
-  const podLayout = podLayoutProp ?? localPodLayout;
-  const setPodLayout = (next: SankeyPodLayout): void => {
-    if (podLayoutProp === undefined) {
-      setLocalPodLayout(next);
-    }
-    onPodLayoutChange?.(next);
-  };
-  const [localSvmDisplay, setLocalSvmDisplay] = useState<SankeySvmDisplay>(svmDisplayProp ?? 'column');
-  const svmDisplay = svmDisplayProp ?? localSvmDisplay;
-  const setSvmDisplay = (next: SankeySvmDisplay): void => {
-    if (svmDisplayProp === undefined) {
-      setLocalSvmDisplay(next);
-    }
-    onSvmDisplayChange?.(next);
-  };
   // `cluster` / `namespace` narrowing is a REQUEST parameter, owned by the scope bar — the
   // projection arrives already scoped. Re-filtering it here would break the backend's
   // weight conservation, which is why this view has no cluster selector of its own.
-  const podRootPresent = roots.pod.length > 0;
-  const cut = useMemo(
-    () => (podRootPresent ? { elements, shown: 0, total: 0 } : cutTopPods(elements, mode, topPods)),
-    [elements, mode, podRootPresent, topPods]
-  );
-  // `Group` needs the backend's `expose-claim-aggregate`: available only when the body has
-  // at least one svm-pvc-fed pvc that names a claim aggregate. Checked directly off the
-  // elements (not off a `group`-derived graph) so an unavailable choice never has to be
-  // derived once to find out it draws frames with no inbound ribbon.
-  const svmAvailable = useMemo(() => {
-    const claimAggregates = resolveClaimAggregates(cut.elements);
-    let hasSvmPvc = false;
-    for (const el of cut.elements) {
-      if (el.group !== 'edges') {
-        continue;
-      }
-      const d = el.data as cytoscape.EdgeDataDefinition;
-      if (d.edgeType !== 'storage-flow' || d.labels?.tier !== 'svm-pvc') {
-        continue;
-      }
-      hasSvmPvc = true;
-      if (typeof d.target === 'string' && claimAggregates.has(d.target)) {
-        return true;
-      }
-    }
-    return !hasSvmPvc;
-  }, [cut.elements]);
-  const effectiveSvmDisplay: SankeySvmDisplay = svmAvailable ? svmDisplay : 'column';
-  const graph = useMemo(
-    () => deriveSankey(cut.elements, mode, roots, effectiveSvmDisplay),
-    [cut.elements, mode, roots, effectiveSvmDisplay]
-  );
+  const graph = useMemo(() => deriveSankey(elements, mode, roots, svmDisplay), [elements, mode, roots, svmDisplay]);
   const scopeComplete = azEnvReady && (hasRoot ?? hasAnyRoot(roots));
   // Layout depends only on the derived graph and the theme's namespace palette — never on
   // container size or the pan/zoom viewport, so a resize or a drag can never re-run it
@@ -336,8 +259,8 @@ export function SankeyView({
     [tokens]
   );
   const layout = useMemo(
-    () => layoutSankey(graph, namespacePalette, podLayout, effectiveSvmDisplay),
-    [graph, namespacePalette, podLayout, effectiveSvmDisplay]
+    () => layoutSankey(graph, namespacePalette, podLayout, svmDisplay),
+    [graph, namespacePalette, podLayout, svmDisplay]
   );
 
   const content = useMemo(() => ({ w: layout.width, h: layout.height }), [layout.width, layout.height]);
@@ -365,72 +288,6 @@ export function SankeyView({
   });
   const setTip = tooltip.show;
   const hideTip = tooltip.hide;
-
-  const summary = useMemo(() => {
-    const inbound = new Map<string, number>();
-    const outbound = new Map<string, number>();
-    for (const l of graph.links) {
-      inbound.set(l.target, (inbound.get(l.target) ?? 0) + l.value);
-      outbound.set(l.source, (outbound.get(l.source) ?? 0) + l.value);
-    }
-    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-    const nodes: NodeSummaryRow[] = [
-      ...layout.nodes.map((ln) => {
-        const gn = byId.get(ln.id);
-        const used = gn?.usage?.usedBytes;
-        const capacity = gn?.usage?.capacityBytes;
-        const usageText = used !== undefined && capacity !== undefined ? formatUsage(used, capacity) : undefined;
-        return {
-          id: ln.id,
-          tier: TIER_LABEL[ln.kind],
-          label: ln.label,
-          inbound: inbound.get(ln.id) ?? 0,
-          outbound: outbound.get(ln.id) ?? 0,
-          ...(usageText !== undefined ? { usage: usageText } : {}),
-          ...(ln.status !== undefined ? { status: ln.status } : {}),
-          ...(gn?.health !== undefined ? { health: gn.health } : {}),
-          ...(ln.derived === true || gn?.derived === true ? { derived: true } : {}),
-        };
-      }),
-      ...layout.wrappers.map((w) => ({
-        id: w.id,
-        tier: w.kind === 'netapp-svm' ? TIER_LABEL['netapp-svm'] : 'Node',
-        label: w.label,
-        inbound: w.memberIds.reduce((sum, id) => sum + (inbound.get(id) ?? 0), 0),
-        outbound: w.memberIds.reduce((sum, id) => sum + (outbound.get(id) ?? 0), 0),
-        ...(w.status !== undefined ? { status: w.status } : {}),
-        derived: true,
-      })),
-    ];
-    const nsAgg = new Map<string, { count: number; total: number }>();
-    for (const n of graph.nodes) {
-      if (n.kind !== 'pod' || n.namespace === undefined) {
-        continue;
-      }
-      const cur = nsAgg.get(n.namespace) ?? { count: 0, total: 0 };
-      cur.count += 1;
-      // The pod's INBOUND `pvc-pod` weight, never its outbound. A pod's only outbound links
-      // are the derived `pod → application` / `pod → namespace` ones, which exist solely when
-      // the body carries a matching compound ancestor — a pod that carries a `namespace`
-      // LABEL but sits under no namespace compound would silently subtotal to 0 B/s while
-      // its ribbons are drawn at full weight.
-      cur.total += inbound.get(n.id) ?? 0;
-      nsAgg.set(n.namespace, cur);
-    }
-    const namespaces: NamespaceSubtotalRow[] = [...nsAgg.entries()]
-      .map(([namespace, v]) => ({ namespace, podCount: v.count, total: v.total }))
-      .sort((a, b) => b.total - a.total || a.namespace.localeCompare(b.namespace));
-    const applications: ApplicationSubtotalRow[] = graph.nodes
-      .filter((n) => n.kind === 'application')
-      .map((n) => ({
-        application: n.label,
-        namespace: n.namespace ?? '',
-        podCount: n.memberPodCount ?? 0,
-        total: inbound.get(n.id) ?? 0,
-      }))
-      .sort((a, b) => b.total - a.total || a.application.localeCompare(b.application));
-    return { nodes, namespaces, applications };
-  }, [graph, layout]);
 
   const gate = loadGateScreen({ status, hasPayload, error });
   if (gate !== null) {
@@ -479,15 +336,19 @@ export function SankeyView({
       members !== null ? graph.links.filter((l) => members.has(l.source)) : graph.links.filter((l) => l.source === id);
     const sum = (list: typeof inboundLinks, dir?: 'read' | 'write'): number =>
       list.filter((l) => dir === undefined || l.direction === dir).reduce((acc, l) => acc + l.value, 0);
-    const flowLines =
+    // Every flow row is painted like the ribbons it sums, the way the trace paints its own.
+    const flowLines: FlowLine[] =
       mode === 'both'
         ? [
-            `in read ${formatBytesPerSec(sum(inboundLinks, 'read'))}`,
-            `in write ${formatBytesPerSec(sum(inboundLinks, 'write'))}`,
-            `out read ${formatBytesPerSec(sum(outboundLinks, 'read'))}`,
-            `out write ${formatBytesPerSec(sum(outboundLinks, 'write'))}`,
+            flowLine(`in read ${formatBytesPerSec(sum(inboundLinks, 'read'))}`, 'read', tokens),
+            flowLine(`in write ${formatBytesPerSec(sum(inboundLinks, 'write'))}`, 'write', tokens),
+            flowLine(`out read ${formatBytesPerSec(sum(outboundLinks, 'read'))}`, 'read', tokens),
+            flowLine(`out write ${formatBytesPerSec(sum(outboundLinks, 'write'))}`, 'write', tokens),
           ]
-        : [`in ${formatBytesPerSec(sum(inboundLinks))}`, `out ${formatBytesPerSec(sum(outboundLinks))}`];
+        : [
+            flowLine(`in ${formatBytesPerSec(sum(inboundLinks))}`, mode, tokens),
+            flowLine(`out ${formatBytesPerSec(sum(outboundLinks))}`, mode, tokens),
+          ];
     if (wrapper !== undefined) {
       setTip(
         evt.clientX,
@@ -521,11 +382,12 @@ export function SankeyView({
     const dst = graph.nodes.find((g) => g.id === link.target);
     const derived = link.derived === true || isDerivedTier(link.tier);
     const ceilingTier = link.tier === 'svm-pvc';
-    const lines = derived
+    const value = flowLine(`${link.direction}: ${formatBytesPerSec(link.value)}`, link.direction, tokens);
+    const lines: TooltipLine[] = derived
       ? [
           `${src?.label ?? link.source} → ${dst?.label ?? link.target}`,
           isDerivedTier(link.tier) ? DERIVED_TIER_LABEL[link.tier] : `tier ${link.tier}`,
-          `${link.direction}: ${formatBytesPerSec(link.value)}`,
+          value,
           'derived from member pods',
         ]
       : [
@@ -534,7 +396,7 @@ export function SankeyView({
           // Under `Group` the ribbon runs straight from the claim aggregate, so this is
           // the only place left naming the SVM the claim belongs to.
           ...(link.tier === 'svm-pvc' && dst?.svm !== undefined ? [`SVM ${dst.svm}`] : []),
-          `${link.direction}: ${formatBytesPerSec(link.value)}`,
+          value,
           // The backend flags a weight it split evenly rather than measured. Saying so is the
           // difference between a reading and an estimate that happens to be a number.
           ...(link.attribution === 'split' ? ['evenly split estimate'] : []),
@@ -556,65 +418,7 @@ export function SankeyView({
 
   return (
     <div className="flex h-full w-full flex-col bg-canvas text-primary" data-testid="sankey-view">
-      {!focusMode && (
-        <div className="flex h-11 shrink-0 items-center gap-3 border-b border-hairline bg-rail px-3">
-          <span className={eyebrowClass}>Storage flow</span>
-          <Segmented
-            name="sankey-mode"
-            aria-label="Sankey mode"
-            value={mode}
-            options={MODE_OPTIONS}
-            onChange={setMode}
-          />
-          <span className={eyebrowClass}>Layout</span>
-          <Segmented
-            name="sankey-layout"
-            aria-label="Layout"
-            value={podLayout}
-            options={LAYOUT_OPTIONS}
-            onChange={setPodLayout}
-            data-testid="sankey-layout"
-          />
-          <span className={eyebrowClass}>SVM</span>
-          <Segmented
-            name="sankey-svm-display"
-            aria-label="SVM"
-            value={effectiveSvmDisplay}
-            options={svmOptions(svmAvailable)}
-            onChange={setSvmDisplay}
-            data-testid="sankey-svm-display"
-          />
-          {!svmAvailable && (
-            <span className="text-[11px] text-secondary" data-testid="sankey-svm-display-reason">
-              {SVM_UNAVAILABLE_REASON}
-            </span>
-          )}
-          {cut.shown < cut.total && (
-            <span className="text-[11px] text-secondary" data-testid="sankey-top-pods-label">
-              Top {cut.shown} pods
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-3">
-            <StatusLegend />
-            <span aria-hidden className="h-4 border-l border-medium" />
-            {(mode === 'both' || mode === 'read') && (
-              <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <Swatch color={tokens.sankey.read} />
-                read
-              </span>
-            )}
-            {(mode === 'both' || mode === 'write') && (
-              <span className="flex items-center gap-1.5 text-[11px] text-secondary">
-                <Swatch color={tokens.sankey.write} dashed />
-                write
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* The chart keeps a floor. Six tiers make the summary tall enough to take the whole
-          column otherwise, and a zero-height chart host renders its nodes outside the SVG. */}
+      {/* The chart keeps a floor: a zero-height chart host renders its nodes outside the SVG. */}
       <div className="relative flex min-h-[220px] flex-1 flex-col" ref={boxRef}>
         {empty !== null && (
           <div
@@ -657,15 +461,6 @@ export function SankeyView({
           </div>
         )}
       </div>
-
-      {!focusMode && chartReady && (
-        <SankeySummary
-          nodes={summary.nodes}
-          namespaces={summary.namespaces}
-          applications={summary.applications}
-          {...(cut.shown < cut.total ? { podCut: { shown: cut.shown, total: cut.total } } : {})}
-        />
-      )}
 
       <SankeyTooltip tooltip={tooltip} />
     </div>

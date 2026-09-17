@@ -18,7 +18,6 @@ export interface TraceDrawingProps {
   lit: HoverLit | null;
   onNodeEnter: (id: string, evt: MouseEvent) => void;
   onNodeLeave: () => void;
-  onNodeClick: (id: string) => void;
   onBandEnter: (e: TraceEdge, evt: MouseEvent) => void;
   onBandLeave: () => void;
   onResidualEnter: (n: TraceNode, side: 'in' | 'out', evt: MouseEvent) => void;
@@ -51,7 +50,6 @@ export const TraceDrawing = memo(function TraceDrawing({
   lit,
   onNodeEnter,
   onNodeLeave,
-  onNodeClick,
   onBandEnter,
   onBandLeave,
   onResidualEnter,
@@ -98,7 +96,6 @@ export const TraceDrawing = memo(function TraceDrawing({
           faded={nodeFaded(n.id)}
           onEnter={onNodeEnter}
           onLeave={onNodeLeave}
-          onClick={onNodeClick}
         />
       ))}
       {geo.clusters.map((cg) => (
@@ -145,7 +142,6 @@ export function TraceChart({
   lit,
   onNodeEnter,
   onNodeLeave,
-  onNodeClick,
   onBandEnter,
   onBandLeave,
   onResidualEnter,
@@ -171,7 +167,6 @@ export function TraceChart({
         lit={lit}
         onNodeEnter={onNodeEnter}
         onNodeLeave={onNodeLeave}
-        onNodeClick={onNodeClick}
         onBandEnter={onBandEnter}
         onBandLeave={onBandLeave}
         onResidualEnter={onResidualEnter}

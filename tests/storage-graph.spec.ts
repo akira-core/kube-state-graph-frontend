@@ -45,8 +45,10 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await expect(page.getByTestId('graph-canvas')).toBeVisible({ timeout: 30_000 });
   expect(storageUrls).toHaveLength(0);
 
-  await page.getByRole('link', { name: 'Sankey' }).click();
-  await expect(page.getByTestId('sankey-view')).toBeVisible();
+  // The shell links nowhere: the Sankey is its own page, entered by its URL.
+  await expect(page.getByRole('navigation', { name: 'Application' }).getByRole('link')).toHaveCount(0);
+  await page.goto('/sankey');
+  await expect(page.getByTestId('sankey-view')).toBeVisible({ timeout: 30_000 });
   expect(storageUrls).toHaveLength(0);
   await expect(page.getByRole('button', { name: 'Query' })).toBeDisabled();
 
@@ -65,6 +67,30 @@ test('storage-graph is lazy and draws fixture tiers after az/env are selected', 
   await expect(page.getByTestId('sankey-node-mongo-0')).toBeVisible();
   await expect(page.getByTestId('sankey-node-mongodb')).toBeVisible();
   await expect(page.getByTestId('sankey-node-prod')).toBeVisible();
+
+  // Every ribbon ends in its direction chevron.
+  const ribbons = await page.locator('[data-testid="sankey-link-read"], [data-testid="sankey-link-write"]').count();
+  expect(ribbons).toBeGreaterThan(0);
+  await expect(page.getByTestId('sankey-link-chevron')).toHaveCount(ribbons);
+
+  // A card's flow rows are painted in the colour of the ribbons they sum.
+  const readStroke = (await page.getByTestId('sankey-link-read').first().getAttribute('stroke')) ?? '';
+  await page.getByTestId('sankey-node-data-mongo-0').hover();
+  const inRead = page.getByRole('tooltip').getByText(/^in read /);
+  await expect(inRead).toBeVisible();
+  const painted = await inRead.evaluate((row, stroke) => {
+    const probe = document.createElement('span');
+    probe.style.color = stroke;
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    return { actual: getComputedStyle(row).color, expected };
+  }, readStroke);
+  expect(painted.actual).toBe(painted.expected);
+  await page.mouse.move(0, 0);
+
+  // The view controls live in the scope bar, after Query.
+  await expect(page.getByTestId('sankey-controls').getByTestId('sankey-layout')).toBeVisible();
   await page.getByTestId('sankey-layout').getByText('Node', { exact: true }).click();
   await expect(page.getByTestId('sankey-wrapper-title-worker-0')).toBeVisible();
 
@@ -199,14 +225,14 @@ test('default Top pods cut draws 10 of 15 and writes top_pods without a request'
   await expect(page.getByTestId('sankey-svg')).toBeVisible({ timeout: 30_000 });
   expect(storageUrls).toHaveLength(1);
   await expect(page.locator('[data-testid^="sankey-node-"][data-kind="pod"]')).toHaveCount(10);
-  await expect(page.getByTestId('sankey-summary')).toContainText('10 of 15 pods');
-  await expect(page.getByTestId('sankey-top-pods-label')).toContainText('Top 10 pods');
+  await expect(page.getByTestId('sankey-controls').getByTestId('sankey-top-pods-label')).toHaveText('10 of 15 pods');
+  await expect(page.getByTestId('sankey-summary')).toHaveCount(0);
 
   await page.getByTestId('sankey-top-pods').fill('25');
   await expect(page).toHaveURL(/top_pods=25/);
   expect(storageUrls).toHaveLength(1);
   await expect(page.locator('[data-testid^="sankey-node-"][data-kind="pod"]')).toHaveCount(15);
-  await expect(page.getByTestId('sankey-summary')).not.toContainText('of 15 pods');
+  await expect(page.getByTestId('sankey-top-pods-label')).toHaveCount(0);
 });
 
 test('a pod root added to the draft leaves the drawn Top pods cut in place until Query', async ({ page }) => {
@@ -226,7 +252,7 @@ test('a pod root added to the draft leaves the drawn Top pods cut in place until
   await expect(page.getByRole('button', { name: /pod:ns\/pod-12/ })).toBeVisible();
 
   await expect(page.locator('[data-testid^="sankey-node-"][data-kind="pod"]')).toHaveCount(10);
-  await expect(page.getByTestId('sankey-summary')).toContainText('10 of 15 pods');
+  await expect(page.getByTestId('sankey-top-pods-label')).toHaveText('10 of 15 pods');
   expect(storageUrls).toHaveLength(1);
 });
 

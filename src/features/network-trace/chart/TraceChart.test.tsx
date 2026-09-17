@@ -52,7 +52,6 @@ describe('TraceChart', () => {
         lit={lit}
         onNodeEnter={noop}
         onNodeLeave={noop}
-        onNodeClick={noop}
         onBandEnter={noop}
         onBandLeave={noop}
         onResidualEnter={noop}

@@ -7,7 +7,7 @@ import { GraphPage } from './GraphPage';
 import { NavBar } from './NavBar';
 import { NetworkPage } from './NetworkPage';
 import { NotFoundPage } from './NotFoundPage';
-import { categoryHome, documentTitle, isKnownPath, routeFor, type Category } from './routes';
+import { ALIASES, documentTitle, isKnownPath, routeFor, type AliasPath } from './routes';
 import { SankeyPage } from './SankeyPage';
 import { IDLE_PAGE_STATUS, ShellFrameProvider, type PageStatus } from './ShellFrame';
 import { useViewTimeRange } from './useViewTimeRange';
@@ -21,20 +21,20 @@ function pathKey(pathname: string): string {
 }
 
 /**
- * A category alias (`/`, `/network`) lands on that category's Graph and must carry the
- * query across. A bare `<Navigate to="/graph" />` would drop it, and a root link written
- * with `from`/`to` (or with a scope) would land on a graph that silently ignored both.
+ * An alias (`/`, `/network`) lands on the page it names and must carry the query across.
+ * A bare `<Navigate to="/graph" />` would drop it, and a link written with `from`/`to` (or
+ * with a scope) would land on a page that silently ignored both.
  */
-function CategoryRedirect({ category }: Readonly<{ category: Category }>): JSX.Element {
+function AliasRedirect({ alias }: Readonly<{ alias: AliasPath }>): JSX.Element {
   const location = useLocation();
-  return <Navigate to={{ pathname: categoryHome(category), search: location.search }} replace />;
+  return <Navigate to={{ pathname: ALIASES[alias], search: location.search }} replace />;
 }
 
 function AppLayout({ config }: Readonly<AppShellProps>): JSX.Element {
   const location = useLocation();
   const path = pathKey(location.pathname);
   const route = routeFor(path);
-  const isAnySankey = route?.view === 'sankey';
+  const isAnySankey = route?.kind === 'sankey';
   const time = useViewTimeRange();
   const [status, setStatus] = useState<PageStatus>(IDLE_PAGE_STATUS);
   const [focusMode, setFocusMode] = useState(false);
@@ -80,12 +80,12 @@ export function AppShell({ config }: Readonly<AppShellProps>): JSX.Element {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
-        <Route path="/" element={<CategoryRedirect category="storage" />} />
+        <Route path="/" element={<AliasRedirect alias="/" />} />
+        <Route path="network" element={<AliasRedirect alias="/network" />} />
         <Route element={<AppLayout config={config} />}>
           <Route path="graph" element={<GraphPage />} />
           <Route path="sankey" element={<SankeyPage />} />
-          <Route path="network" element={<CategoryRedirect category="network" />} />
-          <Route path="network/:view" element={<NetworkPage />} />
+          <Route path="network/sankey" element={<NetworkPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
