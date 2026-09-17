@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 import { SHOWCASE_STORAGE_GRAPH } from '../../../shared/fixtures/showcaseStorageGraph';
 import { normalizeGraph } from '../../graph-data';
+import { hopBalanceRows, namespaceAggs } from '../testing/aggregates';
 import { TRACE_SAMPLES, traceSample, type TraceSample } from '../testing/samples';
 
-import { hopBalanceRows, namespaceAggs } from './aggregates';
 import { bandOf, isClientPartition, k8sSubcol } from './bands';
 import { deriveTrace, directionFor, indexTrace } from './deriveTrace';
 import { hoverPath } from './hoverPath';
 import { resolveTraceDirection } from './investigation';
+import { resIn, resOut } from './residuals';
 import type { TraceModelOk, TraceNode } from './types';
 
 function elementsOf(wire: unknown): cytoscape.ElementDefinition[] {
@@ -124,6 +125,52 @@ describe('deriveTrace on the sample corpus', () => {
     expect(node(model, 'b').otherOut).toBe(2e9);
   });
 
+  it('two readings of one interface pair are one ribbon; another port on the same pair is its own', () => {
+    const wire = {
+      elements: {
+        nodes: [N({ id: 'a', type: 'switch' }), N({ id: 'b', type: 'switch' })],
+        edges: [
+          E({
+            id: 'e1',
+            type: 'network-flow',
+            source: 'a',
+            target: 'b',
+            labels: { source_iface: 'et-0', target_iface: 'et-1' },
+            metrics: { delta_bps: 3e9 },
+          }),
+          E({
+            id: 'e2',
+            type: 'network-flow',
+            source: 'a',
+            target: 'b',
+            labels: { source_iface: 'et-0', target_iface: 'et-1' },
+            metrics: { delta_bps: 2e9 },
+          }),
+          E({
+            id: 'e3',
+            type: 'network-flow',
+            source: 'a',
+            target: 'b',
+            labels: { source_iface: 'et-0', target_iface: 'et-2' },
+            metrics: { delta_bps: 1e9 },
+          }),
+        ],
+      },
+    };
+    const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
+    expect(m.ok).toBe(true);
+    if (!m.ok) {
+      return;
+    }
+    // The aggregation key is source, target and BOTH ifaces: same pair sums, a second
+    // target port stays a ribbon of its own.
+    expect(m.edges.map((e) => [e.fromIface, e.toIface, e.bps])).toEqual([
+      ['et-0', 'et-1', 5e9],
+      ['et-0', 'et-2', 1e9],
+    ]);
+    expect(node(m, 'b').tracedIn).toBe(6e9);
+  });
+
   it('explicit other_out_bps derives the other side; both given and unbalanced only warns', () => {
     const model = derive(traceSample('k8s'));
     const w11 = node(model, 'node-w-11');
@@ -152,6 +199,38 @@ describe('deriveTrace on the sample corpus', () => {
     expect(node(m, 'b').otherIn).toBe(1e9);
     expect(node(m, 'b').otherOut).toBe(5e9);
     expect(m.warnings.some((w) => w.includes('do not balance'))).toBe(true);
+  });
+
+  it('an imbalance under the counter-noise epsilon takes no residual slot; one over it does', () => {
+    const body = (outBps: number): unknown => ({
+      elements: {
+        nodes: [N({ id: 's', type: 'switch' }), N({ id: 'm', type: 'switch' }), N({ id: 'h', type: 'host' })],
+        edges: [
+          E({ id: 'e1', type: 'network-flow', source: 's', target: 'm', metrics: { delta_bps: 10e9 } }),
+          E({ id: 'e2', type: 'network-flow', source: 'm', target: 'h', metrics: { delta_bps: outBps } }),
+        ],
+      },
+    });
+    // eps = max(in, out) * 0.005 + 1, so 10 G in / 10.02 G out is 20 M of counter jitter.
+    const quiet = deriveTrace(elementsOf(body(10.02e9)), { direction: 'destination' });
+    const loud = deriveTrace(elementsOf(body(11e9)), { direction: 'destination' });
+    expect(quiet.ok).toBe(true);
+    expect(loud.ok).toBe(true);
+    if (!quiet.ok || !loud.ok) {
+      return;
+    }
+    const q = node(quiet, 'm');
+    expect(q.otherIn).toBe(2e7);
+    expect(q.otherIn).toBeLessThan(q.resEps);
+    expect(resIn(q)).toBe(0);
+    expect(resOut(q)).toBe(0);
+    // The hop still balances on the numbers; only the drawn slot is withheld.
+    expect(q.totalIn).toBe(q.totalOut);
+    const l = node(loud, 'm');
+    expect(l.otherIn).toBe(1e9);
+    expect(l.otherIn).toBeGreaterThan(l.resEps);
+    expect(resIn(l)).toBe(1e9);
+    expect(resOut(l)).toBe(0);
   });
 });
 
@@ -203,6 +282,27 @@ describe('display threshold (minBps)', () => {
     expect(m.filteredNodes).toEqual(['Small B']);
     expect(m.filtered).toEqual({ edges: 2, bps: 2e9 });
     expect(node(m, 'a').otherOut).toBe(1e9);
+  });
+
+  it('the threshold is strictly greater: a ribbon exactly at it is hidden, one bit above is kept', () => {
+    const wire = {
+      elements: {
+        nodes: [N({ id: 'a', type: 'switch' }), N({ id: 'h1', type: 'host' }), N({ id: 'h2', type: 'host' })],
+        edges: [
+          E({ id: 'e1', type: 'network-flow', source: 'a', target: 'h1', metrics: { delta_bps: 500000000 } }),
+          E({ id: 'e2', type: 'network-flow', source: 'a', target: 'h2', metrics: { delta_bps: 500000001 } }),
+        ],
+      },
+    };
+    const m = deriveTrace(elementsOf(wire), { direction: 'destination', minBps: 5e8 });
+    expect(m.ok).toBe(true);
+    if (!m.ok) {
+      return;
+    }
+    expect(m.edges.map((e) => [e.toId, e.bps])).toEqual([['h2', 500000001]]);
+    expect(m.nodeMap.has('h1')).toBe(false);
+    expect(m.nodeMap.has('h2')).toBe(true);
+    expect(m.filtered).toEqual({ edges: 1, bps: 5e8 });
   });
 
   it('a threshold that hides everything but the anchor still derives ok', () => {
@@ -441,6 +541,37 @@ describe('columns, backflow and lateral edges', () => {
       }
     }
   });
+
+  it('a cycle through three groups is broken at its smallest edge, which is the one drawn as backflow', () => {
+    const wire = {
+      elements: {
+        nodes: [
+          N({ id: 'a', type: 'switch', name: 'A' }),
+          N({ id: 'b', type: 'switch', name: 'B' }),
+          N({ id: 'c', type: 'switch', name: 'C' }),
+        ],
+        edges: [
+          E({ id: 'e1', type: 'network-flow', source: 'a', target: 'b', metrics: { delta_bps: 3e9 } }),
+          E({ id: 'e2', type: 'network-flow', source: 'b', target: 'c', metrics: { delta_bps: 2e9 } }),
+          E({ id: 'e3', type: 'network-flow', source: 'c', target: 'a', metrics: { delta_bps: 1e9 } }),
+        ],
+      },
+    };
+    const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
+    expect(m.ok).toBe(true);
+    if (!m.ok) {
+      return;
+    }
+    // No pair runs both ways, so the pairwise vote finds nothing: this is the SCC pass.
+    expect(m.warnings.filter((w) => w.includes('majority direction'))).toEqual([]);
+    expect(m.warnings).toContain(
+      'Groups still form a cycle; the smallest edge C → A (1 Gbps) is drawn as backflow to break it.'
+    );
+    const broken = m.edges.filter((e) => e.backward);
+    expect(broken.map((e) => [e.fromId, e.toId, e.dropped])).toEqual([['c', 'a', true]]);
+    expect(m.edges.filter((e) => e.dropped)).toEqual(broken);
+    expect([node(m, 'a').col, node(m, 'b').col, node(m, 'c').col]).toEqual([0, 1, 2]);
+  });
 });
 
 describe('hop kinds', () => {
@@ -494,6 +625,46 @@ describe('hop kinds', () => {
     expect(r.otherOut).toBe(0.5e9);
     expect(r.col).toBe(node(model, 'sw-a').col + 1);
     expect(model.edges.filter((e) => e.fromId === 'rt-1' || e.toId === 'rt-1')).toHaveLength(2);
+  });
+
+  it('a placement edge draws no ribbon, and the k8s node it alone touches is not a hop', () => {
+    const wire = {
+      elements: {
+        nodes: [
+          N({ id: 'sw-a', type: 'switch', name: 'A' }),
+          N({ id: 'sw-b', type: 'switch', name: 'B' }),
+          N({ id: 'k1', type: 'node', name: 'k1' }),
+          N({ id: 'k2', type: 'node', name: 'k2' }),
+          N({ id: 'p1', type: 'pod', name: 'p1' }),
+          N({ id: 'p2', type: 'pod', name: 'p2' }),
+        ],
+        edges: [
+          E({ id: 'f1', type: 'network-flow', source: 'sw-a', target: 'sw-b', metrics: { delta_bps: 4e9 } }),
+          // Both spellings `isPlacementEdge` accepts. The second carries a measurement on
+          // purpose: a placement edge is read for its endpoints only, never as a ribbon.
+          E({ id: 'pl1', type: 'pod-to-node', source: 'p1', target: 'k1' }),
+          E({
+            id: 'pl2',
+            type: 'network-flow',
+            source: 'p2',
+            target: 'k2',
+            labels: { tier: 'pod-node' },
+            metrics: { delta_bps: 9e9 },
+          }),
+        ],
+      },
+    };
+    const m = deriveTrace(elementsOf(wire), { direction: 'destination' });
+    expect(m.ok).toBe(true);
+    if (!m.ok) {
+      return;
+    }
+    expect(m.edges.map((e) => [e.fromId, e.toId, e.bps])).toEqual([['sw-a', 'sw-b', 4e9]]);
+    for (const id of ['k1', 'k2', 'p1', 'p2']) {
+      expect(m.nodeMap.has(id), id).toBe(false);
+    }
+    // Nor does a placement edge count as a flow edge whose measurement went missing.
+    expect(m.warnings.some((w) => w.includes('no usable measurement'))).toBe(false);
   });
 });
 

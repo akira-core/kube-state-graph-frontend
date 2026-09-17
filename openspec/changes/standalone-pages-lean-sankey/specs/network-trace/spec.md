@@ -44,7 +44,7 @@ The view MUST distinguish seven states by cause, each with its own `data-testid`
 3. `trace-empty-awaiting` — the draft is valid but nothing has been committed on this mount; points at Query.
 4. `trace-empty-cancelled` — the only request of this mount was cancelled and no payload is held.
 5. `trace-empty-response` — the backend answered with a body holding no element at all: an answer about this switch and window, not a malformed body; its text says no traffic was recorded and that the hostname may not exist or the window may be outside retention (plus the demo-fixture note in demo mode).
-6. `trace-empty-model-error` — `deriveTrace` returned `ok: false` for a body that holds elements (a storage-only body, a trace stop with onward edges, …): lists every error.
+6. `trace-empty-model-error` — `deriveTrace` returned `ok: false` for a body that holds elements (a body whose nodes are all group kinds, a trace stop with onward edges, …): lists every error. A body carrying only `storage-flow` edges is **not** one of these: it derives `ok: true` and draws its hop-kind nodes as bare no-flow boxes.
 7. `trace-empty-filtered` — the display threshold hid every hop.
 
 A **warnings pill** in the scope bar's view-controls group shows how many warnings the drawn body carries — the model's warnings together with the normalize boundary's `errors` — and lists every message when hovered or focused; it is not drawn when there are none, and nothing else below the chart lists them.
@@ -110,7 +110,7 @@ The scope bar's view-controls group SHALL provide a `Min Δ` input (bits/s, raw 
 
 ### Requirement: Legend
 
-The scope bar's view-controls group SHALL show a legend whose rows are presence-gated: a traced Δ ribbon row (always when a chart is drawn), a backward ribbon row, a lateral ribbon row, an ownership-line row, `other in` / `other out` swatches, and the shared `StatusLegend` dots when any card carries a status. Rows are drawn with the same SVG line samples the storage view's legend uses and text labels; the legend MUST NOT rely on hue alone to distinguish traced, backward and ownership lines (dashing and arrowheads distinguish them). While an empty state is shown no legend row is drawn.
+The scope bar's view-controls group SHALL show a legend whose **every** row is presence-gated — a traced Δ ribbon row, a backward ribbon row, a lateral (same-column interconnect) row, an ownership-line row, the `other in` and `other out` residual swatches, and the shared `StatusLegend` dots — each drawn only when the chart carries that mark, because a row for a mark that is not on the chart sends the reader hunting for a ribbon kind that is not there. Rows are drawn with the same SVG line samples the storage view's legend uses; a sample carries no arrowhead and only the residual and ownership samples are dashed, so what tells two rows apart is the swatch **colour** and the row's **text label** — every row MUST therefore carry a label naming its mark, and the legend MUST NOT rely on hue alone. While an empty state is shown no legend row is drawn.
 
 #### Scenario: Rows follow the chart
 
@@ -124,7 +124,7 @@ The scope bar's view-controls group SHALL show a legend whose rows are presence-
 
 ### Requirement: Zoom, keyboard and focus are the shared behaviour
 
-The chart area's zoom / pan, opening viewport, control bar (zoom out, factor readout, zoom in, fit, 1:1, focus), keyboard shortcuts (`+` `-` `0` `1` `F` `Esc`, on the chart container only) and focus mode (collapsing the nav bar and the scope bar together with the view controls and legend it holds) MUST be provided by `sankey-canvas` and behave exactly as specified there and in `storage-flow-sankey`; the trace view MUST NOT reimplement any of them. Changing `Min Δ`, `Group`, `Order`, the theme, the container size or a refresh preserves the viewport; a new payload for a different hostname returns to the opening viewport.
+The chart area's zoom / pan, opening viewport, control bar (zoom out, factor readout, zoom in, fit, 1:1, focus), keyboard shortcuts on the chart container only (`+` and `=` zoom in, `-` zooms out, `0` fits, `1` is actual size, `F` **toggles** focus mode — the same key leaves it — and `Esc` leaves it) and focus mode (collapsing the nav bar and the scope bar together with the view controls and legend it holds) MUST be provided by `sankey-canvas` and behave exactly as specified there and in `storage-flow-sankey`; the trace view MUST NOT reimplement any of them. Changing `Min Δ`, `Group`, `Order`, the theme, the container size or a refresh preserves the viewport; a new payload for a different hostname returns to the opening viewport.
 
 #### Scenario: Focus mode on the Network Sankey
 

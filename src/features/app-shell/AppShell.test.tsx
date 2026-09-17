@@ -1235,6 +1235,44 @@ describe('AppShell network page', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('keeps the Storage pages loading their own data when the trace endpoint returns 500', async () => {
+    // The mirror of the storage-graph 500 above: the two sources fail independently, so a
+    // dead trace endpoint must show on the Network page and nowhere else.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = urlOf(input);
+      if (url.includes('/demo/trace.json')) {
+        return Promise.resolve(new Response('nope', { status: 500 }));
+      }
+      return Promise.resolve(
+        jsonResponse({ elements: { nodes: [{ data: { id: 'p', name: 'p', type: 'pod' } }], edges: [] } })
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/network/sankey?hostname=sw-tor-1&from=now-1h&to=now', liveNetwork);
+    pressQuery();
+    await waitFor(() => {
+      expect(traceCalls(fetchMock)).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('failed: 500');
+    });
+    expect(screen.getByTestId('nav-status-readout')).toHaveTextContent('error');
+
+    goTo('/graph');
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-view')).toBeInTheDocument();
+    });
+    pressQuery();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => urlOf(call[0]).includes('/api/v1/graph'))).toBe(true);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('nav-status-readout').textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(traceCalls(fetchMock)).toHaveLength(1);
+  });
+
   it('shows unconfigured with the scope bar operable when endpoints.trace is absent', () => {
     const fetchMock = stubTraceFetch();
     renderAt('/network/sankey?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });

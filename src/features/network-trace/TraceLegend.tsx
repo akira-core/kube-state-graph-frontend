@@ -3,6 +3,7 @@ import { memo, type JSX } from 'react';
 import type { ThemeTokens } from '../../shared/theme/tokens';
 import { StatusLegend, Swatch } from '../sankey-canvas';
 
+import { resIn, resOut } from './model/residuals';
 import type { TraceModelOk } from './model/types';
 
 function Row({ children, testId }: Readonly<{ children: React.ReactNode; testId: string }>): JSX.Element {
@@ -26,6 +27,11 @@ export const TraceLegend = memo(function TraceLegend({
   const hasLateral = model.edges.some((e) => e.lateral);
   const hasBack = model.edges.some((e) => e.backward);
   const hasOwns = model.edges.some((e) => e.owns);
+  // The residual rows follow the same rule as the ribbon rows: a hop whose imbalance sits
+  // under the noise epsilon draws no residual block, and a legend row for one the reader
+  // cannot find is the same false claim as a backflow row with no backflow.
+  const hasResIn = model.nodes.some((n) => resIn(n) > 0);
+  const hasResOut = model.nodes.some((n) => resOut(n) > 0);
   const hasStatus = model.nodes.some((n) => n.status !== null) || model.clusters.some((c) => c.status !== null);
   return (
     <div className="flex flex-wrap items-center gap-3" data-testid="trace-legend">
@@ -45,14 +51,18 @@ export const TraceLegend = memo(function TraceLegend({
           backflow (against the majority direction)
         </Row>
       )}
-      <Row testId="trace-legend-other-in">
-        <Swatch color={tokens.sankey.traceResidualIn} dashed />
-        other in (left, height ∝ amount)
-      </Row>
-      <Row testId="trace-legend-other-out">
-        <Swatch color={tokens.sankey.traceResidualOut} dashed />
-        other out (right)
-      </Row>
+      {hasResIn && (
+        <Row testId="trace-legend-other-in">
+          <Swatch color={tokens.sankey.traceResidualIn} dashed />
+          other in (left, height ∝ amount)
+        </Row>
+      )}
+      {hasResOut && (
+        <Row testId="trace-legend-other-out">
+          <Swatch color={tokens.sankey.traceResidualOut} dashed />
+          other out (right)
+        </Row>
+      )}
       {hasOwns && (
         <Row testId="trace-legend-own">
           <Swatch color={tokens.fg.muted} dashed />

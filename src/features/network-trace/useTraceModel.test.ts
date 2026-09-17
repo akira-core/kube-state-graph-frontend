@@ -52,6 +52,42 @@ describe('useTraceModel', () => {
     expect(result.current.direction.warning).toBeUndefined();
   });
 
+  it('warns when the response named no investigated interface, and still draws without an anchor', () => {
+    // The backend is allowed to answer without `investigation`: the direction is then purely
+    // what was asked. The drawing loses its anchor card, which the reader has to be told.
+    const anonymous = normalizeGraph({
+      elements: {
+        nodes: [
+          { data: { id: 'sw-a', name: 'A', type: 'switch' } },
+          { data: { id: 'sw-b', name: 'B', type: 'switch' } },
+        ],
+        edges: [
+          {
+            data: {
+              id: 'e0',
+              type: 'network-flow',
+              source: 'sw-a',
+              target: 'sw-b',
+              labels: { source_iface: 'et-0/0/2', target_iface: 'et-1/0/1' },
+              metrics: { delta_bps: 10_000_000_000 },
+            },
+          },
+        ],
+      },
+    }).elements;
+    const { result } = renderHook(() =>
+      useTraceModel({ elements: anonymous, trackDir: 'destination', minBps: 0, grouping: 'none' })
+    );
+    expect(result.current.direction.warning).toBe(
+      'The response named no investigated interface; the trace is drawn without an anchor card.'
+    );
+    expect(result.current.direction.direction).toBe('destination');
+    expect(result.current.model.ok).toBe(true);
+    if (result.current.model.ok) {
+      expect(result.current.model.nodes.some((n) => n.kind === 'anchor')).toBe(false);
+    }
+  });
+
   it('Derivation does not change the source data', () => {
     const elements = normalizeGraph(SHOWCASE_TRACE).elements;
     const before = structuredClone(elements);

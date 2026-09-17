@@ -54,7 +54,7 @@ export function validateTraceSemantics(
     const up = direction === 'destination' ? s : t;
     if (up !== null && classOf(recKind(up)) === 'leaf') {
       errors.push(
-        `Edge "${String(d.id)}": "${index.labelOf(up)}" is a ${recKind(up)}, drawn as a trace stop, and cannot have a flow edge onward; use a hop kind (switch / node / pod / netapp-* / pvc) to continue.`
+        `Edge "${String(d.id)}": "${index.labelOf(up)}" is a ${recKind(up)}, drawn as a trace stop, and cannot have a flow edge onward; use a hop kind (switch / router / node / pod / netapp-* / pvc) to continue.`
       );
     }
   }

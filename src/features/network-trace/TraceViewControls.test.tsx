@@ -225,7 +225,11 @@ describe('TraceViewControls legend', () => {
     unmount();
     renderControls({ model: modelOf(classic) });
     expect(screen.getByTestId('trace-legend-flow')).toBeInTheDocument();
-    expect(screen.getByTestId('trace-legend-other-out')).toBeInTheDocument();
+    // The residual rows are gated like every other row: this body loses traffic on its way
+    // through (an "other in" block) but nothing leaves unaccounted, so naming "other out"
+    // would send the reader hunting for a block that is not drawn.
+    expect(screen.getByTestId('trace-legend-other-in')).toBeInTheDocument();
+    expect(screen.queryByTestId('trace-legend-other-out')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trace-legend-back')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trace-legend-lateral')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trace-legend-own')).not.toBeInTheDocument();

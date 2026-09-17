@@ -1,11 +1,39 @@
 export class HttpStatusError extends Error {
   public constructor(
     public readonly url: string,
-    public readonly status: number
+    public readonly status: number,
+    public readonly reason?: string
   ) {
-    super(`GET ${url} failed: ${status}`);
+    super(reason === undefined ? `GET ${url} failed: ${status}` : `GET ${url} failed: ${status} — ${reason}`);
     this.name = 'HttpStatusError';
   }
+}
+
+/** How much of a backend's `reason` is carried into the error state before it is cut. */
+const REASON_MAX = 300;
+
+/**
+ * A rejected request's own explanation. Every endpoint here answers a refusal as JSON with a
+ * `reason` — the trace endpoint's 400 for an unknown hostname is the one an operator reads
+ * most — and that sentence says what the status code cannot. It is shown verbatim (only
+ * length-capped), so a body that is not JSON, not an object, or carries no `reason` string
+ * simply leaves the status message as it was.
+ */
+async function readReason(response: Response): Promise<string | undefined> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return undefined;
+  }
+  if (typeof body !== 'object' || body === null) {
+    return undefined;
+  }
+  const reason: unknown = (body as Record<string, unknown>).reason;
+  if (typeof reason !== 'string' || reason.length === 0) {
+    return undefined;
+  }
+  return reason.length > REASON_MAX ? `${reason.slice(0, REASON_MAX)}…` : reason;
 }
 
 export async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
@@ -23,7 +51,7 @@ export async function fetchJson(url: string, init?: RequestInit): Promise<unknow
     throw new Error(`GET ${url} failed: network error`);
   }
   if (response.status < 200 || response.status >= 300) {
-    throw new HttpStatusError(url, response.status);
+    throw new HttpStatusError(url, response.status, await readReason(response));
   }
   try {
     return await response.json();

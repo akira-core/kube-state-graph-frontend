@@ -15,25 +15,30 @@ The `host` kind is a leaf with the ordinary node tooltip path; it is selectable 
 - **WHEN** the Graph view receives the normalized trace fixture on `/network/graph`
 - **THEN** every `host` node renders the host glyph (no unknown-kind fallback icon), every `network-flow` edge renders in `tokens.edge['network-flow']` with taxi routing, the edge legend lists `switch → host` once, and the node legend lists `host` under `Other`
 
-#### Scenario: The stylesheet snapshot changes by exactly two entries
+#### Scenario: The stylesheet snapshot gains only the taxi selector's third type
 
-- **WHEN** `getStylesheet` is regenerated after registering the kind and the edge type
-- **THEN** the snapshot diff adds the `host` kind rule and the `network-flow` edge rule and changes nothing else
+- **WHEN** `getStylesheet`'s snapshot is regenerated after registering the kind and the edge type
+- **THEN** the one change is that the taxi-routing entry's selector reads `edge[edgeType='switch-to-switch'], edge[edgeType='node-to-switch'], edge[edgeType='network-flow']`; the snapshot gains no entry, and `host` needs no rule at all — the base `node` rule resolves `background-image` per kind through a function and the base `edge` rule resolves `line-color` the same way, so a kind and a colour are registered in the maps, never in the stylesheet
 
 ### Requirement: The hover tooltip shows an edge's Δ rate
 
-When a hovered or pinned edge's `data.metrics` carries `deltaBps`, the tooltip MUST add one row `Δ rate: <formatDeltaBps(deltaBps)>` (for example `Δ rate: +8 Gbps`) after the existing RED / I/O rows; when the field is absent the row MUST NOT render. The row is additive: edges without `deltaBps` render exactly as today, and an edge carrying both I/O fields and `deltaBps` shows both families' rows.
+When a hovered or pinned edge's `data.metrics` carries `deltaBps`, the tooltip MUST render one row `Δ rate: <formatDeltaBps(deltaBps)>` (for example `Δ rate: +8 Gbps`) **first**, ahead of every I/O row: a `network-flow` hop carries that one measurement and nothing else, so it heads the block rather than trailing a run of storage rows that are absent for it. When the field is absent the row MUST NOT render. The row is additive: edges without `deltaBps` render exactly as today, and an edge carrying both I/O fields and `deltaBps` shows the Δ row and then the I/O rows in their existing read-then-write order.
 
 #### Scenario: Δ row present and absent
 
-- **WHEN** the user hovers a `network-flow` edge with `metrics: { deltaBps: 8000000000 }` and then a `pod-to-node` edge without `metrics`
-- **THEN** the first tooltip shows `edgeType`, `source → target` and `Δ rate: +8 Gbps`; the second shows no Δ row
+- **WHEN** the user hovers a `network-flow` edge with `metrics: { deltaBps: 8000000000 }`, then an edge whose `metrics` carries both `deltaBps` and `readOps`, then a `pod-to-node` edge without `metrics`
+- **THEN** the first tooltip shows `edgeType`, `source → target` and `Δ rate: +8 Gbps`; the second lists the Δ row above the ops row; the third shows no Δ row
 
 ### Requirement: Node attributes surface `investigation` and `clients`
 
-`buildNodeAttributes` SHALL add promoted rows for the network node fields: an `investigation` row reading `<iface> · <in|out> · <formatDeltaBps(delta_bps)>` when the node carries `investigation`, and a `clients` row reading `N clients` followed by one line per client (`hostname`, `ip`, `owner`, present fields only) when the node carries `clients`. Both are omitted when absent and MUST NOT change any existing row.
+`buildNodeAttributes` SHALL add promoted rows for the network node fields:
+
+- a **`trace start`** row — keyed by what it means, not by the wire field — reading `<iface> <formatDeltaBps(deltaBps)> <direction>` when the node carries `investigation` (for example `Ethernet1/1 +8.5 Gbps in`): the interface the trace was anchored on and the delta seen there. The direction is appended ONLY when the backend stated one, because its absence means the request's `track_dir` decided the side and naming one here would contradict the Sankey; the delta likewise only when it is a number.
+- a **`clients`** row reading the COUNT alone (`2 clients`) when the node carries a non-empty `clients`. The endpoint list itself is the Sankey leaf card's job; the tooltip says only that there is one and how big, so a port standing for fifty machines stays one row.
+
+Both are omitted when absent and MUST NOT change any existing row.
 
 #### Scenario: Rows for a switch and a host
 
-- **WHEN** the user hovers the start switch (with `investigation`) and then a `host` node with two clients
-- **THEN** the first tooltip shows the `investigation` row and no `clients` row; the second shows `2 clients` with two lines and no `investigation` row; a `pod` node's tooltip is unchanged
+- **WHEN** the user hovers the start switch (carrying `investigation: { iface: "Ethernet1/1", deltaBps: 8500000000, direction: "in" }`) and then a `host` node with two clients
+- **THEN** the first tooltip shows `trace start: Ethernet1/1 +8.5 Gbps in` and no `clients` row; the second shows `clients: 2 clients` with no per-client line and no `trace start` row; a `pod` node's tooltip is unchanged

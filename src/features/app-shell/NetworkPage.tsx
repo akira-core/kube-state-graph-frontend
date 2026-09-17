@@ -145,6 +145,7 @@ export function NetworkPage(): JSX.Element {
           onFocusModeChange={setFocusMode}
           endpointConfigured={endpointConfigured}
           scopeReady={problems.length === 0}
+          scopeKey={applied.query.hostname}
         />
       </main>
     </>

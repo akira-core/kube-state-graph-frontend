@@ -3,6 +3,7 @@ import type cytoscape from 'cytoscape';
 import { APPLICATION_COLOR } from '../../shared/constants/applicationPalette';
 import { CLUSTER_COLOR } from '../../shared/constants/clusterPalette';
 import { NAMESPACE_COLOR } from '../../shared/constants/namespacePalette';
+import { SHOWCASE_GRAPH } from '../../shared/fixtures/showcaseGraph';
 import { SHOWCASE_STORAGE_GRAPH } from '../../shared/fixtures/showcaseStorageGraph';
 
 import { normalizeGraph } from './normalize';
@@ -2007,6 +2008,14 @@ describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
       expect(edgeData(withMetrics({ delta_bps: 12, read_ops: 3 })).metrics).toEqual({ deltaBps: 12, readOps: 3 });
     });
 
+    it('takes only itself down when it is unusable, leaving the I/O fields beside it standing', () => {
+      // The other half of the per-field contract: `rate` is the only field whose malformation
+      // discards the whole object, so a bad delta must not take a good reading with it.
+      expect(edgeData(withMetrics({ delta_bps: '10G', read_bytes_per_sec: 100 })).metrics).toEqual({
+        readBytesPerSec: 100,
+      });
+    });
+
     it('still lets a present rate win: RED is never mixed with a delta', () => {
       expect(edgeData(withMetrics({ rate: 5, delta_bps: 12 })).metrics).toEqual({ rate: 5 });
       // A malformed rate still discards everything — the ordering is unchanged.
@@ -2042,7 +2051,9 @@ describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
       const { elements, errors } = normalizeGraph(withNode({ investigation }));
       const data = elements.find((e) => e.data.id === 'sw1')?.data as cytoscape.NodeDataDefinition;
       expect('investigation' in data).toBe(false);
-      expect(errors).toEqual(['nodes[0] investigation is malformed']);
+      expect(errors).toEqual([
+        'nodes[0].data.investigation is malformed (iface must be a non-empty string, delta_bps > 0, direction in/out, note a string)',
+      ]);
       // The node itself survives — it is still a hop the trace passes through.
       expect(data.kind).toBe('switch');
     });
@@ -2085,7 +2096,7 @@ describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
     ])('drops a non-array clients field (%s) and reports it', (_label, clients) => {
       const { elements, errors } = normalizeGraph(withNode({ clients }));
       expect('clients' in (elements[0]?.data ?? {})).toBe(false);
-      expect(errors).toEqual(['nodes[0] clients is not an array']);
+      expect(errors).toEqual(['nodes[0].data.clients is not an array']);
     });
   });
 
@@ -2111,10 +2122,10 @@ describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
       const data = elements[0]?.data as cytoscape.NodeDataDefinition;
       expect('otherInBps' in data).toBe(false);
       expect(data.otherOutBps).toBe(7);
-      expect(errors).toEqual(['nodes[0] other_in_bps is not a non-negative number']);
+      expect(errors).toEqual(['nodes[0].data.other_in_bps is not a finite number >= 0']);
 
       const out = normalizeGraph(withNode({ other_out_bps: bad }));
-      expect(out.errors).toEqual(['nodes[0] other_out_bps is not a non-negative number']);
+      expect(out.errors).toEqual(['nodes[0].data.other_out_bps is not a finite number >= 0']);
     });
   });
 
@@ -2123,10 +2134,10 @@ describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
       withNode({ investigation: {}, clients: 'x', other_in_bps: -1, other_out_bps: 'y' })
     );
     expect(errors).toEqual([
-      'nodes[0] investigation is malformed',
-      'nodes[0] clients is not an array',
-      'nodes[0] other_in_bps is not a non-negative number',
-      'nodes[0] other_out_bps is not a non-negative number',
+      'nodes[0].data.investigation is malformed (iface must be a non-empty string, delta_bps > 0, direction in/out, note a string)',
+      'nodes[0].data.clients is not an array',
+      'nodes[0].data.other_in_bps is not a finite number >= 0',
+      'nodes[0].data.other_out_bps is not a finite number >= 0',
     ]);
   });
 
@@ -2158,5 +2169,43 @@ describe('normalizeGraph — switch-trace payload (`/v1/trace`)', () => {
         expect(metrics !== undefined && 'deltaBps' in metrics).toBe(false);
       }
     }
+  });
+});
+
+describe('normalizeGraph — fixture output is byte-identical after the network fields', () => {
+  // The structural checks elsewhere (element counts, absent keys) can only say that nothing
+  // NEW appeared. They cannot see a value that shifted, a key that got reordered, or a node
+  // that quietly lost a field — which is what "existing payloads normalize byte-identically"
+  // actually claims. The committed snapshots are that claim, written down once and compared
+  // on every run; a diff here is the regression the additive parsers promised not to be.
+  const NETWORK_NODE_KEYS = ['investigation', 'clients', 'otherInBps', 'otherOutBps'] as const;
+
+  /** Every network-only field the trace endpoint adds, wherever it could have landed. */
+  function networkFieldsIn(elements: readonly cytoscape.ElementDefinition[]): string[] {
+    const found: string[] = [];
+    for (const el of elements) {
+      for (const key of NETWORK_NODE_KEYS) {
+        if (key in el.data) {
+          found.push(`${String(el.data.id)}.${key}`);
+        }
+      }
+      const { metrics } = el.data as cytoscape.EdgeDataDefinition;
+      if (metrics !== undefined && 'deltaBps' in metrics) {
+        found.push(`${String(el.data.id)}.metrics.deltaBps`);
+      }
+    }
+    return found;
+  }
+
+  it('normalizes the /v1/graph showcase fixture to exactly the committed output', () => {
+    const result = normalizeGraph(SHOWCASE_GRAPH);
+    expect(result).toMatchSnapshot();
+    expect(networkFieldsIn(result.elements)).toEqual([]);
+  });
+
+  it('normalizes the /v1/storage-graph showcase fixture to exactly the committed output', () => {
+    const result = normalizeGraph(SHOWCASE_STORAGE_GRAPH);
+    expect(result).toMatchSnapshot();
+    expect(networkFieldsIn(result.elements)).toEqual([]);
   });
 });

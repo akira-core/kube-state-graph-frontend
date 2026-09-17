@@ -43,6 +43,12 @@ export interface TraceViewProps {
   endpointConfigured: boolean;
   /** The draft can be queried (a hostname, every value valid). */
   scopeReady: boolean;
+  /**
+   * The switch the drawn body is about. A trace of a different switch is a different
+   * diagram, so it opens at its own fit rather than under the viewport the reader panned
+   * around the last one.
+   */
+  scopeKey?: string | undefined;
 }
 
 /** Why the Network Sankey cannot load: the page's source is missing. */
@@ -94,6 +100,7 @@ export function TraceView({
   onFocusModeChange,
   endpointConfigured,
   scopeReady,
+  scopeKey,
 }: Readonly<TraceViewProps>): JSX.Element {
   const tokens = useThemeTokens();
   const geo = useMemo(() => (model.ok ? layoutTrace(model, { order }) : null), [model, order]);
@@ -137,6 +144,7 @@ export function TraceView({
     records: searchRecords,
     rects: cardRects,
     pathLit: searchPathLit,
+    openingKey: scopeKey,
   });
   // The hover handlers reach the drawing, which is memoised so a pan drag does not
   // reconcile every card and ribbon; they must therefore keep their identity across pan

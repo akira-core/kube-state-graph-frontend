@@ -33,6 +33,8 @@ export interface SankeyStageOptions {
   records: readonly SearchRecord[];
   rects: ReadonlyMap<string, Rect>;
   pathLit: (ids: ReadonlySet<string>) => HoverLit;
+  /** What the drawing is of; a new value opens fresh. See `useOpeningViewport`. */
+  openingKey?: string | undefined;
 }
 
 export interface SankeyStage {
@@ -71,6 +73,7 @@ export function useSankeyStage({
   records,
   rects,
   pathLit,
+  openingKey,
 }: SankeyStageOptions): SankeyStage {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -78,7 +81,7 @@ export function useSankeyStage({
   // re-attaches on exactly what decides that.
   const containerSize = useContainerSize(boxRef, `${status}:${String(hasPayload)}`);
   const zoom = useZoomPan(content, containerSize ?? UNMEASURED_CONTAINER);
-  useOpeningViewport({ boxRef, content, containerSize, hasContent, setViewport: zoom.setViewport });
+  useOpeningViewport({ boxRef, content, containerSize, hasContent, setViewport: zoom.setViewport, openingKey });
   const tooltip = useSankeyTooltip(boxRef, zoom.dragging);
   const hideTip = tooltip.hide;
   const handleKeyDown = useSankeyKeyboard({ zoom, focusMode, onFocusModeChange });

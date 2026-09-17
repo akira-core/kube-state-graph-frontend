@@ -108,55 +108,69 @@ export function syntheticBody(): Array<{ group: 'nodes' | 'edges'; data: Record<
   return out;
 }
 
+// The timing cases retry twice: the budgets are about this code, not about what else the machine was
+// doing, and a loaded laptop (or a CI runner sharing a box) can stall one run by seconds.
 describe('Sankey performance bound', () => {
-  it('first Flat draw of the synthetic body is within 1000 ms at seven-column counts with Top pods 1000, Node switch within 500 ms', () => {
-    const elements = syntheticBody();
-    const t0 = performance.now();
-    const cut = cutTopPods(elements, 'both', 1000);
-    const graph = deriveSankey(cut.elements, 'both');
-    const flat = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
-    const first = performance.now() - t0;
-    expect(first).toBeLessThanOrEqual(1000);
+  it(
+    'first Flat draw of the synthetic body is within 1000 ms at seven-column counts with Top pods 1000, Node switch within 500 ms',
+    { retry: 2, timeout: 15_000 },
+    () => {
+      const elements = syntheticBody();
+      const t0 = performance.now();
+      const cut = cutTopPods(elements, 'both', 1000);
+      const graph = deriveSankey(cut.elements, 'both');
+      const flat = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
+      const first = performance.now() - t0;
+      expect(first).toBeLessThanOrEqual(1000);
 
-    const count = (kind: string): number => graph.nodes.filter((n) => n.kind === kind).length;
-    expect(count('netapp-node')).toBe(5);
-    expect(count('netapp-aggr')).toBe(25);
-    expect(count('netapp-svm')).toBe(10);
-    expect(count('pvc')).toBe(500);
-    expect(count('pod')).toBe(1000);
-    expect(count('application')).toBe(100);
-    expect(count('namespace')).toBe(20);
-    expect(flat.columns).toHaveLength(7);
+      const count = (kind: string): number => graph.nodes.filter((n) => n.kind === kind).length;
+      expect(count('netapp-node')).toBe(5);
+      expect(count('netapp-aggr')).toBe(25);
+      expect(count('netapp-svm')).toBe(10);
+      expect(count('pvc')).toBe(500);
+      expect(count('pod')).toBe(1000);
+      expect(count('application')).toBe(100);
+      expect(count('namespace')).toBe(20);
+      expect(flat.columns).toHaveLength(7);
 
-    const t1 = performance.now();
-    const grouped = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'node');
-    expect(performance.now() - t1).toBeLessThanOrEqual(500);
-    expect(grouped.wrappers).toHaveLength(50);
-  }, 15_000);
+      const t1 = performance.now();
+      const grouped = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'node');
+      expect(performance.now() - t1).toBeLessThanOrEqual(500);
+      expect(grouped.wrappers).toHaveLength(50);
+    }
+  );
 
-  it('the default cut is cheap and the first draw of the cut body is within 300 ms', () => {
-    const elements = syntheticBody();
-    const tCut = performance.now();
-    const cut = cutTopPods(elements, 'both', 10);
-    expect(performance.now() - tCut).toBeLessThanOrEqual(100);
-    expect(cut.shown).toBe(10);
-    const t0 = performance.now();
-    const graph = deriveSankey(cut.elements, 'both');
-    layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
-    expect(performance.now() - t0).toBeLessThanOrEqual(300);
-    expect(graph.nodes.filter((n) => n.kind === 'pod')).toHaveLength(10);
-  }, 15_000);
+  it(
+    'the default cut is cheap and the first draw of the cut body is within 300 ms',
+    { retry: 2, timeout: 15_000 },
+    () => {
+      const elements = syntheticBody();
+      const tCut = performance.now();
+      const cut = cutTopPods(elements, 'both', 10);
+      expect(performance.now() - tCut).toBeLessThanOrEqual(100);
+      expect(cut.shown).toBe(10);
+      const t0 = performance.now();
+      const graph = deriveSankey(cut.elements, 'both');
+      layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
+      expect(performance.now() - t0).toBeLessThanOrEqual(300);
+      expect(graph.nodes.filter((n) => n.kind === 'pod')).toHaveLength(10);
+    }
+  );
 
-  it('a search hitting every pod matches and lights all of their paths within 100 ms', () => {
-    const cut = cutTopPods(syntheticBody(), 'both', 1000);
-    const graph = deriveSankey(cut.elements, 'both');
-    const layout = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
-    const records = sankeySearchRecords(graph, layout);
-    const t0 = performance.now();
-    const hits = matchRecords(records, 'pod');
-    const lit = sankeyPathLit(graph, hits.hitIds);
-    expect(performance.now() - t0).toBeLessThanOrEqual(100);
-    expect(hits.hitIds.size).toBeGreaterThanOrEqual(1000);
-    expect(lit.keys.size).toBeGreaterThan(0);
-  }, 15_000);
+  it(
+    'a search hitting every pod matches and lights all of their paths within 100 ms',
+    { retry: 2, timeout: 15_000 },
+    () => {
+      const cut = cutTopPods(syntheticBody(), 'both', 1000);
+      const graph = deriveSankey(cut.elements, 'both');
+      const layout = layoutSankey(graph, ['#111', '#222', '#333', '#444', '#555'], 'flat');
+      const records = sankeySearchRecords(graph, layout);
+      const t0 = performance.now();
+      const hits = matchRecords(records, 'pod');
+      const lit = sankeyPathLit(graph, hits.hitIds);
+      expect(performance.now() - t0).toBeLessThanOrEqual(100);
+      expect(hits.hitIds.size).toBeGreaterThanOrEqual(1000);
+      expect(lit.keys.size).toBeGreaterThan(0);
+    }
+  );
 });

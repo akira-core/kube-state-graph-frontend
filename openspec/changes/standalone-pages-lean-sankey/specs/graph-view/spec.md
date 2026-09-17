@@ -15,7 +15,7 @@ The `host` kind is a leaf with the ordinary node tooltip path; it is selectable 
 - **WHEN** the Graph view is rendered with the normalized trace fixture as its elements
 - **THEN** every `host` node renders the host glyph (no unknown-kind fallback icon), every `network-flow` edge renders in `tokens.edge['network-flow']` with taxi routing, the edge legend lists `switch → host` once, and the node legend lists `host` under `Other`
 
-#### Scenario: The stylesheet snapshot changes by exactly two entries
+#### Scenario: The stylesheet snapshot gains only the taxi selector's third type
 
-- **WHEN** `getStylesheet` is regenerated after registering the kind and the edge type
-- **THEN** the snapshot diff adds the `host` kind rule and the `network-flow` edge rule and changes nothing else
+- **WHEN** `getStylesheet`'s snapshot is regenerated after registering the kind and the edge type
+- **THEN** the one change is that the taxi-routing entry's selector reads `edge[edgeType='switch-to-switch'], edge[edgeType='node-to-switch'], edge[edgeType='network-flow']`; the snapshot gains no entry, and `host` needs no rule at all — the base `node` rule resolves `background-image` per kind through a function and the base `edge` rule resolves `line-color` the same way, so a kind and a colour are registered in the maps, never in the stylesheet

@@ -47,7 +47,7 @@ export function resolveInvestigation(
     return {
       inv: null,
       errors: [
-        `Trace start "${index.labelOf(d)}" is a ${recKind(d)}; the start must be a hop kind (switch / node / pod / netapp-* / pvc).`,
+        `Trace start "${index.labelOf(d)}" is a ${recKind(d)}; the start must be a hop kind (switch / router / node / pod / netapp-* / pvc).`,
       ],
     };
   }
@@ -66,12 +66,21 @@ export function resolveInvestigation(
 /**
  * The requested `track_dir` decides the drawing direction. When the backend also states
  * which side of the start port the delta was seen on and it disagrees, that is worth a
- * warning, not a silent override of what was asked.
+ * warning, not a silent override of what was asked. A body naming no interface at all is
+ * still drawable — the direction is then purely what was asked — but it draws no anchor
+ * card, which is worth saying out loud rather than leaving the reader to wonder where the
+ * trace started.
  */
 export function resolveTraceDirection(
   trackDir: TraceDirection | undefined,
   inv: TraceInvestigation | null
 ): { direction: TraceDirection; warning?: string } {
+  if (inv === null) {
+    return {
+      direction: trackDir ?? 'destination',
+      warning: 'The response named no investigated interface; the trace is drawn without an anchor card.',
+    };
+  }
   let stated: TraceDirection | null = null;
   if (inv?.direction === 'out') {
     stated = 'source';

@@ -38,7 +38,7 @@ The Network scope bar SHALL provide: `Hostname` (single-select dropdown with the
 | `track_dir` | `source` | `source` \| `destination` | default          | default applied; problem                             |
 | `min_bps`   | `0`      | integer ≥ 0 (display, D3) | `0`              | `cleanMinBps`: floor, `> 0` else `0`                 |
 
-A missing value is the default; an invalid value MUST be refused with a message naming the field and the rule, and MUST NOT be rewritten, clamped or replaced silently. Query MUST be unavailable while the draft has any problem or an empty hostname, with the first problem as the reason; the app MUST NOT assemble a request from an invalid or empty value. Problems from the URL on mount MUST be shown in the scope bar (`data-testid="trace-scope-problem"`) until the draft is edited to a valid value.
+A missing value is the default; an invalid value MUST be refused with a message naming the field and the rule, and MUST NOT be rewritten, clamped or replaced silently. Query MUST be unavailable while the draft has any problem or an empty hostname, and the **first** problem is the Query control's own `disabledReason` (`data-testid="query-disabled-reason"`) — the reason a control is unavailable belongs on that control, so a single problem is never also listed below. Only the second and later problems render beneath the bar, one `data-testid="trace-scope-problem"` each. The app MUST NOT assemble a request from an invalid or empty value, and problems from the URL on mount MUST stay shown until the draft is edited to a valid value.
 
 The applied scope is written to the `/network/:view` query by the Query commit (replace), with the same key names as the request: `hostname` only when non-empty, a numeric key only when it differs from its default, `track_dir` only when `destination`, `min_bps` only when greater than `0`; `from` / `to` follow `app-shell`. `min_bps` is an immediate view value: changing it redraws without a request and writes the query with replace, like `top_pods` on the storage view. Outside demo mode the URL is the applied scope; in demo mode the scope lives in component state and the URL carries only `from` / `to`.
 
@@ -50,7 +50,7 @@ The applied scope is written to the `/network/:view` query by the Query commit (
 #### Scenario: An invalid parameter is refused, not rewritten
 
 - **WHEN** the user opens `/network/sankey?hostname=sw-tor-1&max_hops=abc&threshold=150`
-- **THEN** the `Max hops` input shows `abc` and `Threshold %` shows `150`, two problems are shown naming each field, Query is disabled with the first problem as its reason, no request is issued, and the address bar still reads `max_hops=abc&threshold=150`; after the user types `5` and `10` the problems clear and Query becomes available
+- **THEN** the `Max hops` input shows `abc` and `Threshold %` shows `150`, Query is disabled with the `Max hops` problem as its `query-disabled-reason` and the `Threshold %` problem as the one `trace-scope-problem` beneath, no request is issued, and the address bar still reads `max_hops=abc&threshold=150`; after the user types `5` and `10` both problems clear and Query becomes available
 
 #### Scenario: Defaults are omitted from the URL
 
@@ -64,12 +64,12 @@ The applied scope is written to the `/network/:view` query by the Query commit (
 
 ### Requirement: Hostname candidates come from the last response's switches
 
-The `Hostname` dropdown's options MUST be the labels of every `switch` kind node in the current normalized elements (deduplicated, sorted, `localeCompare`), so that after one draw the operator can start the next trace from any switch on the chart. Before any payload the list is empty and the control MUST explain that a hostname is typed until a query has drawn one; the control MUST always accept a typed custom value, because the body is a projection of one trace and never the authority on what switches exist. Changing the selection edits the draft only.
+The `Hostname` dropdown's options MUST be, for every `switch` kind node in the current normalized elements, its label **and** its id where the two differ (deduplicated, sorted, `localeCompare`), so that after one draw the operator can start the next trace from any switch on the chart. Both are offered because the backend keys a trace by hostname while a body may label a switch with a display name that is not it: offering the label alone would offer a value no trace can start from, and dropping it would hide the name the chart shows. Before any payload the list is empty and the control MUST explain that a hostname is typed until a query has drawn one; the control MUST always accept a typed custom value, because the body is a projection of one trace and never the authority on what switches exist. Changing the selection edits the draft only.
 
 #### Scenario: Switches of the drawn body are offered
 
-- **WHEN** a committed query drew switches `sw-tor-1`, `sw-core-1` and hosts `srv-db-07`
-- **THEN** the dropdown lists `sw-core-1` and `sw-tor-1` only; typing `sw-tor-9` offers the custom-value row, and committing it sends `hostname=sw-tor-9`
+- **WHEN** a committed query drew the switches `sw-tor-1` (label and id alike) and `Core 1` (id `sw-core-1`), and the host `srv-db-07`
+- **THEN** the dropdown lists `Core 1`, `sw-core-1` and `sw-tor-1` and nothing else — no host, and `sw-tor-1` once; typing `sw-tor-9` offers the custom-value row, and committing it sends `hostname=sw-tor-9`
 
 ### Requirement: Trace direction comes from `track_dir`
 
@@ -94,7 +94,7 @@ When the start node's `investigation.direction` disagrees (`in` with `source`, `
 
 Nodes are classified by kind: **hop** kinds `switch`, `router`, `node`, `pod`, `netapp-node`, `netapp-aggr`, `netapp-svm`, `pvc` are drawn as box cards with slots and residuals (a `router` is a hop exactly like a `switch`: the trace follows traffic through it); **group** kinds `namespace`, `application`, `cluster`, `storage-cluster`, `controller` are never drawn directly and exist only on `parent` chains; any other kind (`host`, an unknown value) is a **leaf** (see "Leaf and trace-stop cards"). A `node` touched only by placement edges (`labels.tier === "pod-node"` or `edgeType === "pod-to-node"`) MUST be dropped silently as a hop.
 
-A hop box is a `SankeyCard` (see `sankey-canvas`) whose title is the node's `label` (`name`, falling back to `id`), whose subtitle is `<kind>` followed by ` · <labels.tier>` or ` · <labels.ontap_cluster>` when present, whose attribute lines are `ns/<namespace>` (a pod's derived namespace; other kinds' `labels.namespace`) and `usage` as `used / capacity (pct%)` only when both fields are present, and whose slots carry **interface labels**: the edge's `labels.source_iface` beside the slot on the source card's right edge, `labels.target_iface` beside the slot on the target card's left edge; an absent label leaves the slot unlabelled and MUST NOT be guessed. Slots on one side are ordered by ribbon value descending, ties by the opposite label. `node`, `pod` and `netapp-*` boxes use the dashed device stroke; `switch` and `pvc` the solid stroke. The border colour precedence is: `status` colour (the same palette the storage view uses) > the start hop's accent > dashed device > neutral. A **no-flow hop** (listed in `nodes`, hop kind, but no drawable flow edge touches it) is drawn as a box with no slots and no residuals, is not counted by the display threshold as hidden, and any explicit `otherInBps` / `otherOutBps` on it MUST be zeroed with a warning. The card face never prints the id; the id appears as the tooltip's last line only when it differs from the label.
+A hop box is a `SankeyCard` (see `sankey-canvas`) whose title is the node's `label` (`name`, falling back to `id`), whose subtitle is `<kind>` followed by ` · <labels.tier>` **only when the tier differs from the kind** (a tier that repeats the kind — the storage kinds' automatic tier — would say it twice), whose attribute lines are `ns/<namespace>` (a pod's derived namespace; other kinds' `labels.namespace`), then `<labels.ontap_cluster>` when present — a line of its own, not part of the subtitle — then `usage` as `used / capacity (pct%)` only when both fields are present, and whose slots carry **interface labels**: the edge's `labels.source_iface` beside the slot on the source card's right edge, `labels.target_iface` beside the slot on the target card's left edge; an absent label leaves the slot unlabelled and MUST NOT be guessed. Slots on one side keep the order their edges first appear in the body — a port's place on the card is stable, not a ranking that reshuffles every refresh as a rate moves. Only three sets are re-sorted afterwards, each by the far end's y so their ribbons do not cross: slots whose far end sits in another band, slots facing a namespaced leaf pod, and the owner slots. Lateral and backward slots never move, and the residuals stay outermost. `node`, `pod` and `netapp-*` boxes use the dashed device stroke; `switch` and `pvc` the solid stroke. The border colour precedence is: `status` colour (the same palette the storage view uses) > dashed device > neutral. The start hop takes **no** accent border: its column caption, its anchor card and its pinned column already name it, and an accent outranking a status colour hid the one thing the border is for. A **no-flow hop** (listed in `nodes`, hop kind, but no drawable flow edge touches it) is drawn as a box with no slots and no residuals, is not counted by the display threshold as hidden, and any explicit `otherInBps` / `otherOutBps` on it MUST be zeroed with a warning. The card face never prints the id; the id appears as the tooltip's last line only when it differs from the label.
 
 #### Scenario: A switch box labels its slots
 
@@ -113,12 +113,12 @@ A hop box is a `SankeyCard` (see `sankey-canvas`) whose title is the node's `lab
 
 ### Requirement: Only `network-flow` edges draw, aggregated by interface pair
 
-Only edges whose `edgeType` is `network-flow` produce ribbons. `storage-flow` edges and every other type MUST be ignored without error; a body containing only such edges yields the "nothing drawable" model error, not an exception. A ribbon's value is `metrics.deltaBps` (finite, ≥ 0, bits/s); an edge without it draws nothing but still counts as "an edge exists" for the leaf-pod, proxy-pod and no-flow decisions, and such edges are counted into one warning. A `0` value is a real reading and draws a ribbon at the minimum thickness, visually distinguished from non-zero ribbons. Several edges with the same `(source, target, source_iface, target_iface)` MUST be summed into one ribbon; the first edge's `labels.tier` / `attribution` are kept for the tooltip. An edge whose endpoint is a group node, or a leaf that has an onward edge (a `source` under `destination`, a `target` under `source`), is a model error naming the edge. An edge whose endpoint is missing from `nodes` was already dropped by normalize.
+Only edges whose `edgeType` is `network-flow` produce ribbons. `storage-flow` edges and every other type MUST be ignored without error, and a body whose edges are all of other types is **not** a model error: it derives `ok: true` with no ribbon at all and every hop-kind node drawn as a bare no-flow box, because "these nodes exist and no traffic was traced between them" is an answer about the body, not a failure to read it. `ok: false` is reserved for a body that yields no hop card at all (only group kinds, or nothing) — reported as the "no drawable node" error. A ribbon's value is `metrics.deltaBps` (finite, ≥ 0, bits/s); an edge without it draws nothing but still counts as "an edge exists" for the leaf-pod, proxy-pod and placement decisions, and such edges are counted into one warning. It does **not** keep a hop out of the no-flow state: no-flow asks whether any DRAWN ribbon touches the card, so a hop reached only by unmeasured edges is drawn as a bare box — the chart shows what was measured, and an unmeasured edge measures nothing. A `0` value is a real reading and draws a ribbon at the minimum thickness, visually distinguished from non-zero ribbons. Several edges with the same `(source, target, source_iface, target_iface)` MUST be summed into one ribbon; the first edge's `labels.tier` / `attribution` are kept for the tooltip. An edge whose endpoint is a group node, or a leaf that has an onward edge (a `source` under `destination`, a `target` under `source`), is a model error naming the edge. An edge whose endpoint is missing from `nodes` was already dropped by normalize.
 
 #### Scenario: Storage edges are ignored without crashing
 
 - **WHEN** the storage fixture (`storage-flow` edges only) is fed to `deriveTrace`
-- **THEN** the result is `ok: false` with the message that the body contains no drawable node, and no exception is thrown
+- **THEN** the result is `ok: true` with no edges and every node drawn as a no-flow hop box, and no exception is thrown; only a body yielding no hop card — a lone `namespace` group — returns `ok: false` with the message that the response has no drawable node
 
 #### Scenario: Same interface pair is summed
 
@@ -132,14 +132,14 @@ Only edges whose `edgeType` is `network-flow` produce ribbons. `storage-flow` ed
 
 ### Requirement: Residuals make every hop conserve
 
-For every hop the model MUST satisfy the balance `known in + other in = traced out + other out`, where `known in` is the sum of drawn inbound ribbons (plus the anchor edge's Δ on the start hop under `destination`) and `traced out` the sum of drawn outbound ribbons (plus the anchor Δ under `source`). `other in` / `other out` are the node's explicit `otherInBps` / `otherOutBps` when present; a missing one MUST be filled by the balance; when both are explicit and do not balance, the chart draws the explicit values and a warning spells out both sides and the difference. Amounts hidden by the display threshold MUST be folded into the residuals so the balance still holds. Two exceptions: a hop with **no inbound edge at all** (none drawn and none hidden) and no explicit `otherInBps` is a **source** and gets no other-in residual (only the in side is exempt — a hop with no onward edge still gets its other-out filled); and residuals never split by channel. A residual below the hop's own reading tolerance `eps = max(known in, traced out) × 0.005 + 1` bps MUST NOT be drawn, and the summary uses the same eps.
+For every hop the model MUST satisfy the balance `known in + other in = traced out + other out`, where `known in` is the sum of drawn inbound ribbons (plus the anchor edge's Δ on the start hop under `destination`) and `traced out` the sum of drawn outbound ribbons (plus the anchor Δ under `source`). `other in` / `other out` are the node's explicit `otherInBps` / `otherOutBps` when present; a missing one MUST be filled by the balance; when both are explicit and do not balance, the chart draws the explicit values and a warning spells out both sides as sums, names which side is larger and by how much, and says that dropping one value lets the balance fill it — the reader cannot tell which of the two readings is wrong, so the model states the disagreement instead of picking a winner. Amounts hidden by the display threshold MUST be folded into the residuals so the balance still holds. Two exceptions: a hop with **no inbound edge at all** (none drawn and none hidden) and no explicit `otherInBps` is a **source** and gets no other-in residual (only the in side is exempt — a hop with no onward edge still gets its other-out filled); and residuals never split by channel. A residual below the hop's own reading tolerance `eps = max(known in, traced out) × 0.005 + 1` bps MUST NOT be drawn: below it the difference is counter noise, not traffic.
 
 Residuals are drawn as dashed colour blocks on the outside of the box — other in on the left, other out on the right — as **real slots** in the card's slot stacks, with height on the **same thickness scale** as the ribbons (the scale's maximum includes residuals), labelled `other in` / `other out` with the amount through `formatDeltaBps`. The residual blocks are not subject to the display threshold. Colours are `sankey.traceResidualIn` / `traceResidualOut`.
 
 #### Scenario: A missing 10 G becomes other in
 
 - **WHEN** `Edge A` is the start with `investigation.delta_bps: 10e9` (`in`) and its only outbound ribbon carries `20e9`
-- **THEN** `Edge A` shows an `other in` block of `+10 Gbps` on its left, no `other out`, and the summary's balance row for it reads `10 + 10 = 20 + 0`
+- **THEN** `Edge A` shows an `other in` block of `+10 Gbps` on its left and no `other out`, and its card tooltip reads `traced in 10 Gbps`, `other in 10 Gbps`, `traced out 20 Gbps`, `other out 0 bps`
 
 #### Scenario: A source hop gets no other in
 
@@ -154,7 +154,7 @@ Residuals are drawn as dashed colour blocks on the outside of the box — other 
 #### Scenario: Both explicit but unbalanced
 
 - **WHEN** a hop carries `other_in_bps: 1e9` and `other_out_bps: 0` while its ribbons are in `10e9`, out `12e9`
-- **THEN** both blocks are drawn as given, the left and right stacks differ in thickness, and the warnings list `10 + 1 ≠ 12 + 0` with the shortfall of `1 Gbps`
+- **THEN** both blocks are drawn as given, the left and right stacks differ in thickness, and the warnings spell both sides out as `traced in 10 Gbps + other in 1 Gbps = 11 Gbps, traced out 12 Gbps + other out 0 bps = 12 Gbps (right side larger by 1 Gbps)`, then say the drawing follows the given values and that dropping one lets the balance fill it
 
 #### Scenario: Noise below eps is not drawn
 
@@ -163,12 +163,12 @@ Residuals are drawn as dashed colour blocks on the outside of the box — other 
 
 ### Requirement: The anchor card marks the investigated interface
 
-When exactly one node carries `investigation` and that node is a hop kind, the view MUST draw an **anchor card** on the start hop's outer side (left under `destination`, right under `source`): a `SankeyCard` whose label is `investigation.iface`, whose subtitle is `<in|out> · <formatDeltaBps(delta_bps)>`, bordered with the accent colour and dashed, with `note` in its tooltip; and an **anchor edge** between the anchor card and the start hop carrying `delta_bps`, which is never filtered by the display threshold and never aggregated with other edges. More than one node carrying `investigation`, or an `investigation` on a non-hop node, is a model error. The anchor card is not locatable.
+When exactly one node carries `investigation` and that node is a hop kind, the view MUST draw an **anchor card** on the start hop's outer side (left under `destination`, right under `source`): a `SankeyCard` whose label is `investigation.iface`, whose subtitle is `trace start` (the card's role, in the place every other card names its kind) and whose one attribute line is `<in|out> · <formatDeltaBps(delta_bps)>`, dashed like the device cards and carrying the neutral border, with `note` in its tooltip; and an **anchor edge** between the anchor card and the start hop carrying `delta_bps`, which is never filtered by the display threshold and never aggregated with other edges. More than one node carrying `investigation`, or an `investigation` on a non-hop node, is a model error. The anchor card is not locatable.
 
 #### Scenario: Anchor drawn on the outer side
 
 - **WHEN** `sw-edge-a` carries `investigation: { iface: "xe-0/0/1", delta_bps: 10e9, direction: "in", note: "spike at 14:02" }` and the applied direction is `destination`
-- **THEN** a card labelled `xe-0/0/1` with subtitle `in · +10 Gbps` sits left of `sw-edge-a`, an anchor ribbon of `+10 Gbps` joins them, hovering the card shows `spike at 14:02`, and a `Min Δ` of `50e9` still leaves that ribbon drawn
+- **THEN** a card labelled `xe-0/0/1`, subtitled `trace start` and reading `in · +10 Gbps` on its first line, sits left of `sw-edge-a`, an anchor ribbon of `+10 Gbps` joins them, hovering the card shows `spike at 14:02`, and a `Min Δ` of `50e9` still leaves that ribbon drawn
 
 #### Scenario: Two investigations are an error
 
@@ -177,9 +177,9 @@ When exactly one node carries `investigation` and that node is a hop kind, the v
 
 ### Requirement: Leaf and trace-stop cards, with a clients table
 
-A leaf node is drawn as a smaller `SankeyCard` whose title is its `label`, with attribute lines `ns/<labels.namespace>` when present and `<iface> · <amount>` for its ribbon (the interface from the edge's leaf-side label), and a role text `trace stop` in its top-right corner in the muted foreground. It has slots on its inbound side only.
+A leaf node is drawn as a smaller `SankeyCard` whose title is its `label`, with attribute lines `ns/<labels.namespace>` when present and `<iface> · <amount>` for its ribbon (the interface from the edge's leaf-side label). A leaf with no clients carries **no corner text**: every leaf is a trace stop by position, so a corner reading `trace stop` on all of them distinguished nothing. It has slots on its inbound side only.
 
-When the node carries `clients`, each entry with at least an `ip` or a `hostname` is kept (an entry with neither is silently dropped; unknown keys ignored), and the card face becomes a table with a header row `hostname · ip · owner` and **one row per client, all listed**; a column whose value is empty on every client MUST be omitted and the card narrowed; a cell longer than its column is truncated with `…` while the full value is in the tooltip. The synthesized id (`<switch>:<iface>`) MUST NOT be printed as a title — a title appears only when `name` was given — and the last line carries the amount without repeating the interface. The role text becomes `client` for one client or `N clients`. When the node has no `name` and exactly one client, its display name (used by the inbound ribbon's tooltip) is that client's `hostname`, else its `ip`. Any node may carry `clients` (a hop's go to the tooltip only); only leaves draw them on the card. Leaf cards, including `host` leaves, are not locatable.
+When the node carries `clients`, each entry with at least an `ip` or a `hostname` is kept (an entry with neither is silently dropped; unknown keys ignored), and the card face becomes a table with a header row `hostname · ip · owner` and **one row per client, all listed**; a column whose value is empty on every client MUST be omitted and the card narrowed; a cell longer than its column is truncated with `…` while the full value is in the tooltip. The synthesized id (`<switch>:<iface>`) MUST NOT be printed as a title — a title appears only when `name` was given — and the last line carries the amount without repeating the interface. The corner text then counts the clients: `1 client` for one, `N clients` for more. When the node has no `name` and exactly one client, its display name (used by the inbound ribbon's tooltip) is that client's `hostname`, else its `ip`. Any node may carry `clients` (a hop's go to the tooltip only); only leaves draw them on the card. Leaf cards, including `host` leaves, are not locatable.
 
 #### Scenario: A port with clients lists them
 
@@ -201,12 +201,12 @@ For every leaf with `clients`, the model SHALL derive an **owner column** after 
 | Clients of more than one owner, or any client without an owner | **ownership line**: dashed, unmetered, no value label | splitting one port reading among owners would be an estimate |
 | No client has an owner                                         | none                                                  | nothing to aggregate                                         |
 
-An owner card is a `SankeyCard` with the owner string as title; its first line is the **metered total** (metered ribbons only), suffixed `(partial ports)` when any of its ports is mixed, or reading `metered at port` when none of its ports is metered — it MUST never print a `0`; its second line is `N clients · M ports`. A leaf that gained an owner layer keeps its client-count role text (`client` / `N clients`); the owner band beside it says the rest. The owner layer is the owner band after the k8s band and MUST NOT enter any hop's balance. Owner cards are not locatable.
+An owner card is a `SankeyCard` with the owner string as title; its first line is the **metered total** (metered ribbons only), suffixed `(partial ports)` when any of its ports is mixed, or reading `metered at port` when none of its ports is metered — it MUST never print a `0`; its second line is `N clients · M ports`. A leaf that gained an owner layer keeps its client-count corner text (`1 client` / `N clients`); the owner band beside it says the rest. The owner layer is the owner band after the k8s band and MUST NOT enter any hop's balance. Owner cards are not locatable.
 
 #### Scenario: A single-owner port meters its owner
 
 - **WHEN** port `A` (`+4 Gbps`) has two clients both owned by `Network Ops`
-- **THEN** a metered ribbon of `+4 Gbps` runs from `A` to the `Network Ops` card, whose first line reads `+4 Gbps` and second `2 clients · 1 port`; `A`'s role text reads `2 clients`
+- **THEN** a metered ribbon of `+4 Gbps` runs from `A` to the `Network Ops` card, whose first line reads `+4 Gbps` and second `2 clients · 1 port`; `A`'s corner text reads `2 clients`
 
 #### Scenario: A mixed port draws ownership lines only
 
@@ -216,7 +216,7 @@ An owner card is a `SankeyCard` with the owner string as title; its first line i
 #### Scenario: No known owner, no owner layer
 
 - **WHEN** a port's clients all lack `owner`
-- **THEN** no owner card is created for it, its role text stays its client count, and the owner band (if other ports created one) is unaffected
+- **THEN** no owner card is created for it, its corner text stays its client count, and the owner band (if other ports created one) is unaffected
 
 ### Requirement: Derived pod, application and namespace cards
 
@@ -243,7 +243,7 @@ A **leaf pod** is a `pod` kind with no onward flow edge (under `destination`: no
 
 The drawing is three **bands** in trace order — the **switch** band (the anchor and every switch hop), the **k8s** band (the fixed chain `k8s node` → `pod` → `application` → `namespace`, each a column only when some card needs it) and the **owner** band (one column). Under a `destination` trace the bands run left → right from the start; under a `source` trace the k8s and owner bands sit to the LEFT of the switch band so packets still flow left → right and the start hop keeps the far right. Every non-k8s trace stop (a `host`, a neighbourless port, any leaf kind) is placed in the k8s band's **last** column as its lower partition, below every k8s card of that column (the "client partition"); when nothing on the chart is Kubernetes that column holds the clients alone. The two partitions of the k8s band share one top line each across its columns: the k8s cards start together, and the client cards start together below the tallest k8s partition.
 
-Inside the switch band, column assignment is the longest path from the start hop: every drawn edge between two switch-band nodes forces its downstream node at least one column after its upstream node. Nodes sharing a `labels.tier` value MUST be locked into one column (treated as one super node for the longest path; edges inside a tier do not participate); `netapp-node`, `netapp-aggr`, `netapp-svm` and `pvc` MUST take their kind as tier when the label is absent, while `switch`, `node` and `pod` MUST NOT. When two groups carry flow in both directions, the direction with the smaller total is marked **backward**, excluded from ordering, and warned; a cycle over three or more groups is broken by dropping the smallest-flow direction on it from ordering, with a warning; a topology that still cannot be ordered warns that a cycle is suspected. An edge that runs from the k8s band back into the switch band takes no part in the ordering, is backward, and is warned as crossing the band boundary. Backward ribbons are drawn with the `sankey.traceBackward` gradient; edges between two nodes of one column are **lateral** ribbons drawn as an arc on the column's right side with an arrowhead at the downstream end; both use the shared thickness scale and pass through conservation as ordinary traced amounts.
+Inside the switch band, column assignment is the longest path from the start hop: every drawn edge between two switch-band nodes forces its downstream node at least one column after its upstream node. Nodes sharing a `labels.tier` value MUST be locked into one column (treated as one super node for the longest path; edges inside a tier do not participate); `netapp-node`, `netapp-aggr`, `netapp-svm` and `pvc` MUST take their kind as tier when the label is absent, while `switch`, `node` and `pod` MUST NOT. When two groups carry flow in both directions, the direction with the smaller total is marked **backward**, excluded from ordering, and warned; a cycle over three or more groups is broken by dropping the smallest-flow direction on it from ordering, with a warning naming that edge — that one is a real, reachable outcome. The relaxation sweep that assigns the columns afterwards is bounded at `groups + 2` passes and warns that a cycle is suspected if it is still moving columns at the bound; that warning is a **defensive guard, not an outcome the drawing produces**: the cycle-breaking above removes the smallest live edge of every strongly connected component until none is left, so the sweep always relaxes a DAG and converges well inside the bound (6000 random dense bodies never reached it). It stays because dropping it would turn an unforeseen cycle into a silently wrong column order. An edge that runs from the k8s band back into the switch band takes no part in the ordering, is backward, and is warned as crossing the band boundary. Backward ribbons are drawn with the `sankey.traceBackward` gradient; edges between two nodes of one column are **lateral** ribbons drawn as an arc on the column's right side with an arrowhead at the downstream end; both use the shared thickness scale and pass through conservation as ordinary traced amounts.
 
 Column captions read `Trace start (in)` / `Trace start (out)` for the anchor column and `Hop N` (`Hop N · <kind>` when the column holds one non-switch hop kind) in the switch band; `k8s node`, `pod`, `application` and `namespace` in the k8s band, the last of them suffixed ` / client` when the client partition is present, and plain `client` when the column holds no k8s card; and `owner` for the owner band. Without an anchor the first switch column is `Hop 0`. The vertical order inside a column is `Flow` by default (see "Layout and order switches").
 
@@ -287,7 +287,7 @@ Under `Flow`, a node's rank is the amount on its **traced side** — the sum of 
 
 ### Requirement: The `Min Δ` display threshold
 
-The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same input styling as the storage view's Top pods field, an accessible name, an adjacent rendering of the value in `Gbps` / `Mbps` / `kbps`) with a `Clear` action. Edits apply after a 200 ms debounce; blur normalizes the field through `cleanMinBps` (floor; a value not greater than `0` is `0`). The chart keeps only ribbons whose aggregated value is **strictly greater** than the threshold (`>`, never `>=`); hidden amounts fold into the hop's residuals (see "Residuals"); the anchor edge and derived edges are exempt; a hop with no ribbon left is hidden as a whole (a no-flow hop is not counted); the residual blocks themselves are not filtered. While anything is hidden the control bar MUST show a pill `hidden N ribbons / M hops (X)` where `X` is the hidden total through `formatDeltaBps`, and the same sentence appears in the warnings drawer. When the threshold hides every hop and there is no anchor, the view shows `trace-empty-filtered` with the pill still visible. The threshold is a display value: it is never sent to the backend, changing it issues no request, and outside demo mode it is written to the URL as `min_bps` (omitted when `0`).
+The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same input styling as the storage view's Top pods field, an accessible name, an adjacent rendering of the value in `Gbps` / `Mbps` / `kbps`) with a `Clear` action. Edits apply after a 200 ms debounce; blur normalizes the field through `cleanMinBps` (floor; a value not greater than `0` is `0`). The chart keeps only ribbons whose aggregated value is **strictly greater** than the threshold (`>`, never `>=`); hidden amounts fold into the hop's residuals (see "Residuals"); the anchor edge and derived edges are exempt; a hop with no ribbon left is hidden as a whole (a no-flow hop is not counted); the residual blocks themselves are not filtered. While anything is hidden the control bar MUST show a pill `hidden N ribbons / M hops (X)` — the ` / M hops` part only when a hop was hidden whole, `X` the **unsigned** hidden total through `formatBitsPerSec` — and the same sentence appears in the warnings drawer. When the threshold hides every hop and there is no anchor, the view shows `trace-empty-filtered` with the pill still visible. The threshold is a display value: it is never sent to the backend, changing it issues no request, and outside demo mode it is written to the URL as `min_bps` (omitted when `0`).
 
 #### Scenario: Strictly greater
 
@@ -297,7 +297,7 @@ The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same inp
 #### Scenario: Hidden amounts stay in the balance
 
 - **WHEN** `sw-core-1` has outbound ribbons `+14 Gbps`, `+5 Gbps` and `+0.4 Gbps`, and `Min Δ` is `1e9`
-- **THEN** the `0.4 Gbps` ribbon disappears, `sw-core-1`'s `other out` grows by `0.4 Gbps`, the pill reads `hidden 1 ribbon / 0 hops (+400 Mbps)`, no request is issued, and the address bar carries `min_bps=1000000000`
+- **THEN** the `0.4 Gbps` ribbon disappears, `sw-core-1`'s `other out` grows by `0.4 Gbps`, the pill reads `hidden 1 ribbon (400 Mbps)` with no hop part and no sign, no request is issued, and the address bar carries `min_bps=1000000000`
 
 #### Scenario: Everything filtered
 
@@ -306,7 +306,7 @@ The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same inp
 
 ### Requirement: Legend
 
-The chart area SHALL show a legend whose rows are presence-gated: a traced Δ ribbon row (always when a chart is drawn), a backward ribbon row, a lateral ribbon row, an ownership-line row, `other in` / `other out` swatches, and the shared `StatusLegend` dots when any card carries a status. Rows are drawn with the same SVG line samples the storage view's legend uses and text labels; the legend MUST NOT rely on hue alone to distinguish traced, backward and ownership lines (dashing and arrowheads distinguish them).
+The chart area SHALL show a legend whose **every** row is presence-gated — a traced Δ ribbon row, a backward ribbon row, a lateral (same-column interconnect) row, an ownership-line row, the `other in` and `other out` residual swatches, and the shared `StatusLegend` dots — each drawn only when the chart carries that mark, because a row for a mark that is not on the chart sends the reader hunting for a ribbon kind that is not there. Rows are drawn with the same SVG line samples the storage view's legend uses; a sample carries no arrowhead and only the residual and ownership samples are dashed, so what tells two rows apart is the swatch **colour** and the row's **text label** — every row MUST therefore carry a label naming its mark, and the legend MUST NOT rely on hue alone.
 
 #### Scenario: Rows follow the chart
 
@@ -315,17 +315,17 @@ The chart area SHALL show a legend whose rows are presence-gated: a traced Δ ri
 
 ### Requirement: Tooltips
 
-Tooltips are rendered by the shared `SankeyTooltip` from lines the model produces. Hovering a ribbon MUST show: `from → to` (display names), the exit interface and the entry interface only where that end has a label, the rate through `formatDeltaBps`, the namespace where the downstream end is a pod, the `client` line when the downstream leaf has clients (an owner-bound edge lists the port side instead), `ownership` for an ownership line (which has no rate line), `tier` and `attribution` when present (`split` reads as an evenly split estimate), and whether the ribbon is the anchor, backward or derived. Hovering a card MUST show, in order and only when present: kind and name, `ns`, `ontap_cluster`, for a hop, a pod, a client leaf and an application / namespace card `traced in` / `traced out` painted in the ribbon colour followed by `other in` / `other out` painted in the residual colours (both always present, a `0` reads as `0 bps`; a trace-end pod or client counts only its measured, non-derived ribbons as traced and takes other in / out from its `otherInBps` / `otherOutBps`, else `0`; an application / namespace card sums its member cards' four values; these tooltip rows never add residual blocks to the chart), for an owner card its `in` and `out` totals (an owner card metered at the port shows `—` for `in`), for application / namespace cards `derived from member pods` and the pod count, for owner cards the source (`derived from ports`) plus client and port counts, `usage`, `status` (`worst of member pods` on derived cards), `health`, `hardware.model`, the four `perf` readings marked raw, `alerts` as `<severity> <name>`, the no-flow statement, every client on its own untruncated line, and the id last when it differs from the name. Residual blocks have their own tooltip naming the hop, the side and the amount.
+Tooltips are rendered by the shared `SankeyTooltip` from lines the model produces. Hovering a ribbon MUST show: one head line `<from> <exit iface> → <to> <entry iface>` (display names, each interface printed only where that end has a label, e.g. `Edge A et-0/0/48 → Core 1 et-1/0/1`) — the interface names sit **in** that line, and there are no separate `exit` / `entry` lines, so the hop-to-hop reading is one line long — then the rate through `formatDeltaBps`, the namespace where the downstream end is a pod, the `client` line when the downstream leaf has clients (an owner-bound edge lists the port side instead), `ownership` for an ownership line (which has no rate line), `tier` and `attribution` when present (`split` reads as an evenly split estimate), and whether the ribbon is the anchor, backward or derived. Hovering a card MUST show, in order and only when present: a head line `<kind> / <name>`, `ns`, `ontap_cluster`, for a hop, a pod, a client leaf and an application / namespace card `traced in` / `traced out` painted in the ribbon colour followed by `other in` / `other out` painted in the residual colours (all four through the **unsigned** `formatBitsPerSec` — a tooltip row is a state, not a rise, and the four must add up on sight — all four always present, a `0` reading as `0 bps`; a trace-end pod or client counts only its measured, non-derived ribbons as traced and takes other in / out from its `otherInBps` / `otherOutBps`, else `0`; an application / namespace card sums its member cards' four values; these tooltip rows never add residual blocks to the chart), for an owner card its `in` and `out` totals (an owner card metered at the port shows `—` for `in`), for application / namespace cards `derived from member pods` and the pod count, for owner cards the source (`derived from ports`) plus client and port counts, `usage`, `status` (`worst of member pods` on derived cards), `health`, `hardware.model`, the four `perf` readings marked raw, `alerts` as `<severity> <name>`, the no-flow statement, every client on its own untruncated line, and the id last when it differs from the name. Residual blocks have their own tooltip naming the hop, the side and the amount.
 
 #### Scenario: Ribbon tooltip
 
 - **WHEN** the user hovers the `sw-core-1 → srv-db-07` ribbon whose edge carries `source_iface: "et-1/0/9"` and no `target_iface`
-- **THEN** the tooltip shows `sw-core-1 → srv-db-07`, `exit et-1/0/9`, no entry line, and `+20 Gbps`
+- **THEN** the tooltip's head line reads `sw-core-1 et-1/0/9 → srv-db-07`, with no `exit` or `entry` line of its own, and the next line is `+20 Gbps`
 
 #### Scenario: Card tooltip ends with the id
 
-- **WHEN** the user hovers `Edge A` (id `sw-edge-a`, `status: warning`)
-- **THEN** the tooltip shows `switch · Edge A`, `in +10 Gbps`, `out +20 Gbps`, `other in +10 Gbps`, `status warning`, and `id sw-edge-a` as its last line
+- **WHEN** the user hovers `Edge A` (id `sw-edge-a`, `status: warning`), whose traced in is `10e9`, traced out `20e9`, other in `10e9` and other out `0`
+- **THEN** the tooltip shows `switch / Edge A`, `traced in 10 Gbps`, `traced out 20 Gbps`, `other in 10 Gbps`, `other out 0 bps` — unsigned, each `traced` row prefixed with the word — `status warning`, and `id sw-edge-a` as its last line
 
 ### Requirement: Hover highlights the path
 
@@ -347,12 +347,12 @@ Clicking a locatable card MUST push-navigate to `/network/graph` keeping the cur
 
 ### Requirement: Zoom, keyboard and focus are the shared behaviour
 
-The chart area's zoom / pan, opening viewport, control bar (zoom out, factor readout, zoom in, fit, 1:1, focus), keyboard shortcuts (`+` `-` `0` `1` `F` `Esc`, on the chart container only) and focus mode (collapsing the nav bar, scope bar, control bar, legend and summary) MUST be provided by `sankey-canvas` and behave exactly as specified there and in `storage-flow-sankey`; the trace view MUST NOT reimplement any of them. Changing `Min Δ`, `Layout`, `Order`, the theme, the container size or a refresh preserves the viewport; a new payload for a different hostname returns to the opening viewport.
+The chart area's zoom / pan, opening viewport, control bar (zoom out, factor readout, zoom in, fit, 1:1, focus), keyboard shortcuts on the chart container only (`+` and `=` zoom in, `-` zooms out, `0` fits, `1` is actual size, `F` **toggles** focus mode — the same key leaves it — and `Esc` leaves it) and focus mode (collapsing the nav bar and the scope bar, with the view controls and legend it holds) MUST be provided by `sankey-canvas` and behave exactly as specified there and in `storage-flow-sankey`; the trace view MUST NOT reimplement any of them. Changing `Min Δ`, `Group`, `Order`, the theme, the container size or a refresh preserves the viewport; a new payload for a different hostname returns to the opening viewport.
 
 #### Scenario: Focus mode on the Network Sankey
 
 - **WHEN** the user zooms to 150 %, presses `F`, then `Esc`
-- **THEN** in focus mode the nav bar, scope bar, control bar, legend and summary are hidden and the chart fills the window; after leaving, all are restored and the readout still says `150%`
+- **THEN** in focus mode the nav bar and the scope bar (with `Group`, `Order`, `Min Δ`, the pills and the legend) are hidden and the chart fills the window; after leaving, all are restored and the readout still says `150%`
 
 ### Requirement: Empty states
 
@@ -362,7 +362,7 @@ The view MUST distinguish six states by cause, each with its own `data-testid` a
 2. `trace-empty-scope` — the draft has no hostname or has problems; names the problem and states that no request has been issued.
 3. `trace-empty-awaiting` — the draft is valid but nothing has been committed on this mount; points at Query.
 4. `trace-empty-cancelled` — the only request of this mount was cancelled and no payload is held.
-5. `trace-empty-model-error` — `deriveTrace` returned `ok: false` (including an empty or storage-only body): lists every error.
+5. `trace-empty-model-error` — `deriveTrace` returned `ok: false` (a body yielding no hop card at all, a trace stop with an onward edge, …): lists every error. A storage-only body is not one of these — it derives to no-flow hops.
 6. `trace-empty-filtered` — the display threshold hid every hop.
 
 A warnings drawer below the chart lists the model's warnings together with the normalize boundary's `errors`, collapsed by default with a count.
@@ -379,16 +379,23 @@ A warnings drawer below the chart lists the model's warnings together with the n
 
 ### Requirement: Bits-per-second formatting
 
-Every Δ value (ribbons, residuals, tooltips, summary, the `Min Δ` readout) MUST be formatted by `formatBitsPerSec` on the shared significant-digit ladder (`shared/format/measurements`): base 1000, units `bps` / `kbps` / `Mbps` / `Gbps` / `Tbps`, three significant digits, `0` → `0 bps`, a non-zero value below `1 bps` in exponential form. `formatDeltaBps` prefixes `+` and is the **only** place a sign is produced: ribbon labels, residual labels, anchor subtitle, owner totals, tooltips and the pill all go through it, so a traced amount and a residual are formatted alike. No unit conversion happens anywhere: `delta_bps` is bits per second as received.
+Every bit-rate value (ribbons, residuals, card text, tooltips, the pills, the warnings, the `Min Δ` readout) MUST be formatted by `formatBitsPerSec` on the shared significant-digit ladder (`shared/format/measurements`): base 1000, units `bps` / `kbps` / `Mbps` / `Gbps` / `Tbps`, three significant digits, promotion on the rounded value, `0` → `0 bps`. Rounding goes through `toPrecision` and the result is stringified by `Number`, which guarantees that a non-zero value never prints as `0 bps`; only a magnitude too small to write out in full — roughly below `1e-6` — falls back to exponent notation.
+
+`formatDeltaBps` wraps it and is the **only** place a sign is produced: it prefixes `+` to a value greater than `0` and leaves everything else as the bare magnitude, so `0` is `0 bps` — a delta of exactly zero is a reading, not a rise, and `+0 bps` would claim one. Which rows take the sign is fixed, so the two formatters cannot drift:
+
+- **Signed (`formatDeltaBps`)** — ribbon labels, residual block labels, every amount on a card face (a leaf's `<iface> · <amount>`, the anchor card's line, an application / namespace card's `total`, an owner card's total), the ribbon tooltip's rate line and the residual tooltip's head line.
+- **Unsigned (`formatBitsPerSec`)** — the card tooltip's `traced in` / `traced out` / `other in` / `other out` rows and an owner card's `in` / `out` rows, the residual tooltip's `traced in … / out …` row, the `Min Δ` readout, the hidden-ribbon pill and every model warning.
+
+No unit conversion happens anywhere: `delta_bps` is bits per second as received.
 
 #### Scenario: Ladder and sign
 
 - **WHEN** formatting `10000000000`, `400000000`, `0` through `formatDeltaBps`
-- **THEN** the results are `+10 Gbps`, `+400 Mbps`, `+0 bps`, and `formatBitsPerSec(10000000000)` is `10 Gbps`
+- **THEN** the results are `+10 Gbps`, `+400 Mbps` and `0 bps` — the zero unsigned — while `formatBitsPerSec(10000000000)` is `10 Gbps` and a small non-zero rate such as `1e-7` prints in exponent form rather than as `0 bps`
 
 ### Requirement: Theme through tokens only
 
-The trace view MUST use theme tokens for every colour and render in both themes; the feature directory MUST contain no hex colour, no CSS file and none of the ported project's class names. Only these tokens are introduced: `kind.host`, `edge['network-flow']`, `sankey.traceFlow` / `traceFlowEnd`, `sankey.traceBackward` / `traceBackwardEnd`, `sankey.traceResidualIn` / `traceResidualOut`; every other colour reuses an existing token (card fill and stroke, status palette, `accent.primary` for the start hop and anchor, `border.medium` / `fg.muted` for leaf, group and owner cards and ownership lines, `bg.canvas` for label halos, `sankey.namespace1-5` for namespace bars). A theme switch redraws without losing hover, layout or the viewport and issues no request.
+The trace view MUST use theme tokens for every colour and render in both themes; the feature directory MUST contain no hex colour, no CSS file and none of the ported project's class names. Only these tokens are introduced: `kind.host`, `edge['network-flow']`, `sankey.traceFlow` / `traceFlowEnd`, `sankey.traceBackward` / `traceBackwardEnd`, `sankey.traceResidualIn` / `traceResidualOut`; every other colour reuses an existing token (card fill and stroke, status palette, `border.medium` / `fg.muted` for leaf, group and owner cards and ownership lines, `bg.canvas` for label halos, `sankey.namespace1-5` for namespace bars). A theme switch redraws without losing hover, layout or the viewport and issues no request.
 
 #### Scenario: No colour outside the tokens
 
