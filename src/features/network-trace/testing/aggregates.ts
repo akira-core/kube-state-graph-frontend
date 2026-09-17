@@ -1,6 +1,13 @@
-import { resIn, resOut } from './residuals';
-import type { TraceModelOk } from './types';
-import { cmpString } from './util';
+import { resIn, resOut } from '../model/residuals';
+import type { TraceModelOk } from '../model/types';
+import { cmpString } from '../model/util';
+
+/*
+ * These two summaries have no drawing behind them any more: `standalone-pages-lean-sankey`
+ * deleted the numeric summary panel. They stay because they are how the tests state
+ * per-hop conservation and namespace subtotals in the model's own words, so they live
+ * beside the samples rather than pretending to be part of the model the view derives.
+ */
 
 export interface NamespaceAgg {
   namespace: string;

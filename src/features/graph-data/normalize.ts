@@ -602,19 +602,21 @@ function parseNodes(rawNodes: unknown[], nodeWorstFromPods: ReadonlyMap<string, 
     // losing one silently would change what the picture claims.
     const investigation = parseInvestigation(d.investigation);
     if (investigation !== undefined && 'error' in investigation) {
-      errors.push(`nodes[${String(index)}] investigation is malformed`);
+      errors.push(
+        `nodes[${String(index)}].data.investigation is malformed (iface must be a non-empty string, delta_bps > 0, direction in/out, note a string)`
+      );
     }
     const clients = parseClients(d.clients);
     if (clients !== undefined && 'error' in clients) {
-      errors.push(`nodes[${String(index)}] clients is not an array`);
+      errors.push(`nodes[${String(index)}].data.clients is not an array`);
     }
     const otherInBps = parseResidualBps(d.other_in_bps);
     if (otherInBps !== undefined && 'error' in otherInBps) {
-      errors.push(`nodes[${String(index)}] other_in_bps is not a non-negative number`);
+      errors.push(`nodes[${String(index)}].data.other_in_bps is not a finite number >= 0`);
     }
     const otherOutBps = parseResidualBps(d.other_out_bps);
     if (otherOutBps !== undefined && 'error' in otherOutBps) {
-      errors.push(`nodes[${String(index)}] other_out_bps is not a non-negative number`);
+      errors.push(`nodes[${String(index)}].data.other_out_bps is not a finite number >= 0`);
     }
     nodeIds.add(d.id);
     elements.push({

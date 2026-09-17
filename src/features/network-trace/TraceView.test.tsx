@@ -221,6 +221,43 @@ describe('TraceView chart', () => {
     expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
     expect(screen.getByTestId('sankey-svg')).toBeInTheDocument();
   });
+
+  it('opens a trace of another switch at its own fit, while every other redraw keeps the viewport', () => {
+    // A trace of a different hostname is a different diagram: inheriting the pan and zoom the
+    // reader left on the last one parks it off-screen. The body is deliberately the same one,
+    // so the fit it re-opens at is exactly the value it opened at and nothing else can explain
+    // the readout coming back. `useOpeningViewport.test.ts` covers the one-shot hook itself.
+    // The box has to report a measurement first: the opening viewport waits for one, so
+    // without it nothing ever fits here and a re-open would be invisible.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: ResizeObserverCallback) {}
+        observe(): void {
+          this.cb([{ contentRect: { width: 1600, height: 982 } }] as unknown as ResizeObserverEntry[], this);
+        }
+        unobserve(): void {}
+        disconnect(): void {}
+      }
+    );
+    try {
+      const { rerender } = renderTrace({ scopeKey: 'sw-tor-1' });
+      const readout = (): string | null => screen.getByTestId('sankey-zoom-controls').textContent;
+      const opened = readout();
+      expect(opened).not.toContain('100%');
+      fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '1' });
+      expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+
+      // The same switch drawn differently — a grouping change — is not a new subject.
+      rerender(wrap(baseProps({ scopeKey: 'sw-tor-1', grouping: 'cluster' })));
+      expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+
+      rerender(wrap(baseProps({ scopeKey: 'sw-core-2' })));
+      expect(readout()).toBe(opened);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('TraceView keyboard', () => {

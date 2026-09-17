@@ -11,7 +11,6 @@ import {
   endChevronPath,
   LABEL_MIN_THICKNESS,
   LEAF_W,
-  locatableKind,
   PAD_BOTTOM,
   PAD_TOP,
   PAD_X,
@@ -38,6 +37,7 @@ import {
   type SankeySvmDisplay,
   type SankeySvmFrame,
 } from './deriveSankey';
+import { locatableKind } from './locatable';
 
 // The content-space geometry (card widths, slot rows, ribbon thickness range) is the shared
 // `sankey-canvas` set, so a storage card and a network-trace card are the same size.

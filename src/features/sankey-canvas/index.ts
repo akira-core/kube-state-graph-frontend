@@ -10,7 +10,6 @@ export type { ShellEmptyKind } from './emptyState';
 export { loadGateScreen } from './loadGate';
 export type { LoadStatus } from './loadGate';
 export { haloStyle } from './textHalo';
-export { locatableKind } from './locatable';
 export { STORAGE_KIND_CAPTION } from './kindCaption';
 export { SankeyTooltip } from './SankeyTooltip';
 export { StatusLegend } from './StatusLegend';

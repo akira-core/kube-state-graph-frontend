@@ -820,7 +820,7 @@ The value SHALL be passed through **verbatim**, with no mapping, no case change,
 
 ### Requirement: Trace fetch (`GET endpoints.trace`) and request assembly
 
-The Network page's data SHALL come from an independent `GET` request to `endpoints.trace` (header carrying `Accept: application/json`), a third data source unrelated to `endpoints.graph` and `endpoints.storageGraph`: its in-flight request, loading / error state, last successful load time, retries and timer are independent, and one source serves both `/network/graph` and `/network/sankey` (see `app-shell`). The response body MUST be handed as `unknown` to the **same** normalize boundary. The endpoint's origin, path and query string MUST be used as-is; the app only appends parameters.
+The Network page's data SHALL come from an independent `GET` request to `endpoints.trace` (header carrying `Accept: application/json`), a third data source unrelated to `endpoints.graph` and `endpoints.storageGraph`: its in-flight request, loading / error state, last successful load time, retries and timer are independent, and it serves the one Network page, `/network/sankey` (see `app-shell`). The response body MUST be handed as `unknown` to the **same** normalize boundary. The endpoint's origin, path and query string MUST be used as-is; the app only appends parameters.
 
 The request MUST be **explicit** (see `explicit-query`): issued only on a Query commit whose draft holds a non-empty hostname and no validation problem, on Reload, or on an auto-refresh tick; mounting, a deep link, a view switch and a control edit MUST NOT issue it. The seven query parameters are built from the **applied** scope and MUST always all be sent, even at their default value, so a captured request attests what was asked:
 
@@ -858,9 +858,9 @@ Milliseconds are produced **only** in the trace request builder (`from` / `to` i
 
 ### Requirement: Network node fields are normalized additively
 
-The normalize boundary SHALL read three node-level network fields and carry them onto the produced node `data`, each validated independently, and each **dropped with an `errors` entry** when malformed (unlike a metrics gap, a malformed trace field changes what the trace can draw, so it is reported; the node itself is always kept):
+The normalize boundary SHALL read three node-level network fields and carry them onto the produced node `data`, each validated independently, and each **dropped with one `errors` entry naming `nodes[i].data.<field>` and the rule it broke** when malformed (unlike a metrics gap, a malformed trace field changes what the trace can draw, so it is reported; the node itself is always kept). One entry per malformed FIELD, never one per broken rule: the reader needs to know which field went missing from the drawing, and a list of rules for one field would not tell them more.
 
-- `investigation` → `data.investigation: { iface: string; deltaBps: number; direction?: 'in' | 'out'; note?: string }`. Required: `iface` non-empty string, `delta_bps` finite and `> 0`. `direction` kept only when `in` / `out`; `note` only when a string. A non-object value, a missing `iface`, a `delta_bps` not > 0, an invalid `direction` or a non-string `note` each drop the whole field with an error naming `nodes[i].data.investigation.<field>` and the rule.
+- `investigation` → `data.investigation: { iface: string; deltaBps: number; direction?: 'in' | 'out'; note?: string }`. Required: `iface` non-empty string, `delta_bps` finite and `> 0`. `direction` kept only when `in` / `out`; `note` only when a string. A non-object value, a missing `iface`, a `delta_bps` not > 0, an invalid `direction` or a non-string `note` each drop the WHOLE field — the anchor is one fact and half an anchor is not a fact — reported as a single entry naming `nodes[i].data.investigation` and restating the rules the object had to meet.
 - `clients` → `data.clients: Array<{ ip?: string; hostname?: string; owner?: string }>`. A non-array value drops the field with an error; an entry that is not an object or has neither a non-empty `ip` nor a non-empty `hostname` is dropped **silently**; unknown keys are ignored; an empty result omits the field.
 - `other_in_bps` / `other_out_bps` → `data.otherInBps` / `data.otherOutBps`. Each kept when a finite number `≥ 0`; a negative or non-numeric value drops that field with an error naming it.
 
@@ -875,8 +875,8 @@ Existing payloads MUST normalize byte-identically: for a body without any of the
 
 #### Scenario: A malformed investigation is dropped with an error
 
-- **WHEN** a node's `investigation` is `{ iface: "", delta_bps: 0 }`
-- **THEN** the node is produced without `data.investigation`, and `errors` contains entries naming `nodes[i].data.investigation.iface` (required) and `delta_bps` (must be > 0)
+- **WHEN** a node's `investigation` is `{ iface: "", delta_bps: 0 }` — two rules broken at once
+- **THEN** the node is produced without `data.investigation`, and `errors` gains exactly ONE entry, naming `nodes[i].data.investigation` and the rules the object had to meet (`iface` a non-empty string, `delta_bps` > 0, `direction` in / out, `note` a string)
 
 #### Scenario: Clients are filtered per entry
 

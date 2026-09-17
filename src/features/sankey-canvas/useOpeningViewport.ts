@@ -18,6 +18,13 @@ export interface OpeningViewportOptions {
   /** False while the layout has nothing to draw; the opening waits for real content. */
   hasContent: boolean;
   setViewport: (v: Viewport) => void;
+  /**
+   * What the drawing is OF. A view that can be pointed at a different subject — the trace's
+   * switch — passes it here, and a new value opens the next drawing fresh instead of
+   * inheriting a viewport panned around the previous one. Views whose payload is always the
+   * same subject leave it out: a refresh must not move the chart under the reader.
+   */
+  openingKey?: string | undefined;
 }
 
 /**
@@ -39,10 +46,16 @@ export function useOpeningViewport({
   containerSize,
   hasContent,
   setViewport,
+  openingKey,
 }: OpeningViewportOptions): void {
   const openedRef = useRef(false);
+  const keyRef = useRef(openingKey);
   useEffect(() => {
     const el = boxRef.current;
+    if (keyRef.current !== openingKey) {
+      keyRef.current = openingKey;
+      openedRef.current = false;
+    }
     if (openedRef.current || !hasContent || el === null) {
       return;
     }
@@ -53,5 +66,5 @@ export function useOpeningViewport({
     }
     setViewport(openingViewport(content, box));
     openedRef.current = true;
-  }, [boxRef, content, containerSize, hasContent, setViewport]);
+  }, [boxRef, content, containerSize, hasContent, openingKey, setViewport]);
 }

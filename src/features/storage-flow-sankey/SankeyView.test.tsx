@@ -830,6 +830,17 @@ describe('SankeyView', () => {
     expect(screen.getByTestId('sankey-zoom-controls').textContent).toBe(zoomedText);
   });
 
+  it('returns the chart to 1:1 when the factor readout itself is clicked', () => {
+    // The readout is a button, not a label: it is the affordance a reader reaches for after
+    // a wheel zoom, and the "1:1" key beside it is the same action under a different name.
+    renderSankey();
+    fireEvent.wheel(screen.getByTestId('sankey-chart-host'), { deltaY: -600, clientX: 100, clientY: 100 });
+    const controls = screen.getByTestId('sankey-zoom-controls');
+    expect(controls).not.toHaveTextContent('100%');
+    fireEvent.click(within(controls).getByRole('button', { name: /reset zoom to 1:1/i }));
+    expect(controls).toHaveTextContent('100%');
+  });
+
   it('toggles focus mode on "f" and reports it upward; Esc is a no-op outside focus mode', () => {
     const onFocusModeChange = vi.fn();
     renderSankey({ onFocusModeChange });
@@ -991,6 +1002,17 @@ describe('SankeyView', () => {
     fireEvent.click(screen.getByRole('radio', { name: /^node$/i }));
     expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
     expect(screen.getByRole('radio', { name: /both/i })).toBeChecked();
+  });
+
+  it('preserves the zoom readout across a mode switch', () => {
+    // Dropping the write ribbons redraws the whole chart at a different size. The viewport
+    // is the reader's, not the drawing's: only a new subject re-opens it.
+    renderSankey();
+    fireEvent.keyDown(screen.getByTestId('sankey-chart-host'), { key: '1' });
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
+    fireEvent.click(screen.getByRole('radio', { name: /^read$/i }));
+    expect(screen.getByRole('radio', { name: /^read$/i })).toBeChecked();
+    expect(screen.getByTestId('sankey-zoom-controls')).toHaveTextContent('100%');
   });
 
   it('does not offer Locate on application or namespace cards', () => {
