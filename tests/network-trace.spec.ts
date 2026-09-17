@@ -4,7 +4,11 @@ const HOSTNAME = 'sw%2Fdist-a';
 
 async function stubConfig(
   page: Page,
-  { demoMode = false, refreshIntervalSeconds = 0 }: { demoMode?: boolean; refreshIntervalSeconds?: number } = {}
+  {
+    demoMode = false,
+    refreshIntervalSeconds = 0,
+    traceConfigured = true,
+  }: { demoMode?: boolean; refreshIntervalSeconds?: number; traceConfigured?: boolean } = {}
 ): Promise<{ trace: string[] }> {
   const trace: string[] = [];
   page.on('request', (request) => {
@@ -21,7 +25,7 @@ async function stubConfig(
         endpoints: {
           graph: '/demo/graph.json',
           storageGraph: '/demo/storage-graph.json',
-          trace: '/demo/trace.json',
+          ...(traceConfigured ? { trace: '/demo/trace.json' } : {}),
           labelValues: '/prom',
         },
         theme: 'system',
@@ -87,6 +91,27 @@ test('network sankey mount issues 0 requests until Query; views and Min Δ share
   await expect(page.getByTestId('trace-filtered-pill')).toHaveCount(0);
   await expect(page).not.toHaveURL(/min_bps=/);
   expect(urls.trace).toHaveLength(1);
+});
+
+test('without endpoints.trace both Network views say so, before and after Query, and send nothing', async ({
+  page,
+}) => {
+  const urls = await stubConfig(page, { traceConfigured: false });
+  await page.goto(`/network/graph?hostname=${HOSTNAME}&from=now-1h&to=now`);
+  const graphState = page.getByTestId('graph-unconfigured');
+  await expect(graphState).toContainText('Trace endpoint is not configured', { timeout: 30_000 });
+  await expect(page.getByTestId('graph-awaiting-query')).toHaveCount(0);
+
+  // A hostname makes the draft valid, so Query is offered. Pressing it has nowhere to send
+  // to: the Graph view keeps naming the cause instead of claiming nothing was requested.
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(graphState).toBeVisible();
+  await expect(page.getByTestId('graph-awaiting-query')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+
+  await page.getByTestId('nav-view').getByRole('link', { name: 'Sankey' }).click();
+  await expect(page.getByTestId('trace-empty-unconfigured')).toContainText('Trace endpoint is not configured');
+  expect(urls.trace).toHaveLength(0);
 });
 
 test('a deep link with only a hostname sends every default explicitly', async ({ page }) => {

@@ -41,6 +41,21 @@ describe('describeGraphOutcome', () => {
     ).toEqual({ kind: 'cancelled', message: CANCELLED_QUERY_MESSAGE });
   });
 
+  it('names an unconfigured endpoint ahead of awaiting and cancelled, carrying the page message', () => {
+    const idle = { ...DRAWN, status: 'idle' as const, hasPayload: false, elementCount: 0, visibleNodeCount: 0 };
+    const message = 'Trace endpoint is not configured.';
+    expect(describeGraphOutcome({ ...idle, unconfiguredMessage: message })).toEqual({
+      kind: 'unconfigured',
+      message,
+    });
+    // Query on an unconfigured page commits the URL and sends nothing, so the view must keep
+    // naming the cause rather than fall back to "nothing has been requested yet".
+    expect(describeGraphOutcome({ ...idle, cancelled: true, unconfiguredMessage: message })).toEqual({
+      kind: 'unconfigured',
+      message,
+    });
+  });
+
   it('shows the loader only before the first payload', () => {
     expect(describeGraphOutcome({ ...DRAWN, status: 'loading', hasPayload: false })).toEqual({ kind: 'loading' });
     expect(describeGraphOutcome({ ...DRAWN, status: 'loading', hasPayload: true })).toEqual({ kind: 'drawn' });

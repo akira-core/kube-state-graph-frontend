@@ -51,6 +51,12 @@ import { locateOutcome } from './locateOutcome';
 import { resolveSelectedNode } from './resolveSelectedNode';
 import { useCollapseGroup } from './useCollapseGroup';
 
+const NOTICE_TEST_ID = {
+  unconfigured: 'graph-unconfigured',
+  awaiting: 'graph-awaiting-query',
+  cancelled: 'graph-cancelled',
+} as const;
+
 const LAYOUT_ALGORITHM_OPTIONS: ReadonlyArray<SegmentedOption<LayoutName>> = [
   { value: 'fcose', label: 'fCoSE', ariaLabel: 'fcose', title: 'Force-directed layout' },
   { value: 'dagre', label: 'Dagre', ariaLabel: 'dagre', title: 'Layered layout' },
@@ -68,6 +74,12 @@ export interface GraphViewProps {
   onAlertTimeClick: (timeSec: number) => void;
   locateNodeId?: string | null;
   onLocateConsumed?: () => void;
+  /**
+   * The page's endpoint is not configured, in the page's words. Only a page whose endpoint
+   * is optional sets it — the Network page, for `endpoints.trace`; `endpoints.graph` is
+   * required, so the Storage Graph never does.
+   */
+  unconfiguredMessage?: string;
 }
 
 export function GraphView({
@@ -82,6 +94,7 @@ export function GraphView({
   onAlertTimeClick,
   locateNodeId,
   onLocateConsumed,
+  unconfiguredMessage,
 }: Readonly<GraphViewProps>): JSX.Element {
   const stylesheet = useGraphTheme();
   const tokens = useThemeTokens();
@@ -488,6 +501,7 @@ export function GraphView({
     status,
     hasPayload,
     cancelled,
+    ...(unconfiguredMessage === undefined ? {} : { unconfiguredMessage }),
     firstError,
     elementCount: elements.length,
     visibleNodeCount: visibleNodeIds.size,
@@ -495,11 +509,11 @@ export function GraphView({
   });
   const emptyMessage = outcome.kind === 'empty' || outcome.kind === 'filtered' ? outcome.message : null;
 
-  if (outcome.kind === 'awaiting' || outcome.kind === 'cancelled') {
+  if (outcome.kind === 'unconfigured' || outcome.kind === 'awaiting' || outcome.kind === 'cancelled') {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <div
-          data-testid={outcome.kind === 'awaiting' ? 'graph-awaiting-query' : 'graph-cancelled'}
+          data-testid={NOTICE_TEST_ID[outcome.kind]}
           className="max-w-md rounded-lg border border-hairline bg-surface px-5 py-4 text-center text-[13px] leading-relaxed text-secondary shadow-panel"
         >
           {outcome.message}

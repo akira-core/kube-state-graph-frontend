@@ -72,15 +72,19 @@ export interface TraceViewProps {
   onGroupingChange?: (next: TraceGrouping) => void;
 }
 
+/**
+ * Why neither Network view can load: the one page's source is missing. Shared with the
+ * Graph view, which the page hands it to, so both views explain the same state in the same
+ * words — "Graph" alone would be ambiguous in a category that has its own Graph view.
+ */
+export const TRACE_UNCONFIGURED_MESSAGE = 'Trace endpoint is not configured. The Storage views are unaffected.';
+
 type EmptyKind = ShellEmptyKind | 'response' | 'model-error' | 'filtered';
 
 function emptyCopy(kind: EmptyKind, demoMode: boolean): { testId: string; text: string } {
   switch (kind) {
     case 'unconfigured':
-      return {
-        testId: 'trace-empty-unconfigured',
-        text: 'Trace endpoint is not configured. Graph and Storage views are unaffected.',
-      };
+      return { testId: 'trace-empty-unconfigured', text: TRACE_UNCONFIGURED_MESSAGE };
     case 'scope':
       return {
         testId: 'trace-empty-scope',

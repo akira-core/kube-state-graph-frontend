@@ -10,8 +10,12 @@ import { ThemeProvider } from '../theme';
 import { AppShell } from './AppShell';
 
 vi.mock('../graph-view', () => ({
-  GraphView: (props: { locateNodeId?: string | null; onLocateConsumed?: () => void }) => (
-    <div data-testid="graph-view" data-locate={props.locateNodeId ?? ''}>
+  GraphView: (props: { locateNodeId?: string | null; onLocateConsumed?: () => void; unconfiguredMessage?: string }) => (
+    <div
+      data-testid="graph-view"
+      data-locate={props.locateNodeId ?? ''}
+      data-unconfigured={props.unconfiguredMessage ?? ''}
+    >
       <button onClick={() => props.onLocateConsumed?.()}>consume-locate</button>
     </div>
   ),
@@ -965,5 +969,29 @@ describe('AppShell network category', () => {
     renderAt('/network/sankey?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });
     expect(screen.getByTestId('trace-empty-unconfigured')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  });
+
+  it('tells the Graph view the trace endpoint is absent, before and after Query', async () => {
+    const fetchMock = stubTraceFetch();
+    renderAt('/network/graph?hostname=sw%2Fdist-a&from=now-1h&to=now', { ...DEMO, demoMode: false });
+    // The same words as the Sankey view's state: both views explain one page's missing source.
+    const message = screen.getByTestId('graph-view').getAttribute('data-unconfigured') ?? '';
+    expect(message).toContain('not configured');
+    await userEvent.click(screen.getByRole('link', { name: 'Sankey' }));
+    expect(await screen.findByTestId('trace-empty-unconfigured')).toHaveTextContent(message);
+    await userEvent.click(screen.getByRole('link', { name: 'Graph' }));
+
+    // Query stays operable and commits, but there is nowhere to send it: the view must keep
+    // naming why, not fall back to "nothing has been requested yet".
+    pressQuery();
+    expect(await screen.findByTestId('graph-view')).toHaveAttribute('data-unconfigured', message);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Reload data' })).toBeDisabled();
+  });
+
+  it('gives the Graph view no unconfigured message when a trace endpoint is set', () => {
+    stubTraceFetch();
+    renderAt('/network/graph?hostname=sw%2Fdist-a&from=now-1h&to=now', liveNetwork);
+    expect(screen.getByTestId('graph-view')).toHaveAttribute('data-unconfigured', '');
   });
 });

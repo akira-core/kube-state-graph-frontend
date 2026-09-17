@@ -8,6 +8,7 @@ import {
   buildTraceQuery,
   parseTraceScope,
   serializeTraceScope,
+  TRACE_UNCONFIGURED_MESSAGE,
   TraceScopeBar,
   TraceView,
   useHostnameCandidates,
@@ -145,6 +146,7 @@ function NetworkPageBody({ view }: Readonly<{ view: View }>): JSX.Element {
             onAlertTimeClick={time.setAround}
             locateNodeId={locateNodeId}
             onLocateConsumed={onLocateConsumed}
+            {...(endpointConfigured ? {} : { unconfiguredMessage: TRACE_UNCONFIGURED_MESSAGE })}
           />
         ) : (
           <TraceView
