@@ -820,7 +820,7 @@ The value SHALL be passed through **verbatim**, with no mapping, no case change,
 
 ### Requirement: Trace fetch (`GET endpoints.trace`) and request assembly
 
-The Network page's data SHALL come from an independent `GET` request to `endpoints.trace` (header carrying `Accept: application/json`), a third data source unrelated to `endpoints.graph` and `endpoints.storageGraph`: its in-flight request, loading / error state, last successful load time, retries and timer are independent, and one source serves both `/network/graph` and `/network/sankey` (see `app-shell`). The response body MUST be handed as `unknown` to the **same** normalize boundary. The endpoint's origin, path and query string MUST be used as-is; the app only appends parameters.
+The Network page's data SHALL come from an independent `GET` request to `endpoints.trace` (header carrying `Accept: application/json`), a third data source unrelated to `endpoints.graph` and `endpoints.storageGraph`: its in-flight request, loading / error state, last successful load time, retries and timer are independent, and it serves the one Network page, `/network/sankey` (see `app-shell`). The response body MUST be handed as `unknown` to the **same** normalize boundary. The endpoint's origin, path and query string MUST be used as-is; the app only appends parameters.
 
 The request MUST be **explicit** (see `explicit-query`): issued only on a Query commit whose draft holds a non-empty hostname and no validation problem, on Reload, or on an auto-refresh tick; mounting, a deep link, a view switch and a control edit MUST NOT issue it. The seven query parameters are built from the **applied** scope and MUST always all be sent, even at their default value, so a captured request attests what was asked:
 

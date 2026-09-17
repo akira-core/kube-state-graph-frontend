@@ -4,27 +4,6 @@ Defines the Network category's trace Sankey: a conserving Sankey of one switch t
 
 ## Requirements
 
-### Requirement: Input is the trace fetch, shared by both Network views
-
-The Network Sankey view MUST take the response of `endpoints.trace` (normalized through the same normalize boundary of `graph-data-source`) as its sole input, held by the Network category's single loader (see `app-shell`); the Network Graph view draws the same normalized elements. The request is `GET <endpoints.trace>?hostname=<h>&from_ts=<ms>&to_ts=<ms>&max_hops=<n>&top_n=<n>&threshold=<pct>&track_dir=<source|destination>`, assembled by `graph-data-source`: all seven parameters MUST always be sent explicitly, including those at their default, and `from_ts` / `to_ts` MUST be the applied view time range resolved **at send time** to epoch **milliseconds** (13 digits for any date in this century). The response body is the cytoscape-style wire shape shared with the other endpoints plus four network fields (`metrics.delta_bps`, node `investigation`, `clients`, `other_in_bps` / `other_out_bps`).
-
-The trace model is **read-only derived data** computed from the normalized elements by `deriveTrace(elements, { direction, minBps, grouping })`; the derivation MUST NOT mutate any element (deep-equal before and after). While the loader is loading or in error, the view MUST present that state and draw nothing. When `endpoints.trace` is not configured and `demoMode` is `false`, the view MUST show the not-configured state and MUST NOT issue a request. When `demoMode` is `true`, the view renders the built-in `SHOWCASE_TRACE` fixture on mount, issues no request, and holds every scope value in component state as the storage view does.
-
-#### Scenario: One request with seven explicit parameters
-
-- **WHEN** the user opens `/network/sankey?hostname=sw-tor-1&from=now-1h&to=now`, leaves every other control at its default and activates Query at time `T`
-- **THEN** exactly one request is issued to `endpoints.trace` whose query string contains `hostname=sw-tor-1`, `max_hops=7`, `top_n=3`, `threshold=10`, `track_dir=source`, `from_ts` equal to `(T − 1h)` in milliseconds and `to_ts` equal to `T` in milliseconds; the Graph view of the same category issues nothing of its own
-
-#### Scenario: Derivation does not change the source data
-
-- **WHEN** `deriveTrace` runs on the normalized fixture for both directions, with `minBps` `0` and `5e8`, and both groupings
-- **THEN** the normalized elements after derivation are deep-equal to a deep copy taken before
-
-#### Scenario: Endpoint not configured
-
-- **WHEN** the runtime config lacks `endpoints.trace` and `demoMode` is `false`
-- **THEN** the view shows `trace-empty-unconfigured`, issues no request, and the Network links stay reachable in the nav bar
-
 ### Requirement: Scope controls hold raw strings and refuse invalid values
 
 The Network scope bar SHALL provide: `Hostname` (single-select dropdown with the shared dropdown contract, custom values allowed, options from "Hostname candidates"), `Max hops`, `Top N`, `Threshold %` (text inputs), `Track` (`source` | `destination`) and the shared Query / Cancel control. They edit the **draft** (see `explicit-query`), stored as **raw strings**. The rules per parameter:
@@ -269,7 +248,7 @@ Column captions read `Trace start (in)` / `Trace start (out)` for the anchor col
 
 ### Requirement: Layout and order switches
 
-The control bar SHALL provide `Group` (`None` default | `Cluster`) and `Order` (`Flow` default | `Barycenter`), both **transient** page state (not in the URL, not persisted, reset on remount), and switching either issues no request and preserves the zoom / pan viewport and hover state.
+The scope bar's **view-controls group** (see "Top nav bar" in `app-shell`) SHALL provide `Group` (`None` default | `Cluster`) and `Order` (`Flow` default | `Barycenter`), both **transient** page state (not in the URL, not persisted, reset on remount), and switching either issues no request and preserves the zoom / pan viewport and hover state. Both remain operable in every empty state.
 
 Every card reads its Kubernetes cluster from its own `labels.cluster` (k8s nodes and pods on the wire); a synthesised namespace / application card inherits its pod's, and one namespace name present in two clusters is two namespace cards. Under `Cluster`, every k8s-band card (k8s node hop, pod, application, namespace) that names a cluster is framed with the others of that cluster in one `SankeyWrapperBox` spanning every k8s column, one row block per cluster shared across the columns (a column with no member of a cluster leaves that block's row empty); frames are ordered by the summed traced flow of the cluster's pod cards under `Flow` and by name under `Barycenter`, cards naming no cluster sit below every frame, the client partition below everything, and a frame's border takes the worst status of its members. A frame is not a graph node: it has no edges, no column of its own and no residuals; ribbons attach to the cards. Its title row hovers (tooltip `cluster / <name>`, the card count, the folded status) and lights the union of its members' paths, and is not locatable. Under `None`, or when no card names a cluster, no frame is drawn and the layout is exactly the ungrouped one.
 
@@ -285,9 +264,14 @@ Under `Flow`, a node's rank is the amount on its **traced side** — the sum of 
 - **WHEN** switch `X` has ribbons totalling `+3 Gbps` and an `other out` of `+20 Gbps`, and switch `Y` in the same column has ribbons totalling `+5 Gbps`
 - **THEN** `Y` is placed above `X`
 
+#### Scenario: The switches sit in the scope bar
+
+- **WHEN** the user opens `/network/sankey`
+- **THEN** `Group` and `Order` are found inside the page's control bar after the Query action, there is no bordered row between the control bar and the chart, and both are operable while `trace-empty-awaiting` is shown
+
 ### Requirement: The `Min Δ` display threshold
 
-The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same input styling as the storage view's Top pods field, an accessible name, an adjacent rendering of the value in `Gbps` / `Mbps` / `kbps`) with a `Clear` action. Edits apply after a 200 ms debounce; blur normalizes the field through `cleanMinBps` (floor; a value not greater than `0` is `0`). The chart keeps only ribbons whose aggregated value is **strictly greater** than the threshold (`>`, never `>=`); hidden amounts fold into the hop's residuals (see "Residuals"); the anchor edge and derived edges are exempt; a hop with no ribbon left is hidden as a whole (a no-flow hop is not counted); the residual blocks themselves are not filtered. While anything is hidden the control bar MUST show a pill `hidden N ribbons / M hops (X)` — the ` / M hops` part only when a hop was hidden whole, `X` the **unsigned** hidden total through `formatBitsPerSec` — and the same sentence appears in the warnings drawer. When the threshold hides every hop and there is no anchor, the view shows `trace-empty-filtered` with the pill still visible. The threshold is a display value: it is never sent to the backend, changing it issues no request, and outside demo mode it is written to the URL as `min_bps` (omitted when `0`).
+The scope bar's view-controls group SHALL provide a `Min Δ` input (bits/s, raw string, the same input styling as the storage view's Top pods field, an accessible name, an adjacent rendering of the value in `Gbps` / `Mbps` / `kbps`) with a `Clear` action. Edits apply after a 200 ms debounce; blur normalizes the field through `cleanMinBps` (floor; a value not greater than `0` is `0`). The chart keeps only ribbons whose aggregated value is **strictly greater** than the threshold (`>`, never `>=`); hidden amounts fold into the hop's residuals (see "Residuals"); the anchor edge and derived edges are exempt; a hop with no ribbon left is hidden as a whole (a no-flow hop is not counted); the residual blocks themselves are not filtered. While anything is hidden the view-controls group MUST show a pill `hidden N ribbons / M hops (X)` — the ` / M hops` part only when a hop was hidden whole, `X` the unsigned hidden total through `formatBitsPerSec` — and a warning naming the threshold, the hidden ribbons and total, and any hop hidden whole appears among the warnings pill's messages (see "Empty states by cause"). When the threshold hides every hop and there is no anchor, the view shows `trace-empty-filtered` with the pill still visible. The threshold is a display value: it is never sent to the backend, changing it issues no request, and outside demo mode it is written to the URL as `min_bps` (omitted when `0`).
 
 #### Scenario: Strictly greater
 
@@ -296,8 +280,8 @@ The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same inp
 
 #### Scenario: Hidden amounts stay in the balance
 
-- **WHEN** `sw-core-1` has outbound ribbons `+14 Gbps`, `+5 Gbps` and `+0.4 Gbps`, and `Min Δ` is `1e9`
-- **THEN** the `0.4 Gbps` ribbon disappears, `sw-core-1`'s `other out` grows by `0.4 Gbps`, the pill reads `hidden 1 ribbon (400 Mbps)` with no hop part and no sign, no request is issued, and the address bar carries `min_bps=1000000000`
+- **WHEN** the start `sw-core-1` has outbound ribbons `+14 Gbps` to `sw-a`, `+5 Gbps` to `sw-b` and `+0.4 Gbps` to `sw-c`, `sw-c` also receives `+3 Gbps` from `sw-a`, and `Min Δ` is `1e9`
+- **THEN** the `0.4 Gbps` ribbon disappears, `sw-core-1`'s `other out` grows by `0.4 Gbps`, `sw-c` stays drawn, the pill reads `hidden 1 ribbon (400 Mbps)`, no request is issued, and the address bar carries `min_bps=1000000000`; without the `sw-a → sw-c` ribbon `sw-c` is hidden whole and the pill reads `hidden 1 ribbon / 1 hop (400 Mbps)`
 
 #### Scenario: Everything filtered
 
@@ -306,12 +290,17 @@ The control bar SHALL provide a `Min Δ` input (bits/s, raw string, the same inp
 
 ### Requirement: Legend
 
-The chart area SHALL show a legend whose **every** row is presence-gated — a traced Δ ribbon row, a backward ribbon row, a lateral (same-column interconnect) row, an ownership-line row, the `other in` and `other out` residual swatches, and the shared `StatusLegend` dots — each drawn only when the chart carries that mark, because a row for a mark that is not on the chart sends the reader hunting for a ribbon kind that is not there. Rows are drawn with the same SVG line samples the storage view's legend uses; a sample carries no arrowhead and only the residual and ownership samples are dashed, so what tells two rows apart is the swatch **colour** and the row's **text label** — every row MUST therefore carry a label naming its mark, and the legend MUST NOT rely on hue alone.
+The scope bar's view-controls group SHALL show a legend whose **every** row is presence-gated — a traced Δ ribbon row, a backward ribbon row, a lateral (same-column interconnect) row, an ownership-line row, the `other in` and `other out` residual swatches, and the shared `StatusLegend` dots — each drawn only when the chart carries that mark, because a row for a mark that is not on the chart sends the reader hunting for a ribbon kind that is not there. Rows are drawn with the same SVG line samples the storage view's legend uses; a sample carries no arrowhead and only the residual and ownership samples are dashed, so what tells two rows apart is the swatch **colour** and the row's **text label** — every row MUST therefore carry a label naming its mark, and the legend MUST NOT rely on hue alone. While an empty state is shown no legend row is drawn.
 
 #### Scenario: Rows follow the chart
 
 - **WHEN** the fixture draws with one backward edge and owner lines but no lateral edge
 - **THEN** the legend shows the Δ, backward, ownership and residual rows and no lateral row; after `Min Δ` hides the backward edge the backward row disappears
+
+#### Scenario: The legend sits in the scope bar
+
+- **WHEN** the fixture is drawn
+- **THEN** the legend rows are found inside the page's control bar, after the `Group`, `Order` and `Min Δ` controls, and nowhere in the chart area
 
 ### Requirement: Tooltips
 
@@ -336,46 +325,14 @@ Hovering a card MUST highlight every ribbon on every path through it — upstrea
 - **WHEN** the user hovers `srv-db-07`
 - **THEN** the anchor ribbon, `sw-edge-a → sw-core-1` and `sw-core-1 → srv-db-07` are lit, every other ribbon and card is faded, and the layout function is not called
 
-### Requirement: Clicking a card Locates into the Network Graph
-
-Clicking a locatable card MUST push-navigate to `/network/graph` keeping the current query string, passing the node id through navigation state (not the URL). Because both views share the category's loader, the Graph view MUST run Locate as soon as it mounts with the payload already held (no new request); when no payload is held it runs after the first successful load, once. Locatable cards are hop boxes except `netapp-svm` and leaf pods; anchor, application, namespace, owner and leaf (`host`) cards and cluster frame title rows are not and MUST NOT be presented as clickable. Back returns to `/network/sankey` with the same query and no selection.
-
-#### Scenario: Locate keeps the scope and issues no request
-
-- **WHEN** after a committed query on `/network/sankey?hostname=sw-tor-1&from=…&to=…` the user clicks the `sw-core-1` card
-- **THEN** the address bar becomes `/network/graph?hostname=sw-tor-1&from=…&to=…` (push), the Graph view selects `sw-core-1` and fits its neighbourhood without issuing a request, and Back returns to the Sankey with the same query and no selected card
-
 ### Requirement: Zoom, keyboard and focus are the shared behaviour
 
-The chart area's zoom / pan, opening viewport, control bar (zoom out, factor readout, zoom in, fit, 1:1, focus), keyboard shortcuts on the chart container only (`+` and `=` zoom in, `-` zooms out, `0` fits, `1` is actual size, `F` **toggles** focus mode — the same key leaves it — and `Esc` leaves it) and focus mode (collapsing the nav bar and the scope bar, with the view controls and legend it holds) MUST be provided by `sankey-canvas` and behave exactly as specified there and in `storage-flow-sankey`; the trace view MUST NOT reimplement any of them. Changing `Min Δ`, `Group`, `Order`, the theme, the container size or a refresh preserves the viewport; a new payload for a different hostname returns to the opening viewport.
+The chart area's zoom / pan, opening viewport, control bar (zoom out, factor readout, zoom in, fit, 1:1, focus), keyboard shortcuts on the chart container only (`+` and `=` zoom in, `-` zooms out, `0` fits, `1` is actual size, `F` **toggles** focus mode — the same key leaves it — and `Esc` leaves it) and focus mode (collapsing the nav bar and the scope bar together with the view controls and legend it holds) MUST be provided by `sankey-canvas` and behave exactly as specified there and in `storage-flow-sankey`; the trace view MUST NOT reimplement any of them. Changing `Min Δ`, `Group`, `Order`, the theme, the container size or a refresh preserves the viewport; a new payload for a different hostname returns to the opening viewport.
 
 #### Scenario: Focus mode on the Network Sankey
 
 - **WHEN** the user zooms to 150 %, presses `F`, then `Esc`
 - **THEN** in focus mode the nav bar and the scope bar (with `Group`, `Order`, `Min Δ`, the pills and the legend) are hidden and the chart fills the window; after leaving, all are restored and the readout still says `150%`
-
-### Requirement: Empty states
-
-The view MUST distinguish six states by cause, each with its own `data-testid` and explanatory text in the same format as the storage view's empty states, with the scope bar operable in every state:
-
-1. `trace-empty-unconfigured` — `endpoints.trace` absent outside demo mode.
-2. `trace-empty-scope` — the draft has no hostname or has problems; names the problem and states that no request has been issued.
-3. `trace-empty-awaiting` — the draft is valid but nothing has been committed on this mount; points at Query.
-4. `trace-empty-cancelled` — the only request of this mount was cancelled and no payload is held.
-5. `trace-empty-model-error` — `deriveTrace` returned `ok: false` (a body yielding no hop card at all, a trace stop with an onward edge, …): lists every error. A storage-only body is not one of these — it derives to no-flow hops.
-6. `trace-empty-filtered` — the display threshold hid every hop.
-
-A warnings drawer below the chart lists the model's warnings together with the normalize boundary's `errors`, collapsed by default with a count.
-
-#### Scenario: A deep link awaits Query
-
-- **WHEN** the user opens `/network/sankey?hostname=sw-tor-1&from=now-1h&to=now`
-- **THEN** `trace-empty-awaiting` is shown naming the Query control, no request has been issued, and Reload is unavailable
-
-#### Scenario: Empty body is a model error, not a blank
-
-- **WHEN** the backend answers 200 with `{ elements: { nodes: [], edges: [] } }`
-- **THEN** the view shows `trace-empty-model-error` stating that the body contains no drawable node, and the status indicator reads ready
 
 ### Requirement: Bits-per-second formatting
 
@@ -427,3 +384,67 @@ The Network trace Sankey SHALL show the card search of `sankey-canvas` "Card sea
 
 - **WHEN** the user types `10.42.7.31`
 - **THEN** one result is listed with the line `ip: 10.42.7.31`, and the leaf's path including its owner card `網管部 王小明` is lit
+
+### Requirement: Input is the trace fetch
+
+The Network Sankey page MUST take the response of `endpoints.trace` (normalized through the same normalize boundary of `graph-data-source`) as its sole input, held by the page's own loader (see `app-shell`). The request is `GET <endpoints.trace>?hostname=<h>&from_ts=<ms>&to_ts=<ms>&max_hops=<n>&top_n=<n>&threshold=<pct>&track_dir=<source|destination>`, assembled by `graph-data-source`: all seven parameters MUST always be sent explicitly, including those at their default, and `from_ts` / `to_ts` MUST be the applied view time range resolved **at send time** to epoch **milliseconds** (13 digits for any date in this century). The response body is the cytoscape-style wire shape shared with the other endpoints plus four network fields (`metrics.delta_bps`, node `investigation`, `clients`, `other_in_bps` / `other_out_bps`).
+
+The trace model is **read-only derived data** computed from the normalized elements by `deriveTrace(elements, { direction, minBps, grouping })`; the derivation MUST NOT mutate any element (deep-equal before and after). While the loader is loading or in error, the view MUST present that state and draw nothing. When `endpoints.trace` is not configured and `demoMode` is `false`, the view MUST show the not-configured state and MUST NOT issue a request. When `demoMode` is `true`, the view renders the built-in `SHOWCASE_TRACE` fixture on mount, issues no request, and holds every scope value in component state as the storage view does.
+
+#### Scenario: One request with seven explicit parameters
+
+- **WHEN** the user opens `/network/sankey?hostname=sw-tor-1&from=now-1h&to=now`, leaves every other control at its default and activates Query at time `T`
+- **THEN** exactly one request is issued to `endpoints.trace` whose query string contains `hostname=sw-tor-1`, `max_hops=7`, `top_n=3`, `threshold=10`, `track_dir=source`, `from_ts` equal to `(T − 1h)` in milliseconds and `to_ts` equal to `T` in milliseconds, and no request is issued to any other endpoint
+
+#### Scenario: Derivation does not change the source data
+
+- **WHEN** `deriveTrace` runs on the normalized fixture for both directions, with `minBps` `0` and `5e8`, and both groupings
+- **THEN** the normalized elements after derivation are deep-equal to a deep copy taken before
+
+#### Scenario: Endpoint not configured
+
+- **WHEN** the runtime config lacks `endpoints.trace` and `demoMode` is `false`
+- **THEN** `/network/sankey` shows `trace-empty-unconfigured`, its scope bar stays operable, and no request is issued
+
+### Requirement: No card offers Locate
+
+No card, frame title row or residual on the Network Sankey MUST be presented as clickable (no pointer cursor, no click effect, `data-locatable="false"` on every card), and clicking any of them MUST navigate nowhere and change nothing but hover: the Graph view that a Locate used to land on no longer exists, and the Storage Graph draws a different body. The card search's own Locate — framing the hit card within the chart (see `sankey-canvas` "Card search overlay") — is unaffected.
+
+#### Scenario: Clicking a hop card does nothing
+
+- **WHEN** the user clicks the `sw-core-1` card after a committed query on `/network/sankey?hostname=sw-tor-1&from=…&to=…`
+- **THEN** the address bar is unchanged, the history length is unchanged, no request is issued, and the card is not presented with a pointer cursor
+
+#### Scenario: Card search still frames a hit
+
+- **WHEN** the user types `kafka-2` in the card search and activates the result
+- **THEN** the viewport pans to frame the `kafka-2` card within the chart and the page stays on `/network/sankey`
+
+### Requirement: Empty states by cause
+
+The view MUST distinguish seven states by cause, each with its own `data-testid` and explanatory text in the same format as the storage view's empty states, with the scope bar — its scope controls and its view-controls group alike — operable in every state:
+
+1. `trace-empty-unconfigured` — `endpoints.trace` absent outside demo mode; its text names the trace endpoint and states that the Storage pages are unaffected.
+2. `trace-empty-scope` — the draft has no hostname or has problems; names the problem and states that no request has been issued.
+3. `trace-empty-awaiting` — the draft is valid but nothing has been committed on this mount; points at Query.
+4. `trace-empty-cancelled` — the only request of this mount was cancelled and no payload is held.
+5. `trace-empty-response` — the backend answered with a body holding no element at all: an answer about this switch and window, not a malformed body; its text says no traffic was recorded and that the hostname may not exist or the window may be outside retention (plus the demo-fixture note in demo mode).
+6. `trace-empty-model-error` — `deriveTrace` returned `ok: false` for a body that holds elements (a body whose nodes are all group kinds, a trace stop with onward edges, …): lists every error. A body carrying only `storage-flow` edges is **not** one of these: it derives `ok: true` and draws its hop-kind nodes as bare no-flow boxes.
+7. `trace-empty-filtered` — the display threshold hid every hop.
+
+A **warnings pill** in the scope bar's view-controls group shows how many warnings the drawn body carries — the model's warnings together with the normalize boundary's `errors` — and lists every message when hovered or focused; it is not drawn when there are none, and nothing else below the chart lists them.
+
+#### Scenario: A deep link awaits Query
+
+- **WHEN** the user opens `/network/sankey?hostname=sw-tor-1&from=now-1h&to=now`
+- **THEN** `trace-empty-awaiting` is shown naming the Query control, no request has been issued, and Reload is unavailable
+
+#### Scenario: Empty body is an answer, not a blank
+
+- **WHEN** the backend answers 200 with `{ elements: { nodes: [], edges: [] } }`
+- **THEN** the view shows `trace-empty-response` stating that no traffic was recorded, not `trace-empty-model-error`, and the status indicator reads ready
+
+#### Scenario: Warnings are a pill, not a drawer
+
+- **WHEN** the fixture is drawn and `Min Δ` is `1e9`, so the model reports the hidden-ribbon sentence as a warning
+- **THEN** the view-controls group shows a warnings pill with the count, hovering or focusing it lists the hidden-ribbon warning, and no element below the chart lists warnings; after `Clear` that warning leaves the pill, and the pill disappears when no warning remains

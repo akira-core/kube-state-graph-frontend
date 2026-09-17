@@ -138,7 +138,7 @@ When `demoMode` is `false` (including the default when absent), `endpoints.graph
 
 When any of `endpoints.storageGraph`, `endpoints.labelValues`, `endpoints.codeChanges`, `endpoints.configChanges`, `endpoints.dashboard` is absent (or an empty string), the feature depending on that endpoint MUST be disabled: the app MUST NOT issue any request to that endpoint, UI depending on its data MUST not render (it must not be replaced by an error message, a disabled-state button, or a spinner), and MUST NOT show the user any error. "UI depending on its data" means UI that has no purpose without it: a dropdown that accepts a custom value still has one, because the value it sends is a raw label matcher and a typed value is as valid as an enumerated one — see the `labelValues` bullet. The mapping is as follows:
 
-- `endpoints.storageGraph` absent → the Sankey view MUST NOT issue any fetch request, and replaces the diagram with a "storage graph endpoint not configured" explanatory state; the nav bar's Sankey link MUST remain reachable (routing unchanged), and MUST NOT replace the whole app with the config error screen.
+- `endpoints.storageGraph` absent → the Storage Sankey page MUST NOT issue any fetch request, and replaces the diagram with a "storage graph endpoint not configured" explanatory state; `/sankey` MUST remain reachable at its path (routing unchanged), and the app MUST NOT replace the whole app with the config error screen.
 - `endpoints.labelValues` absent → the Sankey's `cluster` / `namespace` narrowing controls do not render: they narrow an estate that `az` / `env` have already scoped, and with nothing to enumerate they add nothing. **The Graph view filter bar's `cluster` / `az` / `env` / `namespace` controls and the Sankey's `az` / `env` MUST still render, with an empty option list, and MUST still accept a custom value** (dropdown contract in `graph-filters`): these dimensions reach the upstream PromQL as raw label matchers, so a typed value is as usable as an enumerated one, and for the Sankey the `storage-graph` endpoint requires `az` / `env` while being independently optional from `labelValues` — removing those controls would leave a deployment that has configured `storageGraph` permanently unable to fetch, with only a hint pointing at a control that does not exist. No request is issued to any label-values URL either way. See `storage-flow-sankey` and `graph-filters`.
 - `endpoints.codeChanges` absent → the node detail's code change history section does not render.
 - `endpoints.configChanges` absent → the node detail's config change history section does not render.
@@ -150,12 +150,12 @@ Each endpoint is judged independently: one endpoint being absent MUST NOT affect
 
 - **WHEN** the configuration document's `endpoints` contains only `graph`
 - **THEN** the graph loads normally; when any node's detail panel is opened, the change history sections and the Dashboard button do not render, and no request is issued to code_changes / config_changes / dashboard
-- **AND** the filter bar's identity dimensions render with no options and still accept a custom value; switching to the Sankey view shows "storage graph endpoint not configured", and no storage-graph request is issued to any URL
+- **AND** the filter bar's identity dimensions render with no options and still accept a custom value; opening `/sankey` shows "storage graph endpoint not configured", and no storage-graph request is issued to any URL
 
 #### Scenario: graph configured but storageGraph not configured
 
 - **WHEN** `endpoints` contains `graph` and `labelValues` but no `storageGraph`
-- **THEN** config validation passes, the Graph view and filter bar are fully normal; the Sankey view is reachable via the nav bar, shows the not-configured notice, issues no request and shows no error screen
+- **THEN** config validation passes, the Graph view and filter bar are fully normal; `/sankey` is reachable at its path, shows the not-configured notice, issues no request and shows no error screen
 
 #### Scenario: storageGraph configured but labelValues not configured
 
@@ -281,19 +281,19 @@ The build artifact (static assets) MUST NOT contain any environment-specific bac
 
 ### Requirement: `endpoints.trace` is optional and enables only the Network fetch
 
-The configuration document MAY carry `endpoints.trace` (string URL, optional, default absent): the URL of the network trace endpoint that the Network category's page fetches (`GET <trace>?hostname&from_ts&to_ts&max_hops&top_n&threshold&track_dir`, see `graph-data-source`). It is validated by exactly the same "Endpoint URL form rules" as every other `endpoints.*` value, and an empty string is treated as absent. It joins the known endpoint keys, so a document carrying it MUST NOT produce the unknown-key warning. It is independent of every other endpoint: its absence MUST NOT affect the Graph or the storage Sankey, and the absence of `endpoints.graph` / `endpoints.storageGraph` MUST NOT affect it. Under `demoMode` it is ignored like the rest of `endpoints`, and the Network views render the built-in trace fixture.
+The configuration document MAY carry `endpoints.trace` (string URL, optional, default absent): the URL of the network trace endpoint that the Network Sankey page fetches (`GET <trace>?hostname&from_ts&to_ts&max_hops&top_n&threshold&track_dir`, see `graph-data-source`). It is validated by exactly the same "Endpoint URL form rules" as every other `endpoints.*` value, and an empty string is treated as absent. It joins the known endpoint keys, so a document carrying it MUST NOT produce the unknown-key warning. It is independent of every other endpoint: its absence MUST NOT affect the Storage Graph or the Storage Sankey, and the absence of `endpoints.graph` / `endpoints.storageGraph` MUST NOT affect it. Under `demoMode` it is ignored like the rest of `endpoints`, and the Network Sankey renders the built-in trace fixture.
 
-When `endpoints.trace` is absent (or empty) and `demoMode` is `false`: the Network views MUST issue no request to any URL, `/network/graph` and `/network/sankey` MUST remain reachable through the nav bar (routing unchanged), the Sankey view shows its "trace endpoint not configured" state (`trace-empty-unconfigured`) and the Graph view its equivalent explanatory state, the scope bar stays operable, the nav bar's Reload is unavailable, and the app MUST NOT show the configuration error screen.
+When `endpoints.trace` is absent (or empty) and `demoMode` is `false`: the Network Sankey page MUST issue no request to any URL, `/network/sankey` MUST remain reachable at its path (routing unchanged), the page shows its "trace endpoint not configured" state (`trace-empty-unconfigured`), the scope bar stays operable, the nav bar's Reload is unavailable, and the app MUST NOT show the configuration error screen.
 
 #### Scenario: A document with trace configured
 
 - **WHEN** the configuration document's `endpoints` contains `graph` and `"trace": "/api/v1/trace"`
-- **THEN** validation passes with no console warning, and the Network page's Query sends its request to `/api/v1/trace` under the page origin
+- **THEN** validation passes with no console warning, and the Network Sankey's Query sends its request to `/api/v1/trace` under the page origin
 
 #### Scenario: Trace absent disables only the Network fetch
 
 - **WHEN** `endpoints` contains `graph` and `storageGraph` but no `trace`, and `demoMode` is `false`
-- **THEN** validation passes, `/graph` and `/sankey` behave exactly as before, `/network/sankey` shows the not-configured state with the scope bar operable, and the request count to any URL while on the Network views is 0
+- **THEN** validation passes, `/graph` and `/sankey` behave exactly as before, `/network/sankey` shows the not-configured state with the scope bar operable, and the request count to any URL while on `/network/sankey` is 0
 
 #### Scenario: A malformed trace value fails like any endpoint
 
