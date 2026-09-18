@@ -49,6 +49,11 @@ export function formatBytes(bytes: number): string {
   return `${formatSignificant(value)} ${BYTE_UNITS[unit]}`;
 }
 
+/** Storage IOPS, e.g. `150 ops/s`. Same significant-digit rule as `formatSignificant`. */
+export function formatOps(ops: number): string {
+  return `${formatSignificant(ops)} ops/s`;
+}
+
 function roundsToUnitBoundary(value: number): boolean {
   return Number(value.toPrecision(SIGNIFICANT_DIGITS)) >= BYTES_PER_UNIT;
 }

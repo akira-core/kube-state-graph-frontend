@@ -104,6 +104,15 @@ describe('SHOWCASE_GRAPH', () => {
       expect(both.length).toBeGreaterThan(0);
       expect(neither.length).toBeGreaterThan(0);
     });
+
+    it('covers Sankey: a pvc-to-netapp-aggr edge with both ops', () => {
+      const storage = edges.filter((data) => data.edgeType === 'pvc-to-netapp-aggr');
+      const bothOps = storage.filter((data) => {
+        const m = data.metrics;
+        return m !== undefined && !('rate' in m) && m.readOps !== undefined && m.writeOps !== undefined;
+      });
+      expect(bothOps.length).toBeGreaterThan(0);
+    });
   });
 
   describe('both ingress shapes', () => {

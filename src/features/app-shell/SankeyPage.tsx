@@ -27,6 +27,7 @@ import {
   type SankeyQueryController,
   type SankeyRootKind,
   type SankeySvmDisplay,
+  type SankeyWeight,
 } from '../storage-flow-sankey';
 
 import { HOME_PATH } from './routes';
@@ -115,6 +116,7 @@ export function SankeyPage(): JSX.Element {
   const [svmDisplay, setSvmDisplay] = useState<SankeySvmDisplay>('column');
   const [demoTopPods, setDemoTopPods] = useState(DEFAULT_TOP_PODS);
   const [demoModeValue, setDemoModeValue] = useState<SankeyMode>('both');
+  const [demoWeight, setDemoWeight] = useState<SankeyWeight>('throughput');
   const [rootKind, setRootKind] = useState<SankeyRootKind>('aggr');
 
   useEffect(() => {
@@ -161,6 +163,7 @@ export function SankeyPage(): JSX.Element {
 
   const topPods = config.demoMode ? demoTopPods : applied.topPods;
   const mode = config.demoMode ? demoModeValue : applied.mode;
+  const weight = config.demoMode ? demoWeight : applied.weight;
 
   const onQuery = useCallback(() => {
     if (!azEnvReady || !hasRoot) {
@@ -171,6 +174,7 @@ export function SankeyPage(): JSX.Element {
       {
         query: controller.query,
         mode,
+        weight,
         topPods,
         droppedPods: [],
       },
@@ -180,7 +184,7 @@ export function SankeyPage(): JSX.Element {
     storage.onQuery(() =>
       storageEndpoint === undefined ? undefined : buildStorageGraphRequestUrl(storageEndpoint, range, controller.query)
     );
-  }, [azEnvReady, commit, controller.query, hasRoot, mode, storage, storageEndpoint, time, topPods]);
+  }, [azEnvReady, commit, controller.query, hasRoot, mode, storage, storageEndpoint, time, topPods, weight]);
 
   const onLocateNode = useCallback(
     (id: string) => {
@@ -210,11 +214,24 @@ export function SankeyPage(): JSX.Element {
     demoMode: config.demoMode,
     onDemo: setDemoModeValue,
   });
+  const onWeightChange = useCommitField('weight', {
+    applied,
+    commit,
+    fallbackRange: time.range,
+    demoMode: config.demoMode,
+    onDemo: setDemoWeight,
+  });
 
   // The roots the drawn payload was requested with — the APPLIED ones. The draft's roots
   // would re-gate the Top pods cut and root materialisation before Query.
   const drawnRoots = config.demoMode ? controller.query.roots : applied.query.roots;
-  const projection = useSankeyProjection({ elements: storage.state.elements, mode, topPods, roots: drawnRoots });
+  const projection = useSankeyProjection({
+    elements: storage.state.elements,
+    mode,
+    weight,
+    topPods,
+    roots: drawnRoots,
+  });
   const effectiveSvmDisplay: SankeySvmDisplay = projection.svmAvailable ? svmDisplay : 'column';
 
   return (
@@ -236,6 +253,8 @@ export function SankeyPage(): JSX.Element {
             <SankeyViewControls
               mode={mode}
               onModeChange={onModeChange}
+              weight={weight}
+              onWeightChange={onWeightChange}
               podLayout={podLayout}
               onPodLayoutChange={setPodLayout}
               svmDisplay={effectiveSvmDisplay}
@@ -257,6 +276,7 @@ export function SankeyPage(): JSX.Element {
           focusMode={focusMode}
           onFocusModeChange={setFocusMode}
           mode={mode}
+          weight={weight}
           endpointConfigured={storageConfigured}
           azEnvReady={azEnvReady}
           hasRoot={hasRoot}

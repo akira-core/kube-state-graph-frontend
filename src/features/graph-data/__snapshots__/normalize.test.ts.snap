@@ -2570,7 +2570,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 5242880,
+          "readOps": 150,
           "writeBytesPerSec": 1048576,
+          "writeOps": 40,
         },
         "source": "netapp/ontap-prod/ontap-prod-01",
         "target": "netapp/ontap-prod/aggr/aggr1",
@@ -2586,7 +2588,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 5242880,
+          "readOps": 150,
           "writeBytesPerSec": 1048576,
+          "writeOps": 40,
         },
         "source": "netapp/ontap-prod/aggr/aggr1",
         "target": "netapp/ontap-prod/svm/svm_shop",
@@ -2639,7 +2643,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 5242880,
+          "readOps": 150,
           "writeBytesPerSec": 1048576,
+          "writeOps": 40,
         },
         "source": "pvc/data-mongo-0",
         "target": "pod/mongo-0",
@@ -2687,7 +2693,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 5373952,
+          "readOps": 150,
           "writeBytesPerSec": 1048576,
+          "writeOps": 40,
         },
         "source": "pod/mongo-0",
         "target": "node/worker-0",
@@ -2703,7 +2711,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 262144,
+          "readOps": 12,
           "writeBytesPerSec": 49152,
+          "writeOps": 3,
         },
         "source": "netapp/ontap-prod/ontap-prod-02",
         "target": "netapp/ontap-prod/aggr/aggr2",
@@ -2719,7 +2729,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 262144,
+          "readOps": 12,
           "writeBytesPerSec": 49152,
+          "writeOps": 3,
         },
         "source": "netapp/ontap-prod/aggr/aggr2",
         "target": "netapp/ontap-prod/svm/svm_shop",
@@ -2735,7 +2747,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 262144,
+          "readOps": 12,
           "writeBytesPerSec": 49152,
+          "writeOps": 3,
         },
         "source": "netapp/ontap-prod/svm/svm_shop",
         "target": "pvc/data-mongo-1",
@@ -2751,7 +2765,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 262144,
+          "readOps": 12,
           "writeBytesPerSec": 49152,
+          "writeOps": 3,
         },
         "source": "pvc/data-mongo-1",
         "target": "pod/mongo-1",
@@ -2767,7 +2783,9 @@ exports[`normalizeGraph — fixture output is byte-identical after the network f
         },
         "metrics": {
           "readBytesPerSec": 393216,
+          "readOps": 12,
           "writeBytesPerSec": 49152,
+          "writeOps": 3,
         },
         "source": "pod/mongo-1",
         "target": "node/worker-1",

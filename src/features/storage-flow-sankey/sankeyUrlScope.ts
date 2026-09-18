@@ -5,7 +5,7 @@ import {
   type StorageGraphRoots,
 } from '../graph-data';
 
-import type { SankeyMode } from './deriveSankey';
+import type { SankeyMode, SankeyWeight } from './deriveSankey';
 
 export const SANKEY_ROOT_KINDS: ReadonlyArray<keyof StorageGraphRoots> = [
   'ontap_cluster',
@@ -20,6 +20,7 @@ export const DEFAULT_TOP_PODS = 10;
 export interface SankeyUrlScope {
   query: StorageGraphQuery;
   mode: SankeyMode;
+  weight: SankeyWeight;
   topPods: number;
   droppedPods: string[];
 }
@@ -37,6 +38,13 @@ function parseMode(raw: string | null): SankeyMode {
     return raw;
   }
   return 'both';
+}
+
+function parseWeight(raw: string | null): SankeyWeight {
+  if (raw === 'iops') {
+    return 'iops';
+  }
+  return 'throughput';
 }
 
 function parseTopPods(raw: string | null): number {
@@ -69,6 +77,7 @@ export function parseSankeyScope(params: URLSearchParams): SankeyUrlScope {
       roots,
     },
     mode: parseMode(params.get('mode')),
+    weight: parseWeight(params.get('weight')),
     topPods: parseTopPods(params.get('top_pods')),
     droppedPods,
   };
@@ -100,6 +109,9 @@ export function serializeSankeyScope(scope: SankeyUrlScope): Array<[string, stri
   if (scope.mode === 'read' || scope.mode === 'write') {
     out.push(['mode', scope.mode]);
   }
+  if (scope.weight === 'iops') {
+    out.push(['weight', 'iops']);
+  }
   const hasPodRoot = scope.query.roots.pod.length > 0;
   if (!hasPodRoot && scope.topPods !== DEFAULT_TOP_PODS) {
     out.push(['top_pods', String(scope.topPods)]);
@@ -116,6 +128,7 @@ export const EMPTY_SANKEY_URL_SCOPE: SankeyUrlScope = {
     roots: EMPTY_STORAGE_GRAPH_ROOTS,
   },
   mode: 'both',
+  weight: 'throughput',
   topPods: DEFAULT_TOP_PODS,
   droppedPods: [],
 };

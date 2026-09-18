@@ -13,12 +13,16 @@ import type { WireGraph } from '../types/wire';
  * whose claim sits on an aggregate carries `labels.aggr` naming that aggregate's
  * node id; `data-scratch` carries none.
  *
- * Weights are conserved per intermediate node (in = out per direction), with a
- * FlexGroup path that starts at `svm-pvc` and a `pvc-pod` hop marked
- * `attribution: "split"` — EXCEPT at `svm_shop` itself, where in ≠ out: its
- * inbound `aggr-svm` edges sum to less than its outbound `svm-pvc` edges,
- * because `data-scratch`'s FlexGroup flow enters only at the `svm-pvc` tier and
- * no `node-aggr` / `aggr-svm` hop carries it.
+ * Weights are conserved per intermediate node (in = out per direction), **per
+ * measured family** (bytes and ops independently), with a FlexGroup path that
+ * starts at `svm-pvc` and a `pvc-pod` hop marked `attribution: "split"` —
+ * EXCEPT at `svm_shop` itself for **bytes**, where in ≠ out: its inbound
+ * `aggr-svm` edges sum to less than its outbound `svm-pvc` edges, because
+ * `data-scratch`'s FlexGroup flow enters only at the `svm-pvc` tier and no
+ * `node-aggr` / `aggr-svm` hop carries it. That FlexGroup path (and the orphan /
+ * pending paths) carry throughput with no ops, so IOPS mode drops them and the
+ * SVM conserves ops. The mongo claims carry conserved `read_ops` / `write_ops`
+ * on every hop of their chain.
  *
  * `status` is stamped to the SAME value the matching id carries in `SHOWCASE_GRAPH`, and
  * on the NetApp tiers to whatever the `health` / `alerts` already on the node would fold
@@ -270,7 +274,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/ontap-prod-01',
           target: 'netapp/ontap-prod/aggr/aggr1',
           labels: { tier: 'node-aggr' },
-          metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
+          metrics: {
+            read_ops: 150,
+            write_ops: 40,
+            read_bytes_per_sec: 5242880,
+            write_bytes_per_sec: 1048576,
+          },
         },
       },
       {
@@ -280,7 +289,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/aggr/aggr1',
           target: 'netapp/ontap-prod/svm/svm_shop',
           labels: { tier: 'aggr-svm' },
-          metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
+          metrics: {
+            read_ops: 150,
+            write_ops: 40,
+            read_bytes_per_sec: 5242880,
+            write_bytes_per_sec: 1048576,
+          },
         },
       },
       {
@@ -319,7 +333,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'pvc/data-mongo-0',
           target: 'pod/mongo-0',
           labels: { tier: 'pvc-pod' },
-          metrics: { read_bytes_per_sec: 5242880, write_bytes_per_sec: 1048576 },
+          metrics: {
+            read_ops: 150,
+            write_ops: 40,
+            read_bytes_per_sec: 5242880,
+            write_bytes_per_sec: 1048576,
+          },
         },
       },
       {
@@ -349,7 +368,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'pod/mongo-0',
           target: 'node/worker-0',
           labels: { tier: 'pod-node' },
-          metrics: { read_bytes_per_sec: 5373952, write_bytes_per_sec: 1048576 },
+          metrics: {
+            read_ops: 150,
+            write_ops: 40,
+            read_bytes_per_sec: 5373952,
+            write_bytes_per_sec: 1048576,
+          },
         },
       },
       {
@@ -359,7 +383,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/ontap-prod-02',
           target: 'netapp/ontap-prod/aggr/aggr2',
           labels: { tier: 'node-aggr' },
-          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+          metrics: {
+            read_ops: 12,
+            write_ops: 3,
+            read_bytes_per_sec: 262144,
+            write_bytes_per_sec: 49152,
+          },
         },
       },
       {
@@ -369,7 +398,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/aggr/aggr2',
           target: 'netapp/ontap-prod/svm/svm_shop',
           labels: { tier: 'aggr-svm' },
-          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+          metrics: {
+            read_ops: 12,
+            write_ops: 3,
+            read_bytes_per_sec: 262144,
+            write_bytes_per_sec: 49152,
+          },
         },
       },
       {
@@ -379,7 +413,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'netapp/ontap-prod/svm/svm_shop',
           target: 'pvc/data-mongo-1',
           labels: { tier: 'svm-pvc' },
-          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+          metrics: {
+            read_ops: 12,
+            write_ops: 3,
+            read_bytes_per_sec: 262144,
+            write_bytes_per_sec: 49152,
+          },
         },
       },
       {
@@ -389,7 +428,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'pvc/data-mongo-1',
           target: 'pod/mongo-1',
           labels: { tier: 'pvc-pod' },
-          metrics: { read_bytes_per_sec: 262144, write_bytes_per_sec: 49152 },
+          metrics: {
+            read_ops: 12,
+            write_ops: 3,
+            read_bytes_per_sec: 262144,
+            write_bytes_per_sec: 49152,
+          },
         },
       },
       {
@@ -399,7 +443,12 @@ export const SHOWCASE_STORAGE_GRAPH: WireGraph = {
           source: 'pod/mongo-1',
           target: 'node/worker-1',
           labels: { tier: 'pod-node' },
-          metrics: { read_bytes_per_sec: 393216, write_bytes_per_sec: 49152 },
+          metrics: {
+            read_ops: 12,
+            write_ops: 3,
+            read_bytes_per_sec: 393216,
+            write_bytes_per_sec: 49152,
+          },
         },
       },
       {

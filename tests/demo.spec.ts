@@ -18,6 +18,7 @@ test('Sankey draws no summary, borders its cards by status and holds its view co
   await expect(page.getByRole('table')).toHaveCount(0);
   const bar = page.getByTestId('sankey-controls');
   await expect(bar.getByRole('radiogroup', { name: 'Sankey mode' })).toBeVisible();
+  await expect(bar.getByRole('radiogroup', { name: 'Sankey weight' })).toBeVisible();
   await expect(bar.getByTestId('sankey-layout')).toBeVisible();
   await expect(bar.getByTestId('sankey-svm-display')).toBeVisible();
 
@@ -60,6 +61,27 @@ test('demo mode renders the graph and round-trips to sankey by Locate and Back',
   await expect(page).toHaveURL(/\/sankey/);
   await expect(page.getByTestId('sankey-view')).toBeVisible();
   await expect(page.getByRole('radio', { name: 'Flat' })).toBeChecked();
+});
+
+test('Sankey Weight IOPS draws ops labels, drops bytes-only paths, and remounts back to Throughput', async ({
+  page,
+}) => {
+  const storageUrls: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('storage-graph')) {
+      storageUrls.push(request.url());
+    }
+  });
+  await page.goto('/sankey');
+  await expect(page.getByTestId('sankey-view')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('radio', { name: 'Throughput' })).toBeChecked();
+  const before = storageUrls.length;
+  await page.getByTestId('sankey-weight').getByText('IOPS', { exact: true }).click();
+  await expect(page.getByTestId('sankey-svg')).toContainText('150 ops/s');
+  await expect(page.getByTestId('sankey-node-data-scratch')).toHaveCount(0);
+  expect(storageUrls).toHaveLength(before);
+  await page.reload();
+  await expect(page.getByRole('radio', { name: 'Throughput' })).toBeChecked();
 });
 
 test('Sankey focus mode hides the top nav and restores it on exit; the page never scrolls horizontally', async ({

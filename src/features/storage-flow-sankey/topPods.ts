@@ -2,7 +2,7 @@ import type cytoscape from 'cytoscape';
 
 import { recKind } from '../graph-data';
 
-import { resolveClaimAggregates, type SankeyMode } from './deriveSankey';
+import { metricOf, resolveClaimAggregates, type SankeyMode, type SankeyWeight } from './deriveSankey';
 
 export const DEFAULT_TOP_PODS = 10;
 
@@ -18,25 +18,14 @@ function asId(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function metricValue(metrics: cytoscape.EdgeIoMetrics | undefined, mode: SankeyMode): number {
-  if (metrics === undefined || 'rate' in metrics) {
-    return 0;
-  }
-  const read =
-    typeof metrics.readBytesPerSec === 'number' && Number.isFinite(metrics.readBytesPerSec)
-      ? metrics.readBytesPerSec
-      : 0;
-  const write =
-    typeof metrics.writeBytesPerSec === 'number' && Number.isFinite(metrics.writeBytesPerSec)
-      ? metrics.writeBytesPerSec
-      : 0;
+function metricValue(metrics: cytoscape.EdgeIoMetrics | undefined, mode: SankeyMode, weight: SankeyWeight): number {
   if (mode === 'read') {
-    return read;
+    return metricOf(metrics, 'read', weight) ?? 0;
   }
   if (mode === 'write') {
-    return write;
+    return metricOf(metrics, 'write', weight) ?? 0;
   }
-  return read + write;
+  return (metricOf(metrics, 'read', weight) ?? 0) + (metricOf(metrics, 'write', weight) ?? 0);
 }
 
 function ioMetrics(data: cytoscape.EdgeDataDefinition): cytoscape.EdgeIoMetrics | undefined {
@@ -111,7 +100,12 @@ function reverseFrom(
  * path to them. No-flow pods and every non-storage element pass through. Never mutates
  * `elements` or any member.
  */
-export function cutTopPods(elements: readonly cytoscape.ElementDefinition[], mode: SankeyMode, k: number): TopPodsCut {
+export function cutTopPods(
+  elements: readonly cytoscape.ElementDefinition[],
+  mode: SankeyMode,
+  k: number,
+  weight: SankeyWeight = 'throughput'
+): TopPodsCut {
   const keep = Number.isFinite(k) ? Math.max(1, Math.floor(k)) : DEFAULT_TOP_PODS;
   const nodes = new Map<string, { kind: string; label: string }>();
   const flowEdges: FlowEdge[] = [];
@@ -147,7 +141,7 @@ export function cutTopPods(elements: readonly cytoscape.ElementDefinition[], mod
     if (edge.tier !== 'pvc-pod') {
       continue;
     }
-    ranked.set(edge.target, (ranked.get(edge.target) ?? 0) + metricValue(edge.metrics, mode));
+    ranked.set(edge.target, (ranked.get(edge.target) ?? 0) + metricValue(edge.metrics, mode, weight));
   }
 
   const ordered = [...ranked.keys()].sort((a, b) => {

@@ -92,13 +92,14 @@ The URL is the applied scope. Filter / scope / time-range edits change a **draft
 
 ### `/sankey`
 
-| Parameter                                     | Meaning                                                         | Default                                            |
-| --------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
-| `az`, `env`                                   | Required single values                                          | omitted (Query unavailable until both plus a root) |
-| `ontap_cluster`, `node`, `aggr`, `svm`, `pod` | Roots; at least one required; `pod` must be `<namespace>/<pod>` | omitted (Query unavailable)                        |
-| `cluster`, `namespace`                        | Optional narrowing                                              | omitted                                            |
-| `mode`                                        | `read` or `write`. Default `both` is not written                | omitted (`both`)                                   |
-| `top_pods`                                    | Client-side Top pods cut. Integer ≥ 1. Not sent to the backend  | omitted (`10`; omitted with a `pod` root)          |
+| Parameter                                     | Meaning                                                            | Default                                            |
+| --------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- |
+| `az`, `env`                                   | Required single values                                             | omitted (Query unavailable until both plus a root) |
+| `ontap_cluster`, `node`, `aggr`, `svm`, `pod` | Roots; at least one required; `pod` must be `<namespace>/<pod>`    | omitted (Query unavailable)                        |
+| `cluster`, `namespace`                        | Optional narrowing                                                 | omitted                                            |
+| `mode`                                        | `read` or `write`. Default `both` is not written                   | omitted (`both`)                                   |
+| `weight`                                      | `iops`. Default Throughput is not written. Not sent to the backend | omitted (`throughput`)                             |
+| `top_pods`                                    | Client-side Top pods cut. Integer ≥ 1. Not sent to the backend     | omitted (`10`; omitted with a `pod` root)          |
 
 The Sankey draws seven columns, storage → workload: NetApp node, aggregate, SVM, PVC, Pod, Application, Namespace. The last two are **derived** — walked up each pod's `data.parent` chain and summed per direction from that pod's drawn `pvc-pod` weights. Derived values are marked "derived from member pods" in tooltips; they never rewrite a backend-tier weight. A `Layout` control (`Flat` / `Node`) wraps pods in their Kubernetes node under `Node`. That choice is page-transient: it is not a URL parameter, is not persisted, and returns to `Flat` on remount.
 
@@ -110,7 +111,7 @@ A root is **required**. The root value dropdown is a multi-select: `node` names 
 
 Card borders carry `data.status` — the backend's own fold over alert severity, NetApp `health` and Kubernetes readiness — in the same three colours the Graph view borders by, named in the scope bar's legend. Nothing here derives or re-folds it, and a node the backend judges none for (an SVM, say) keeps the neutral border rather than a green one: an absent verdict is not a healthy one. Derived `application` / `namespace` cards keep the **neutral** border. The `Node` layout's wrapper still borders by the worst status among the node and the pods it draws.
 
-The mode selector, `Layout`, `SVM` (with its unavailable reason), the cut statement and the legend (status dots, read / write swatches for the directions the mode draws) sit after Query in the scope bar. There is no numeric summary: every figure is in a card's tooltip, and the derived `application` / `namespace` cards carry the per-group totals in the chart.
+The mode selector (`Read` / `Write` / `Both`), `Weight` (`Throughput` / `IOPS`), `Layout`, `SVM` (with its unavailable reason), the cut statement and the legend (status dots, read / write swatches for the directions the mode draws) sit after Query in the scope bar. `Weight` picks which measured pair becomes ribbon weight: Throughput uses `read_bytes_per_sec` / `write_bytes_per_sec`; IOPS uses `read_ops` / `write_ops`. It is an immediate view value like Mode — no request, written as `weight=iops` outside demo mode. There is no numeric summary: every figure is in a card's tooltip, and the derived `application` / `namespace` cards carry the per-group totals in the chart.
 
 A card reads like a trace card: the title, the kind alone on the subtitle (`netapp-aggr · ontap-prod` for the NetApp kinds, `· no flow` for a no-flow root), then one monospace attribute per line — `ns/<namespace>`, `usage <used> / <capacity> (<pct>%)` only when both halves are known, `<n> pods`, and `total <inflow>` on a namespace leaf. Every read / write ribbon ends in a direction chevron drawn by the same `sankey-canvas` primitive the trace uses, fading with its ribbon on hover. In a tooltip the flow rows (`in read`, `out write`, a link's `read: …`, derived rows included) are painted in the colour of the ribbons they sum; every other row is plain.
 

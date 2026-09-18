@@ -10,6 +10,8 @@ function renderControls(overrides: Partial<SankeyViewControlsProps> = {}): Sanke
   const props: SankeyViewControlsProps = {
     mode: 'both',
     onModeChange: vi.fn(),
+    weight: 'throughput',
+    onWeightChange: vi.fn(),
     podLayout: 'flat',
     onPodLayoutChange: vi.fn(),
     svmDisplay: 'column',
@@ -30,12 +32,15 @@ describe('SankeyViewControls', () => {
   it('reports every switch upward and owns none of them', () => {
     const props = renderControls();
     expect(screen.getByRole('radio', { name: 'Both' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Throughput' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Flat' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Column' })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: 'Write' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'IOPS' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Node' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Group' }));
     expect(props.onModeChange).toHaveBeenCalledWith('write');
+    expect(props.onWeightChange).toHaveBeenCalledWith('iops');
     expect(props.onPodLayoutChange).toHaveBeenCalledWith('node');
     expect(props.onSvmDisplayChange).toHaveBeenCalledWith('group');
     expect(screen.getByRole('radio', { name: 'Both' })).toBeChecked();
@@ -88,7 +93,13 @@ describe('SankeyViewControls', () => {
   it('places the legend after the mode, Layout and SVM controls', () => {
     renderControls({ podCut: { shown: 1, total: 3 } });
     const legend = screen.getByTestId('sankey-legend');
-    for (const testId of ['sankey-mode', 'sankey-layout', 'sankey-svm-display', 'sankey-top-pods-label']) {
+    for (const testId of [
+      'sankey-mode',
+      'sankey-weight',
+      'sankey-layout',
+      'sankey-svm-display',
+      'sankey-top-pods-label',
+    ]) {
       expect(
         screen.getByTestId(testId).compareDocumentPosition(legend) & Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();

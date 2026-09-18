@@ -85,6 +85,20 @@ test('Sankey locate then Back restores the Sankey scope', async ({ page }) => {
   await expect(page.getByTestId('sankey-az')).toContainText('local-a');
 });
 
+test('refresh on Sankey keeps weight=iops after Query', async ({ page }) => {
+  await stubLiveConfig(page);
+  await page.goto('/sankey?az=local-a&env=demo&aggr=aggr1&weight=iops');
+  await expect(page.getByTestId('sankey-view')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('radio', { name: 'IOPS' })).toBeChecked();
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(page.getByTestId('sankey-svg')).toBeVisible();
+  await expect(page).toHaveURL(/weight=iops/);
+  await page.reload();
+  await expect(page.getByRole('radio', { name: 'IOPS' })).toBeChecked();
+  await page.getByRole('button', { name: 'Query' }).click();
+  await expect(page.getByTestId('sankey-svg')).toContainText('150 ops/s');
+});
+
 test('refresh on Sankey keeps scope and write mode', async ({ page }) => {
   await stubLiveConfig(page);
   await page.goto('/sankey?az=local-a&env=demo&mode=write');

@@ -12,11 +12,12 @@ import {
   type ZoomPanApi,
 } from '../sankey-canvas';
 
-import { formatBytesPerSec } from './deriveSankey';
+import { formatWeight, type SankeyWeight } from './deriveSankey';
 import type { LayoutLink, SankeyLayout } from './layoutSankey';
 
 export interface SankeyChartProps {
   layout: SankeyLayout;
+  weight?: SankeyWeight;
   tokens: ThemeTokens;
   viewport: Viewport;
   hostProps: ZoomPanApi['hostProps'];
@@ -39,6 +40,7 @@ export interface SankeyChartProps {
  */
 export function SankeyChart({
   layout,
+  weight = 'throughput',
   tokens,
   viewport,
   hostProps,
@@ -110,7 +112,7 @@ export function SankeyChart({
             className="pointer-events-none"
             style={halo}
           >
-            {formatBytesPerSec(l.value)}
+            {formatWeight(l.value, weight)}
           </text>
         ))}
 

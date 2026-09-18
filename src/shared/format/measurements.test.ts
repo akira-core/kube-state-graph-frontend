@@ -1,4 +1,11 @@
-import { formatBitsPerSec, formatBytes, formatDeltaBps, formatSignificant, formatUsage } from './measurements';
+import {
+  formatBitsPerSec,
+  formatBytes,
+  formatDeltaBps,
+  formatOps,
+  formatSignificant,
+  formatUsage,
+} from './measurements';
 
 describe('formatSignificant', () => {
   it('keeps at most 3 significant digits and strips trailing zeros', () => {
@@ -13,6 +20,19 @@ describe('formatBytes', () => {
     expect(formatBytes(999_999)).toBe('1 MB');
     expect(formatBytes(7e11)).toBe('700 GB');
     expect(formatBytes(0)).toBe('0 B');
+  });
+});
+
+describe('formatOps', () => {
+  it('renders ops per second at 3 significant digits', () => {
+    expect(formatOps(150)).toBe('150 ops/s');
+    expect(formatOps(0)).toBe('0 ops/s');
+    expect(formatOps(12.345)).toBe('12.3 ops/s');
+  });
+
+  it('never renders a non-zero rate as zero', () => {
+    expect(formatOps(3.86e-7)).toBe('3.86e-7 ops/s');
+    expect(formatOps(3.86e-7)).not.toBe('0 ops/s');
   });
 });
 

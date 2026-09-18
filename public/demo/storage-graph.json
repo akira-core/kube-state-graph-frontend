@@ -342,6 +342,8 @@
             "tier": "node-aggr"
           },
           "metrics": {
+            "read_ops": 150,
+            "write_ops": 40,
             "read_bytes_per_sec": 5242880,
             "write_bytes_per_sec": 1048576
           }
@@ -357,6 +359,8 @@
             "tier": "aggr-svm"
           },
           "metrics": {
+            "read_ops": 150,
+            "write_ops": 40,
             "read_bytes_per_sec": 5242880,
             "write_bytes_per_sec": 1048576
           }
@@ -407,6 +411,8 @@
             "tier": "pvc-pod"
           },
           "metrics": {
+            "read_ops": 150,
+            "write_ops": 40,
             "read_bytes_per_sec": 5242880,
             "write_bytes_per_sec": 1048576
           }
@@ -452,6 +458,8 @@
             "tier": "pod-node"
           },
           "metrics": {
+            "read_ops": 150,
+            "write_ops": 40,
             "read_bytes_per_sec": 5373952,
             "write_bytes_per_sec": 1048576
           }
@@ -467,6 +475,8 @@
             "tier": "node-aggr"
           },
           "metrics": {
+            "read_ops": 12,
+            "write_ops": 3,
             "read_bytes_per_sec": 262144,
             "write_bytes_per_sec": 49152
           }
@@ -482,6 +492,8 @@
             "tier": "aggr-svm"
           },
           "metrics": {
+            "read_ops": 12,
+            "write_ops": 3,
             "read_bytes_per_sec": 262144,
             "write_bytes_per_sec": 49152
           }
@@ -497,6 +509,8 @@
             "tier": "svm-pvc"
           },
           "metrics": {
+            "read_ops": 12,
+            "write_ops": 3,
             "read_bytes_per_sec": 262144,
             "write_bytes_per_sec": 49152
           }
@@ -512,6 +526,8 @@
             "tier": "pvc-pod"
           },
           "metrics": {
+            "read_ops": 12,
+            "write_ops": 3,
             "read_bytes_per_sec": 262144,
             "write_bytes_per_sec": 49152
           }
@@ -527,6 +543,8 @@
             "tier": "pod-node"
           },
           "metrics": {
+            "read_ops": 12,
+            "write_ops": 3,
             "read_bytes_per_sec": 393216,
             "write_bytes_per_sec": 49152
           }
