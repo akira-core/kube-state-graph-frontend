@@ -1,5 +1,14 @@
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
+
+// Testing Library gives `waitFor` one second by default. A Back traversal in jsdom takes a
+// few hundred milliseconds to fire `popstate`, and remounting a Cytoscape page after it
+// takes most of another second, so the AppShell history tests sit right at that limit and
+// fail on a loaded runner (coverage instrumentation, a busy CI machine). A longer ceiling
+// changes nothing for a passing test — it returns as soon as the assertion holds — and only
+// delays the report of a genuinely failing one.
+configure({ asyncUtilTimeout: 5000 });
 
 // Panel tests use Jest APIs (`jest.fn`, `jest.mock`). Alias them onto Vitest.
 Object.assign(globalThis, { jest: vi });
