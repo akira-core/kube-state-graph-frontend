@@ -4,7 +4,7 @@
 # was scanned is the image that ships. The build stage never reaches the final
 # image, so its CVEs do not ship; the runtime base is what the scan gate guards.
 # Bump by replacing tag AND digest together (dependabot does this for you).
-FROM node:26-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS build
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -14,7 +14,7 @@ RUN npm run build
 # `-slim` carries nginx + its core modules only: no image-filter / xslt modules and
 # therefore no libpng / tiff / libxml2 / curl, which were most of the CVE surface.
 # nginx.conf uses only core directives (gzip, try_files, proxy_pass), so slim suffices.
-FROM nginxinc/nginx-unprivileged:1.31.5-alpine-slim@sha256:c94666682d7ecbfa0a1767fbe882cd1d82509333d15716c765f42bbef0d3809f
+FROM nginxinc/nginx-unprivileged:1.31.6-alpine-slim@sha256:123fb7283ffb4788e260d4e980005a978995fefedcdbb04d268077a19b84576d
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/security-headers.conf /etc/nginx/security-headers.conf
