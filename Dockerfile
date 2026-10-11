@@ -14,7 +14,7 @@ RUN npm run build
 # `-slim` carries nginx + its core modules only: no image-filter / xslt modules and
 # therefore no libpng / tiff / libxml2 / curl, which were most of the CVE surface.
 # nginx.conf uses only core directives (gzip, try_files, proxy_pass), so slim suffices.
-FROM nginxinc/nginx-unprivileged:1.31.5-alpine-slim@sha256:c94666682d7ecbfa0a1767fbe882cd1d82509333d15716c765f42bbef0d3809f
+FROM nginxinc/nginx-unprivileged:1.31.6-alpine-slim@sha256:1517d8c358e2e093957ebee087afa9eb19a32f5d7ecb711b7429e369cb998224
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/security-headers.conf /etc/nginx/security-headers.conf
