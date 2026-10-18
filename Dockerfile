@@ -4,7 +4,7 @@
 # was scanned is the image that ships. The build stage never reaches the final
 # image, so its CVEs do not ship; the runtime base is what the scan gate guards.
 # Bump by replacing tag AND digest together (dependabot does this for you).
-FROM node:26-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS build
+FROM node:26-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
