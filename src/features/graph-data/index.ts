@@ -4,7 +4,11 @@ export {
   EMPTY_STORAGE_GRAPH_QUERY,
   EMPTY_STORAGE_GRAPH_ROOTS,
   hasAnyRoot,
+  hasMixedRootKinds,
   isValidPodRoot,
+  rootKindsInUse,
+  STORAGE_ROOT_KINDS,
+  withRootValues,
 } from './storageGraphRequestUrl';
 export type { StorageGraphQuery, StorageGraphRoots } from './storageGraphRequestUrl';
 export { buildTraceRequestUrl, TRACE_DEFAULTS } from './traceRequestUrl';

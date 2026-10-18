@@ -12,12 +12,17 @@ export class HttpStatusError extends Error {
 /** How much of a backend's `reason` is carried into the error state before it is cut. */
 const REASON_MAX = 300;
 
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 /**
- * A rejected request's own explanation. Every endpoint here answers a refusal as JSON with a
- * `reason` — the trace endpoint's 400 for an unknown hostname is the one an operator reads
- * most — and that sentence says what the status code cannot. It is shown verbatim (only
- * length-capped), so a body that is not JSON, not an object, or carries no `reason` string
- * simply leaves the status message as it was.
+ * A rejected request's own explanation, shown verbatim (only length-capped). Two shapes
+ * carry one: the trace endpoint's flat `{ reason }`, and the graph endpoints' nested
+ * `{ error: { reason, message } }`, whose `message` is the sentence an operator reads
+ * (`exactly one root kind is allowed, got aggr and pod`) and whose `reason` is only the code
+ * (`invalid_scope`) — kept as the fallback. A body that is not JSON, not an object, or names
+ * neither simply leaves the status message as it was.
  */
 async function readReason(response: Response): Promise<string | undefined> {
   let body: unknown;
@@ -29,8 +34,11 @@ async function readReason(response: Response): Promise<string | undefined> {
   if (typeof body !== 'object' || body === null) {
     return undefined;
   }
-  const reason: unknown = (body as Record<string, unknown>).reason;
-  if (typeof reason !== 'string' || reason.length === 0) {
+  const record = body as Record<string, unknown>;
+  const nested =
+    typeof record.error === 'object' && record.error !== null ? (record.error as Record<string, unknown>) : {};
+  const reason = nonEmptyString(record.reason) ?? nonEmptyString(nested.message) ?? nonEmptyString(nested.reason);
+  if (reason === undefined) {
     return undefined;
   }
   return reason.length > REASON_MAX ? `${reason.slice(0, REASON_MAX)}…` : reason;

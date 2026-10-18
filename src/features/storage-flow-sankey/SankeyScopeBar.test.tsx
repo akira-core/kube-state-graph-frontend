@@ -40,7 +40,14 @@ function typeRootValue(text: string): void {
   fireEvent.click(screen.getByRole('option', { name: `Use "${text}"` }));
 }
 
-const EMPTY_ROOT_OPTIONS: SankeyRootOptions = { ontap_cluster: [], node: [], aggr: [], svm: [], pod: [] };
+const EMPTY_ROOT_OPTIONS: SankeyRootOptions = {
+  ontap_cluster: [],
+  ontap_node: [],
+  node: [],
+  aggr: [],
+  svm: [],
+  pod: [],
+};
 
 describe('SankeyScopeBar', () => {
   it('does not preselect when there are several az / env options', () => {
@@ -111,7 +118,8 @@ describe('SankeyScopeBar', () => {
   it('offers the drawn body’s root values for the selected kind, and only that kind’s', () => {
     const rootOptions: SankeyRootOptions = {
       ontap_cluster: ['ontap-lab'],
-      node: ['ontap-lab-01', 'worker-0'],
+      ontap_node: ['ontap-lab-01'],
+      node: ['worker-0'],
       aggr: ['aggr1', 'aggr2'],
       svm: ['svm_demo'],
       pod: ['shop/mongodb-0'],
@@ -218,7 +226,8 @@ describe('SankeyScopeBar', () => {
     fireEvent.click(screen.getByRole('option', { name: 'aggr1' }));
     expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('aggr1');
 
-    // Under another kind the control shows that kind's roots; the aggr root stays in the draft.
+    // Under another kind the control shows that kind's roots; browsing the kind changes nothing
+    // in the draft until a value of the new kind is picked.
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'SVM' }));
     expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('Pick values');
@@ -227,6 +236,62 @@ describe('SankeyScopeBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
     fireEvent.click(screen.getByRole('option', { name: 'Aggregate' }));
     expect(screen.getByRole('button', { name: 'Root value' })).toHaveTextContent('aggr1');
+  });
+
+  it('keeps one root kind: picking a value of another kind replaces the earlier kind’s roots', () => {
+    render(
+      <Harness
+        az={['local-a']}
+        env={['demo']}
+        rootOptions={{ ...EMPTY_ROOT_OPTIONS, aggr: ['aggr1'], svm: ['svm_demo'] }}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
+    fireEvent.click(screen.getByRole('option', { name: 'aggr1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
+    fireEvent.click(screen.getByRole('option', { name: 'SVM' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
+    fireEvent.click(screen.getByRole('option', { name: 'svm_demo' }));
+    expect(screen.queryByRole('button', { name: /aggr:aggr1/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /svm:svm_demo/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Query' })).toBeEnabled();
+  });
+
+  it('offers ONTAP node as its own root kind', () => {
+    render(
+      <Harness
+        az={['local-a']}
+        env={['demo']}
+        rootOptions={{ ...EMPTY_ROOT_OPTIONS, ontap_node: ['ontap-lab-01'], node: ['worker-0'] }}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Root kind' }));
+    fireEvent.click(screen.getByRole('option', { name: 'ONTAP node' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Root value' }));
+    expect(screen.getByRole('option', { name: 'ontap-lab-01' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'worker-0' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: 'ontap-lab-01' }));
+    expect(screen.getByRole('button', { name: /ontap_node:ontap-lab-01/ })).toBeInTheDocument();
+  });
+
+  it('disables Query and says why when the draft names two root kinds (a deep link can)', () => {
+    function MixedHarness(): JSX.Element {
+      const base = useSankeyQuery({ az: ['local-a'], env: ['demo'], cluster: [], namespace: [] });
+      const controller = {
+        ...base,
+        query: { ...base.query, roots: { ...EMPTY_STORAGE_GRAPH_ROOTS, aggr: ['aggr1'], node: ['worker-0'] } },
+      };
+      return (
+        <SankeyScopeBar
+          options={{ az: ['local-a'], env: ['demo'], cluster: [], namespace: [] }}
+          controller={controller}
+        />
+      );
+    }
+    render(<MixedHarness />);
+    expect(screen.getByRole('button', { name: 'Query' })).toBeDisabled();
+    expect(screen.getByTestId('query-disabled-reason')).toHaveTextContent('One root kind per query');
+    expect(screen.queryByTestId('sankey-root-required')).not.toBeInTheDocument();
   });
 
   it('refuses a malformed pod value on its own and keeps the valid one', () => {

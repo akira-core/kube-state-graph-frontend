@@ -84,14 +84,14 @@ describe('deriveSankey', () => {
     expect(byLabel.get('worker-1')?.status).toBe('warning');
   });
 
-  it('offers a root value per kind from the drawn body, with node collecting both sides', () => {
+  it('offers a root value per kind from the drawn body, controllers under ontap_node and Kubernetes nodes under node', () => {
     const opts = rootValueOptions(elements);
     expect(opts.ontap_cluster).toEqual(['ontap-prod']);
     expect(opts.aggr).toEqual(['aggr1', 'aggr2']);
     expect(opts.svm).toEqual(['svm_jobs', 'svm_shop']);
-    // `node` matches BOTH a NetApp controller and a Kubernetes node, exactly as the backend
-    // matches that kind — offering only one side would hide half of what the root accepts.
-    expect(opts.node).toEqual(['ontap-prod-01', 'ontap-prod-02', 'worker-0', 'worker-1']);
+    // `node` is a Kubernetes node only: a controller name sent there is an empty 200.
+    expect(opts.node).toEqual(['worker-0', 'worker-1']);
+    expect(opts.ontap_node).toEqual(['ontap-prod-01', 'ontap-prod-02']);
     // A pod root is `<namespace>/<pod>`; a bare name is a 400, so it is never offered.
     expect(opts.pod).toContain('prod/mongo-0');
     expect(opts.pod.every((value) => value.includes('/'))).toBe(true);
@@ -345,17 +345,39 @@ describe('deriveSankey', () => {
 
     // `n` has no edge at all, so it is a materialised root under every selection.
     expect(kept({})).toEqual(['n']);
-    // `node` hits a NetApp controller as a card and a Kubernetes node as a wrapper, never a column.
+    // `node` hits a Kubernetes node as a wrapper, never a column; a controller is `ontap_node`.
     expect(kept({ node: ['worker-0'] })).toEqual(expect.arrayContaining(['n']));
     expect(kept({ node: ['worker-0'] })).not.toContain('k');
     expect(
       deriveSankey(unmeasured, 'both', { ...EMPTY_STORAGE_GRAPH_ROOTS, node: ['worker-0'] }).k8sNodes.map((n) => n.id)
     ).toEqual(['k']);
     expect(kept({ ontap_cluster: ['ontap-prod'] })).toEqual(expect.arrayContaining(['n', 's']));
+    expect(kept({ ontap_node: ['ontap-prod-01'] })).toEqual(['n']);
     expect(kept({ pod: ['shop/mongo-0'] })).toEqual(expect.arrayContaining(['n', 'p']));
     expect(kept({ pod: ['other/mongo-0'] })).toEqual(['n']);
     // A claim is not a root kind, so no selection can materialise one.
     expect(kept({ svm: ['data-mongo-0'], aggr: ['data-mongo-0'], node: ['data-mongo-0'] })).toEqual(['n']);
+  });
+
+  it('does not treat a controller name sent as `node` as a requested root', () => {
+    const { elements: unmeasured } = normalizeGraph(
+      wire(
+        [
+          { id: 'n1', name: 'ontap-prod-01', type: 'netapp-node', labels: { ontap_cluster: 'ontap-prod' } },
+          { id: 'n2', name: 'ontap-prod-02', type: 'netapp-node', labels: { ontap_cluster: 'ontap-prod' } },
+          { id: 'a', name: 'aggr1', type: 'netapp-aggr', labels: { ontap_cluster: 'ontap-prod' } },
+        ],
+        [
+          { id: 'e1', type: 'storage-flow', source: 'n1', target: 'a', labels: { tier: 'node-aggr' } },
+          { id: 'e2', type: 'storage-flow', source: 'n2', target: 'a', labels: { tier: 'node-aggr' } },
+        ]
+      )
+    );
+    const ids = (roots: Partial<StorageGraphRoots>): string[] =>
+      deriveSankey(unmeasured, 'both', { ...EMPTY_STORAGE_GRAPH_ROOTS, ...roots }).nodes.map((n) => n.id);
+    // Every node is incident to an unmeasured edge, so only a matching root keeps one.
+    expect(ids({ node: ['ontap-prod-02'] })).toEqual([]);
+    expect(ids({ ontap_node: ['ontap-prod-02'] })).toEqual(['n2']);
   });
 
   it('draws a zero-weight link and does not treat 0 as absent', () => {

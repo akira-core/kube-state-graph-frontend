@@ -1,19 +1,14 @@
 import {
   EMPTY_STORAGE_GRAPH_ROOTS,
   isValidPodRoot,
+  STORAGE_ROOT_KINDS,
   type StorageGraphQuery,
   type StorageGraphRoots,
 } from '../graph-data';
 
 import type { SankeyMode, SankeyWeight } from './deriveSankey';
 
-export const SANKEY_ROOT_KINDS: ReadonlyArray<keyof StorageGraphRoots> = [
-  'ontap_cluster',
-  'node',
-  'aggr',
-  'svm',
-  'pod',
-];
+export const SANKEY_ROOT_KINDS: ReadonlyArray<keyof StorageGraphRoots> = STORAGE_ROOT_KINDS;
 
 export const DEFAULT_TOP_PODS = 10;
 
@@ -23,6 +18,14 @@ export interface SankeyUrlScope {
   weight: SankeyWeight;
   topPods: number;
   droppedPods: string[];
+}
+
+/** A link's values for one root kind, trimmed; a blank one (`?aggr=`) is not a root. */
+function rootValues(params: URLSearchParams, key: string): string[] {
+  return params
+    .getAll(key)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 }
 
 function firstValue(params: URLSearchParams, key: string): string | undefined {
@@ -59,13 +62,16 @@ function parseTopPods(raw: string | null): number {
 }
 
 export function parseSankeyScope(params: URLSearchParams): SankeyUrlScope {
-  const pods = params.getAll('pod');
+  const pods = rootValues(params, 'pod');
   const droppedPods = pods.filter((item) => !isValidPodRoot(item));
+  // Every kind a link names is kept, even two: the draft then shows the conflict and Query
+  // says why it is off, rather than the link silently losing a root.
   const roots: StorageGraphRoots = {
-    ontap_cluster: params.getAll('ontap_cluster'),
-    node: params.getAll('node'),
-    aggr: params.getAll('aggr'),
-    svm: params.getAll('svm'),
+    ontap_cluster: rootValues(params, 'ontap_cluster'),
+    ontap_node: rootValues(params, 'ontap_node'),
+    node: rootValues(params, 'node'),
+    aggr: rootValues(params, 'aggr'),
+    svm: rootValues(params, 'svm'),
     pod: pods.filter(isValidPodRoot),
   };
   return {

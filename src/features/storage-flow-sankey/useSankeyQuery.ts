@@ -4,6 +4,7 @@ import {
   EMPTY_STORAGE_GRAPH_ROOTS,
   isValidPodRoot,
   type StorageGraphQuery,
+  withRootValues,
   type StorageGraphRoots,
 } from '../graph-data';
 
@@ -72,15 +73,7 @@ export function useSankeyQuery(options: SankeyIdentityOptions): SankeyQueryContr
       return false;
     }
     setPodError(undefined);
-    setRoots((prev) => {
-      const next = [...prev[kind]];
-      for (const value of trimmed) {
-        if (!next.includes(value)) {
-          next.push(value);
-        }
-      }
-      return { ...prev, [kind]: next };
-    });
+    setRoots((prev) => withRootValues(prev, kind, trimmed));
     return true;
   }, []);
 

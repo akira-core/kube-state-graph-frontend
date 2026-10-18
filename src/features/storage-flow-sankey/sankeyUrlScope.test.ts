@@ -10,14 +10,13 @@ function parse(raw: string): URLSearchParams {
 
 describe('sankey URL scope', () => {
   it('round-trips estate, root, narrowing and write mode', () => {
-    const scope = parseSankeyScope(parse('az=zone-a&env=prod&aggr=aggr1&pod=shop%2Forders-0&mode=write'));
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&pod=shop%2Forders-0&mode=write'));
     expect(scope.query.az).toBe('zone-a');
     expect(scope.query.env).toBe('prod');
-    expect(scope.query.roots.aggr).toEqual(['aggr1']);
     expect(scope.query.roots.pod).toEqual(['shop/orders-0']);
     expect(scope.mode).toBe('write');
     const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '6h' });
-    expect(qs).toBe('az=zone-a&env=prod&aggr=aggr1&pod=shop%2Forders-0&mode=write&from=now-6h&to=now');
+    expect(qs).toBe('az=zone-a&env=prod&pod=shop%2Forders-0&mode=write&from=now-6h&to=now');
   });
 
   it('omits the default both mode', () => {
@@ -36,6 +35,27 @@ describe('sankey URL scope', () => {
     const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '24h' });
     expect(qs).toContain('aggr=aggr1');
     expect(qs).not.toContain('pod=');
+  });
+
+  it('reads ontap_node as its own root kind and round-trips it', () => {
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&ontap_node=ontap-lab-01'));
+    expect(scope.query.roots.ontap_node).toEqual(['ontap-lab-01']);
+    expect(scope.query.roots.node).toEqual([]);
+    const qs = buildSearchString(serializeSankeyScope(scope), { kind: 'relative', window: '6h' });
+    expect(qs).toContain('ontap_node=ontap-lab-01');
+  });
+
+  it('drops blank root values so a bare `aggr=` link is not a root', () => {
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&aggr=&svm=%20&node=worker-0'));
+    expect(scope.query.roots.aggr).toEqual([]);
+    expect(scope.query.roots.svm).toEqual([]);
+    expect(scope.query.roots.node).toEqual(['worker-0']);
+  });
+
+  it('keeps every kind a link names, so the draft shows the conflict instead of dropping a root', () => {
+    const scope = parseSankeyScope(parse('az=zone-a&env=prod&aggr=aggr1&node=worker-0'));
+    expect(scope.query.roots.aggr).toEqual(['aggr1']);
+    expect(scope.query.roots.node).toEqual(['worker-0']);
   });
 
   it('treats an unknown mode as both', () => {

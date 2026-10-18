@@ -30,7 +30,7 @@ function unionSorted(a: readonly string[], b: readonly string[]): string[] {
  * Workload-side root candidates, fetched on demand and unioned with the drawn body.
  *
  * `node` is requested once per mount; `pod` once per namespace, all namespaces at once.
- * Storage-side kinds (`ontap_cluster` / `aggr` / `svm`) have no store enumeration — they
+ * Storage-side kinds (`ontap_cluster` / `ontap_node` / `aggr` / `svm`) have no store enumeration — they
  * come from `drawn`.
  *
  * The cache is keyed by the endpoint as well as the kind / namespace, so a runtime config
@@ -134,6 +134,7 @@ export function useRootCandidates({ labelValuesBase, kind, namespaces, drawn }: 
   const options = useMemo<SankeyRootOptions>(() => {
     return {
       ontap_cluster: drawn.ontap_cluster,
+      ontap_node: drawn.ontap_node,
       node: unionSorted(remote.node, drawn.node),
       aggr: drawn.aggr,
       svm: drawn.svm,
