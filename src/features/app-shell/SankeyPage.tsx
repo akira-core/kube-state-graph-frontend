@@ -6,9 +6,10 @@ import {
   buildStorageGraphRequestUrl,
   EMPTY_STORAGE_GRAPH_ROOTS,
   hasAnyRoot,
+  hasMixedRootKinds,
   isValidPodRoot,
+  withRootValues,
   type StorageGraphQuery,
-  type StorageGraphRoots,
 } from '../graph-data';
 import { useFilterOptions } from '../graph-filters';
 import {
@@ -67,16 +68,7 @@ function liveController(
         return false;
       }
       setPodError(undefined);
-      setDraft((prev) => {
-        const nextKind = [...prev.roots[kind]];
-        for (const value of trimmed) {
-          if (!nextKind.includes(value)) {
-            nextKind.push(value);
-          }
-        }
-        const roots: StorageGraphRoots = { ...prev.roots, [kind]: nextKind };
-        return { ...prev, roots };
-      });
+      setDraft((prev) => ({ ...prev, roots: withRootValues(prev.roots, kind, trimmed) }));
       return true;
     },
     removeRoot: (kind, value) => {
@@ -129,7 +121,8 @@ export function SankeyPage(): JSX.Element {
   const storageEndpoint = config.demoMode ? undefined : config.endpoints.storageGraph;
   const storageConfigured = config.demoMode || storageEndpoint !== undefined;
   const azEnvReady = controller.azEnvReady;
-  const hasRoot = hasAnyRoot(controller.query.roots);
+  // Two root kinds is a 400 `invalid_scope`: the scope bar says so and Query stays off.
+  const hasRoot = hasAnyRoot(controller.query.roots) && !hasMixedRootKinds(controller.query.roots);
 
   const soleAz = identity.az.length === 1 ? identity.az[0] : undefined;
   const soleEnv = identity.env.length === 1 ? identity.env[0] : undefined;

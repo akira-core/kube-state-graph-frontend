@@ -5,7 +5,7 @@ import { FilterIcon } from '../../shared/ui/icons';
 import { QueryButton } from '../../shared/ui/QueryButton';
 import { ScopeSelect } from '../../shared/ui/ScopeSelect';
 import { eyebrowClass } from '../../shared/ui/Section';
-import { hasAnyRoot, type StorageGraphRoots } from '../graph-data';
+import { hasAnyRoot, hasMixedRootKinds, type StorageGraphRoots } from '../graph-data';
 
 import { EMPTY_SANKEY_ROOT_OPTIONS, type SankeyRootOptions } from './deriveSankey';
 import { DEFAULT_TOP_PODS } from './sankeyUrlScope';
@@ -29,6 +29,7 @@ export interface SankeyScopeBarProps {
 
 const ROOT_KINDS: ReadonlyArray<{ kind: SankeyRootKind; label: string }> = [
   { kind: 'ontap_cluster', label: 'ONTAP cluster' },
+  { kind: 'ontap_node', label: 'ONTAP node' },
   { kind: 'node', label: 'Node' },
   { kind: 'aggr', label: 'Aggregate' },
   { kind: 'svm', label: 'SVM' },
@@ -59,13 +60,16 @@ function emptyHintFor(kind: SankeyRootKind, namespaces: readonly string[]): stri
   if (kind === 'pod' && namespaces.length === 0) {
     return 'Select a namespace to list pods, or type a value as <namespace>/<pod>.';
   }
-  if (kind === 'ontap_cluster' || kind === 'aggr' || kind === 'svm') {
+  if (kind === 'ontap_cluster' || kind === 'ontap_node' || kind === 'aggr' || kind === 'svm') {
     return 'These names are typed until a query has drawn them.';
   }
   return undefined;
 }
 
-function queryDisabledReason(azEnvReady: boolean, hasRoot: boolean): string | undefined {
+function queryDisabledReason(azEnvReady: boolean, hasRoot: boolean, mixed: boolean): string | undefined {
+  if (azEnvReady && mixed) {
+    return 'One root kind per query — remove the roots of the other kinds';
+  }
   if (azEnvReady && hasRoot) {
     return undefined;
   }
@@ -101,7 +105,8 @@ export function SankeyScopeBar({
   const kindRoots = controller.query.roots[rootKind];
   const hasRoot = hasAnyRoot(controller.query.roots);
   const hasPodRoot = controller.query.roots.pod.length > 0;
-  const disabledReason = queryDisabledReason(controller.azEnvReady, hasRoot);
+  const mixed = hasMixedRootKinds(controller.query.roots);
+  const disabledReason = queryDisabledReason(controller.azEnvReady, hasRoot, mixed);
   const hint = emptyHintFor(rootKind, controller.query.namespace);
 
   // The checked values ARE this kind's draft roots: checking one adds it, unchecking removes
@@ -158,9 +163,10 @@ export function SankeyScopeBar({
           value={[rootKind]}
           onChange={(next) => {
             const kind = next[0];
-            if (kind === 'ontap_cluster' || kind === 'node' || kind === 'aggr' || kind === 'svm' || kind === 'pod') {
-              setRootKind(kind);
-              onRootKindChange?.(kind);
+            const chosen = ROOT_KINDS.find((item) => item.kind === kind);
+            if (chosen !== undefined) {
+              setRootKind(chosen.kind);
+              onRootKindChange?.(chosen.kind);
             }
           }}
           allowCustom={false}
@@ -257,6 +263,11 @@ export function SankeyScopeBar({
           {controller.podError !== undefined && (
             <span className="text-[11px] text-[var(--ksg-status-warning)]" data-testid="sankey-pod-error">
               {controller.podError}
+            </span>
+          )}
+          {mixed && (
+            <span className="text-[11px] text-[var(--ksg-status-warning)]" data-testid="sankey-root-mixed">
+              One root kind per query
             </span>
           )}
           {!hasRoot && (

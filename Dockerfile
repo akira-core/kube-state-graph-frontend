@@ -14,7 +14,7 @@ RUN npm run build
 # `-slim` carries nginx + its core modules only: no image-filter / xslt modules and
 # therefore no libpng / tiff / libxml2 / curl, which were most of the CVE surface.
 # nginx.conf uses only core directives (gzip, try_files, proxy_pass), so slim suffices.
-FROM nginxinc/nginx-unprivileged:1.31.5-alpine-slim@sha256:c94666682d7ecbfa0a1767fbe882cd1d82509333d15716c765f42bbef0d3809f
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine-slim@sha256:b94a56c52fd315bbd8f1f4368d64c25983351c978313e02feff2c0b35e856f2d
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/security-headers.conf /etc/nginx/security-headers.conf
@@ -25,8 +25,12 @@ COPY docker/entrypoint.sh /entrypoint.sh
 # every browser loads, or reconfigure itself on the next reload. It writes only to /tmp.
 # What it reads is made world-readable explicitly: COPY keeps source modes, so a checkout
 # made under umask 077 would otherwise ship 0600 files the nginx user cannot open.
+#
+# zlib is upgraded in place: the 1.31.7 base still ships 1.3.2-r0, which Trivy flags
+# (CVE-2026-85091) with 1.3.2-r1 available. Drop this once a base carries the fix.
 USER 0
-RUN chmod 755 /entrypoint.sh \
+RUN apk upgrade --no-cache zlib \
+    && chmod 755 /entrypoint.sh \
     && chown -R root:root /etc/nginx /usr/share/nginx/html \
     && chmod -R a+rX,go-w /etc/nginx /usr/share/nginx/html \
     && mkdir -p /srv/config

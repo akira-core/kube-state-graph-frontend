@@ -282,8 +282,9 @@ function firstAncestorOfKind(nodes: Map<string, NodeRec>, id: string, kind: stri
  * materialised a node as a root is the selection the request was built from. Matching is
  * by name, exactly as the backend matches: `node` deliberately hits both a NetApp
  * controller and a Kubernetes node (the operator often does not know which side a name
- * belongs to), `ontap_cluster` claims every controller / aggregate / SVM inside it, and a
- * pod root is `<namespace>/<pod>`. `pvc` is not a root kind, so a claim is never one.
+ * belongs to): `node` is a Kubernetes node ONLY, `ontap_node` a controller, `ontap_cluster`
+ * claims every controller / aggregate / SVM inside it, and a pod root is `<namespace>/<pod>`.
+ * `pvc` is not a root kind here, so a claim is never one.
  *
  * This is NOT a client-side filter on the response — it only ever KEEPS a node the
  * projection already contains, so it cannot break the backend's weight conservation.
@@ -292,7 +293,7 @@ function isRequestedRoot(rec: NodeRec, roots: StorageGraphRoots): boolean {
   const inOntapCluster = rec.ontapCluster !== undefined && roots.ontap_cluster.includes(rec.ontapCluster);
   switch (rec.kind) {
     case 'netapp-node':
-      return inOntapCluster || roots.node.includes(rec.label);
+      return inOntapCluster || roots.ontap_node.includes(rec.label);
     case 'netapp-aggr':
       return inOntapCluster || roots.aggr.includes(rec.label);
     case 'netapp-svm':
@@ -371,6 +372,7 @@ export type SankeyRootOptions = Record<keyof StorageGraphRoots, string[]>;
 
 export const EMPTY_SANKEY_ROOT_OPTIONS: SankeyRootOptions = {
   ontap_cluster: [],
+  ontap_node: [],
   node: [],
   aggr: [],
   svm: [],
@@ -392,11 +394,13 @@ export const EMPTY_SANKEY_ROOT_OPTIONS: SankeyRootOptions = {
  * on screen, never the authority on what exists. Removing the root repopulates it, and
  * `ScopeSelect` unions the current selection back in meanwhile.
  *
- * `node` deliberately collects BOTH sides, exactly as the backend matches that kind.
+ * `node` offers Kubernetes nodes only and `ontap_node` the controllers: the backend no longer
+ * matches a controller name under `node` (an empty 200), so it must not be offered there.
  */
 export function rootValueOptions(elements: readonly cytoscape.ElementDefinition[]): SankeyRootOptions {
   const buckets: Record<keyof StorageGraphRoots, Set<string>> = {
     ontap_cluster: new Set(),
+    ontap_node: new Set(),
     node: new Set(),
     aggr: new Set(),
     svm: new Set(),
@@ -408,6 +412,8 @@ export function rootValueOptions(elements: readonly cytoscape.ElementDefinition[
     }
     switch (rec.kind) {
       case 'netapp-node':
+        buckets.ontap_node.add(rec.label);
+        break;
       case 'node':
         buckets.node.add(rec.label);
         break;
@@ -432,6 +438,7 @@ export function rootValueOptions(elements: readonly cytoscape.ElementDefinition[
   const sorted = (set: Set<string>): string[] => [...set].sort((a, b) => a.localeCompare(b));
   return {
     ontap_cluster: sorted(buckets.ontap_cluster),
+    ontap_node: sorted(buckets.ontap_node),
     node: sorted(buckets.node),
     aggr: sorted(buckets.aggr),
     svm: sorted(buckets.svm),

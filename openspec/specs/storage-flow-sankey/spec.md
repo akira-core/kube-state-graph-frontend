@@ -77,31 +77,32 @@ The selected values MUST be retained across mode switches, resize and theme swit
 
 ### Requirement: Root selector, starting from either the storage side or the workload side
 
-The view SHALL provide a root control that lets the operator start the search from **either end** of the flow, and at least one root is **required**: a whole-estate storage flow is exactly the body that stalls a browser on a large cluster, so Query MUST be unavailable while the draft holds no root, with text stating that a root is required. The supported root kinds match the backend:
+The view SHALL provide a root control that lets the operator start the search from **either end** of the flow, and exactly one root kind is **required**: a whole-estate storage flow is exactly the body that stalls a browser on a large cluster, so Query MUST be unavailable while the draft holds no root, with text stating that a root is required. The backend takes ONE kind per request (none is 400 `missing_root`, two or more is 400 `invalid_scope`), so Query MUST also be unavailable while the draft holds roots of more than one kind, with text stating that only one root kind is allowed per query. The supported root kinds match the backend:
 
-| Kind          | Parameter       | Meaning                                                                                                             |
-| ------------- | --------------- | ------------------------------------------------------------------------------------------------------------------- |
-| ONTAP cluster | `ontap_cluster` | Every controller / aggregate / SVM within that ONTAP cluster                                                        |
-| Node          | `node`          | Matches **both NetApp controller names and Kubernetes node names** — a hit on either side makes it that side's root |
-| Aggregate     | `aggr`          | One ONTAP aggregate                                                                                                 |
-| SVM           | `svm`           | One SVM                                                                                                             |
-| Pod           | `pod`           | One pod, with the value in the form `<namespace>/<pod-name>`                                                        |
+| Kind          | Parameter       | Meaning                                                                    |
+| ------------- | --------------- | -------------------------------------------------------------------------- |
+| ONTAP cluster | `ontap_cluster` | Every controller / aggregate / SVM within that ONTAP cluster               |
+| ONTAP node    | `ontap_node`    | One ONTAP controller; the claims on the aggregates it owns                 |
+| Node          | `node`          | One **Kubernetes** node only — a controller name sent here is an empty 200 |
+| Aggregate     | `aggr`          | One ONTAP aggregate                                                        |
+| SVM           | `svm`           | One SVM                                                                    |
+| Pod           | `pod`           | One pod, with the value in the form `<namespace>/<pod-name>`               |
 
-Every kind may be repeated and mixed. When both sides are mixed the backend takes the **intersection** (a path must touch both a storage-side root and a workload-side root), not the union. The scope bar MUST NOT restate either rule — `node` matching both kinds of node, or the intersection — as standing prose under its controls: they are properties of the backend's projection, documented with the root kinds, and a paragraph under every scope bar spends a line of every session on something read once.
+The values of one kind may be repeated (OR-combined by the backend); kinds MAY NOT be combined. Because the control is a single draft, adding a value of one kind MUST replace the roots of every other kind, so the draft cannot produce a request the backend refuses; a draft that nonetheless holds two kinds (a URL can carry them) is shown as it is and Query stays unavailable until the extra kind's roots are removed. A blank value is not a root (a bare `aggr=` is 400 `missing_root`) and MUST NOT be added, read from the URL, or sent. The scope bar MUST NOT restate the one-kind rule as standing prose under its controls: it is a property of the backend, documented with the root kinds, and a paragraph under every scope bar spends a line of every session on something read once.
 
 A `pod` value MUST be validated before being added as containing exactly one `/` with both segments non-empty; when invalid it MUST prompt inline, MUST NOT be added, and MUST NOT be sent (the backend would reject the whole request with 400 `invalid_scope`, taking the other valid roots down with it).
 
-The root kind is chosen with the shared dropdown (single-select, custom values not allowed). The root values are chosen with that **same** dropdown in **multi-select** form (custom values allowed, no `All` row, its empty text inviting a pick), and its checked values **are** the draft's roots of the selected kind: checking a value adds it as a root pill of that kind at once, unchecking it — or removing its pill — takes it out, and there is no separate Add step, because the draft is already the staging area Query commits. Changing the root kind shows that kind's roots as the checked values and leaves every other kind's roots in the draft. Adding, removing or clearing roots edits the draft only and MUST NOT issue a request (see `explicit-query`).
+The root kind is chosen with the shared dropdown (single-select, custom values not allowed). The root values are chosen with that **same** dropdown in **multi-select** form (custom values allowed, no `All` row, its empty text inviting a pick), and its checked values **are** the draft's roots of the selected kind: checking a value adds it as a root pill of that kind at once, unchecking it — or removing its pill — takes it out, and there is no separate Add step, because the draft is already the staging area Query commits. Changing the root kind shows that kind's roots as the checked values and leaves every other kind's roots in the draft until a value of the new kind is checked, which replaces them. Adding, removing or clearing roots edits the draft only and MUST NOT issue a request (see `explicit-query`).
 
 The values offered MUST be per kind, from the sources that can answer **before anything is drawn** — a required root can no longer wait for a body:
 
-- `node`: the Kubernetes node names enumerated from `endpoints.labelValues` (the `node` label of `kube_pod_info`, see `graph-filters`), plus the NetApp controller names of the drawn body when one is drawn.
+- `node`: the Kubernetes node names enumerated from `endpoints.labelValues` (the `node` label of `kube_pod_info`, see `graph-filters`), plus the Kubernetes nodes of the drawn body when one is drawn. NetApp controller names MUST NOT be offered here.
 - `pod`: `<namespace>/<pod>` enumerated from `endpoints.labelValues` for each namespace the `namespace` narrowing names, plus the drawn body's pods that carry a namespace; with no namespace narrowing selected the list is empty and explains that a namespace must be selected to list pods, or a value typed. A pod carrying no namespace MUST NOT be offered at all, since a bare name is a 400 rather than a narrower graph.
-- `ontap_cluster` / `aggr` / `svm`: the drawn body when one is drawn (`ontap_cluster` from the NetApp nodes' `ontap_cluster` label, the others from those kinds' names); with nothing drawn the list is empty and explains that these names are typed until a query has drawn them — `endpoints.labelValues` reaches only the store holding `kube_pod_info`, which carries none of the NetApp label names.
+- `ontap_cluster` / `ontap_node` / `aggr` / `svm`: the drawn body when one is drawn (`ontap_cluster` from the NetApp nodes' `ontap_cluster` label, `ontap_node` from the NetApp nodes' names, the others from those kinds' names); with nothing drawn the list is empty and explains that these names are typed until a query has drawn them — `endpoints.labelValues` reaches only the store holding `kube_pod_info`, which carries none of the NetApp label names.
 
 A value belonging to another kind, committed here, is a silently empty graph rather than an error, which is why the list is per kind. Once a root is applied the backend answers with that projection only, so the body's contribution NARROWS to it: the control MUST keep accepting a typed custom value, because the body is a projection and never the authority on what exists. Failure of a label-values request follows `graph-filters`: the list is empty, the source indicator reports it, and a typed value still works.
 
-The root value control MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — `AZ`, `Env`, `Root kind`, `Root value` and `Top pods` — closed by the Query action (see `explicit-query`), the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error and the "root required" text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The applied roots MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `node` / `aggr` / `svm` / `pod`, repeated keys), written by the Query commit; on page mount they are read from the URL into the draft, and an invalid `pod` value in the URL MUST NOT be added and MUST prompt inline.
+The root value control MUST carry its own label of the same rank as every other control's, so the whole scope bar is ONE row of label-over-control columns on a shared baseline — `AZ`, `Env`, `Root kind`, `Root value` and `Top pods` — closed by the Query action (see `explicit-query`), the same shape as the Graph view's filter bar. The root controls MUST NOT be nested inside a group with a heading of its own: a second label rank in a row that reads as one throws every control in the bar out of alignment. Added roots, the inline pod-root error and the "root required" text MUST sit BELOW that row, so a growing list of roots can never reflow the controls. The applied roots MUST sync to the URL query with the same parameter names as the backend (`ontap_cluster` / `ontap_node` / `node` / `aggr` / `svm` / `pod`, repeated keys), written by the Query commit; on page mount they are read from the URL into the draft, and an invalid `pod` value in the URL MUST NOT be added and MUST prompt inline.
 
 The app MUST NOT further filter the elements returned by the backend by root on the client side — the projection has already been done by the backend, and client-side filtering by root would break weight conservation (the Top pods cut is the one sanctioned client-side narrowing, see "Top pods projection").
 
@@ -154,10 +155,25 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 - **WHEN** the user adds root `pod: shop/orders-0` and activates Query
 - **THEN** the request contains `pod=shop%2Forders-0`, and the view draws the full storage chain beneath that pod
 
-#### Scenario: Mixing both sides takes the intersection
+#### Scenario: A second root kind replaces the first
 
-- **WHEN** the user adds both `aggr: aggr1` and `pod: shop/orders-0` and activates Query, and that pod also mounts a claim located on `aggr2`
-- **THEN** both roots are sent together, and the view draws only the path from `aggr1` to that pod (the backend has already done the projection); the scope bar carries no prose explaining the intersection
+- **WHEN** the draft holds root `aggr: aggr1` and the operator checks `shop/orders-0` under the root kind `Pod`
+- **THEN** the `aggr: aggr1` pill is gone, only `pod: shop/orders-0` remains, and the request Query then sends carries `pod=shop%2Forders-0` and no `aggr`
+
+#### Scenario: A controller is an ONTAP node, not a Node
+
+- **WHEN** a body is drawn holding controller `ontap-prod-01` and Kubernetes node `worker-0`
+- **THEN** the root kind `ONTAP node` offers `ontap-prod-01` and the root kind `Node` offers `worker-0` only; checking `ontap-prod-01` sends `ontap_node=ontap-prod-01`
+
+#### Scenario: A link naming two root kinds cannot be queried
+
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod&aggr=aggr1&pod=shop%2Forders-0`
+- **THEN** both pills are listed, no request is issued, Query is unavailable with the text "One root kind per query", and removing either kind's roots makes Query available
+
+#### Scenario: A rejected request shows the backend's sentence
+
+- **WHEN** the backend answers 400 `{"error":{"reason":"invalid_scope","message":"exactly one root kind is allowed, got aggr and pod"}}` or 502 `upstream query failed: qos`
+- **THEN** the error state shows that message after the status code, not the status code alone
 
 #### Scenario: An invalid pod root is not sent
 
@@ -166,8 +182,8 @@ Unlike `az` / `env`, these two narrow an **enumerable set**: when no option can 
 
 #### Scenario: Roots restored from the URL
 
-- **WHEN** the user opens `/sankey?az=zone-a&env=prod&aggr=aggr1&pod=shop%2Forders-0`
-- **THEN** the root control lists `aggr: aggr1` and `pod: shop/orders-0`, no request is issued, and the request Query then sends carries both
+- **WHEN** the user opens `/sankey?az=zone-a&env=prod&pod=shop%2Forders-0`
+- **THEN** the root control lists `pod: shop/orders-0`, no request is issued, and the request Query then sends carries it
 
 ### Requirement: Top pods projection
 

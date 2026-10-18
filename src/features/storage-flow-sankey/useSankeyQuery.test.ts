@@ -28,10 +28,28 @@ describe('useSankeyQuery', () => {
     expect(result.current.query.az).toBe('zone-b');
   });
 
-  it('rejects an invalid pod root in place and keeps other roots', () => {
+  it('replaces the roots of another kind when a different kind is added — one root kind per request', () => {
+    const { result } = renderHook(() => useSankeyQuery({ az: ['a'], env: ['b'], cluster: [], namespace: [] }));
+    act(() => {
+      result.current.addRoots('aggr', ['aggr1', 'aggr2']);
+    });
+    act(() => {
+      result.current.addRoots('aggr', ['aggr3']);
+    });
+    expect(result.current.query.roots.aggr).toEqual(['aggr1', 'aggr2', 'aggr3']);
+    act(() => {
+      result.current.addRoot('pod', 'shop/orders-0');
+    });
+    expect(result.current.query.roots.aggr).toEqual([]);
+    expect(result.current.query.roots.pod).toEqual(['shop/orders-0']);
+  });
+
+  it('rejects an invalid pod root in place and keeps the roots already chosen', () => {
     const { result } = renderHook(() => useSankeyQuery({ az: ['a'], env: ['b'], cluster: [], namespace: [] }));
     act(() => {
       expect(result.current.addRoot('aggr', 'aggr1')).toBe(true);
+    });
+    act(() => {
       expect(result.current.addRoot('pod', 'orders-0')).toBe(false);
     });
     expect(result.current.query.roots.aggr).toEqual(['aggr1']);

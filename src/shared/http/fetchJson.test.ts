@@ -21,6 +21,27 @@ describe('fetchJson error reporting', () => {
     expect((err as HttpStatusError).message).toBe('GET /v1/trace failed: 400 — unknown hostname "sw-nope"');
   });
 
+  it("reads the backend's nested error body: its message is what an operator needs, not the bare code", async () => {
+    globalThis.fetch = stubFetch(
+      400,
+      JSON.stringify({
+        apiVersion: 'v1',
+        error: { reason: 'invalid_scope', message: 'exactly one root kind is allowed, got aggr and pod' },
+      })
+    );
+    const err = await fetchJson('/api/v1/storage-graph').catch((e: unknown) => e);
+    expect((err as HttpStatusError).reason).toBe('exactly one root kind is allowed, got aggr and pod');
+    expect((err as HttpStatusError).message).toBe(
+      'GET /api/v1/storage-graph failed: 400 — exactly one root kind is allowed, got aggr and pod'
+    );
+  });
+
+  it('falls back to the nested reason code when the nested message is empty', async () => {
+    globalThis.fetch = stubFetch(502, JSON.stringify({ error: { reason: 'upstream', message: '' } }));
+    const err = await fetchJson('/api/v1/storage-graph').catch((e: unknown) => e);
+    expect((err as HttpStatusError).reason).toBe('upstream');
+  });
+
   it('leaves the status message alone when the body names no reason', async () => {
     globalThis.fetch = stubFetch(500, JSON.stringify({ error: 'boom' }));
     const err = await fetchJson('/v1/graph').catch((e: unknown) => e);
